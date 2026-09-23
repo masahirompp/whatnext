@@ -39,6 +39,17 @@ function fit(s: string, width: number): string {
   return out + ' '.repeat(width - w);
 }
 
+// 長いパスは先頭側を省略し、リポジトリ名が見える末尾を残す
+function tail(s: string, width: number): string {
+  if (stringWidth(s) <= width) return s;
+  let out = '';
+  for (const ch of [...s].reverse()) {
+    if (stringWidth(out) + stringWidth(ch) > width - 1) break;
+    out = ch + out;
+  }
+  return '…' + out;
+}
+
 function clock(t: number): string {
   return new Date(t).toLocaleTimeString('en-GB', { hour12: false });
 }
@@ -310,7 +321,7 @@ export function App({ launchDir }: { launchDir: string }) {
                 {wait.padEnd(9)}
                 {kind.padEnd(5)}
                 {fit(name, nameWidth + 1)}
-                {tildify(item.row.cwd)}
+                {tail(tildify(item.row.cwd), Math.max(10, width - 2 - 11 - 20 - 9 - 5 - nameWidth - 1 - 1))}
               </Text>
             </Box>
           );
