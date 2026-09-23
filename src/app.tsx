@@ -13,7 +13,7 @@ const DELETE_WINDOW_MS = 2_000;
 
 type Mode =
   | { kind: 'list' }
-  | { kind: 'confirmStop'; id: string; name: string }
+  | { kind: 'confirmStop'; id: string }
   | { kind: 'newDir'; candidates: string[]; index: number }
   | { kind: 'newDirOther'; value: string; error?: string }
   | { kind: 'newModel'; cwd: string; value: string }
@@ -75,7 +75,7 @@ export function App({ launchDir }: { launchDir: string }) {
   const [git, setGit] = useState<Record<string, GitInfo | null>>({});
   const [prs, setPrs] = useState<Record<string, PrInfo | null>>({});
   const attached = useRef(false);
-  const deleteArm = useRef<{ id: string; name: string; until: number; stopping: boolean; deleteRequested: boolean } | null>(null);
+  const deleteArm = useRef<{ id: string; until: number; stopping: boolean; deleteRequested: boolean } | null>(null);
   const inFlight = useRef<Promise<void> | null>(null);
 
   const refresh = useCallback(async (select?: (items: ListItem[]) => string | undefined): Promise<void> => {
@@ -150,9 +150,9 @@ export function App({ launchDir }: { launchDir: string }) {
     } finally {
       attached.current = false;
     }
-    if (result?.error) setMessage(`Could not attach to ${id}: ${result.error}`);
-    else if (result && result.code !== 0) setMessage(`Detached from ${id} (claude attach exited with ${result.signal ?? `code ${result.code}`}).`);
-    else setMessage(`Detached from ${id}.`);
+    if (result?.error) setMessage(`Could not attach to session ${id}: ${result.error}`);
+    else if (result && result.code !== 0) setMessage(`Detached from session ${id} (claude attach exited with ${result.signal ?? `code ${result.code}`}).`);
+    else setMessage(`Detached from session ${id}.`);
     await refresh();
   };
 
@@ -181,10 +181,11 @@ export function App({ launchDir }: { launchDir: string }) {
     return null;
   };
 
-  const doDelete = async (id: string, name: string) => {
-    setMessage(`Deleting ${name}...`);
+  // メッセージではセッションを id で示す。名前は利用者のデータで英語とは限らないので、一覧の NAME 列にだけ出す
+  const doDelete = async (id: string) => {
+    setMessage(`Deleting session ${id}...`);
     const r = await removeSession(id);
-    setMessage(r.ok ? `Deleted ${name}.` : `Could not delete ${name}: ${r.message}`);
+    setMessage(r.ok ? `Deleted session ${id}.` : `Could not delete session ${id}: ${r.message}`);
     await refresh();
   };
 
@@ -197,7 +198,7 @@ export function App({ launchDir }: { launchDir: string }) {
         return;
       }
       deleteArm.current = null;
-      void doDelete(arm.id, arm.name);
+      void doDelete(arm.id);
       return;
     }
     if (!current) return;
@@ -206,12 +207,11 @@ export function App({ launchDir }: { launchDir: string }) {
       return;
     }
     const id = current.row.id;
-    const name = current.row.name || id;
-    const armed = { id, name, until: Date.now() + DELETE_WINDOW_MS, stopping: true, deleteRequested: false };
+    const armed = { id, until: Date.now() + DELETE_WINDOW_MS, stopping: true, deleteRequested: false };
     deleteArm.current = armed;
-    setMessage(`Stopping ${name}...`);
+    setMessage(`Stopping session ${id}...`);
     void stopSession(id).then(async (r) => {
-      const stopped = r.ok ? `Stopped ${name}.` : `Could not stop ${name}: ${r.message}.`;
+      const stopped = r.ok ? `Stopped session ${id}.` : `Could not stop session ${id}: ${r.message}.`;
       if (deleteArm.current !== armed) {
         // Esc などで取り消された
         setMessage(stopped);
@@ -220,7 +220,7 @@ export function App({ launchDir }: { launchDir: string }) {
       armed.stopping = false;
       if (armed.deleteRequested) {
         deleteArm.current = null;
-        return void doDelete(id, name);
+        return void doDelete(id);
       }
       // 止める操作に時間がかかっても、結果を見てから2秒は削除を受け付ける
       armed.until = Math.max(armed.until, Date.now() + DELETE_WINDOW_MS);
@@ -246,9 +246,9 @@ export function App({ launchDir }: { launchDir: string }) {
         const { id } = mode;
         setMode({ kind: 'list' });
         if (input === 'y' || input === 'Y') {
-          setMode({ kind: 'busy', label: `Stopping ${id}...` });
+          setMode({ kind: 'busy', label: `Stopping session ${id}...` });
           void stopSession(id).then(async (r) => {
-            setMessage(r.ok ? r.message : `Failed to stop ${id}: ${r.message}`);
+            setMessage(r.ok ? r.message : `Could not stop session ${id}: ${r.message}`);
             setMode({ kind: 'list' });
             await refresh();
           });
@@ -342,7 +342,7 @@ export function App({ launchDir }: { launchDir: string }) {
     if (input === 's') {
       if (current.row.kind === 'background' && current.row.id) {
         setMessage(null);
-        setMode({ kind: 'confirmStop', id: current.row.id, name: current.row.name ?? current.row.id });
+        setMode({ kind: 'confirmStop', id: current.row.id });
       } else {
         setMessage('Interactive sessions cannot be stopped from whatnext (no id).');
       }
@@ -435,7 +435,7 @@ export function App({ launchDir }: { launchDir: string }) {
     case 'confirmStop':
       panel = (
         <Text color="yellow">
-          Stop session {mode.name} ({mode.id})? The in-progress turn will be lost. [y/N]
+          Stop session {mode.id}? The in-progress turn will be lost. [y/N]
         </Text>
       );
       break;
