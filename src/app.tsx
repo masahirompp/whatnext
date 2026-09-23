@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import stringWidth from 'string-width';
 import { Observer, TIER_LABEL, formatDuration, type ListItem } from './ladder.js';
+import { gitInfo, prFor, type GitInfo, type PrInfo } from './gitinfo.js';
 import { attach, fetchAgents, removeSession, repoRoot, startSession, stopSession } from './claude.js';
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -51,6 +52,10 @@ function tail(s: string, width: number): string {
   return '…' + out;
 }
 
+const prKey = (g: GitInfo) => `${g.top}\0${g.branch}`;
+
+const PR_COLOR: Record<PrInfo['state'], string> = { open: 'green', draft: 'gray', merged: 'magenta', closed: 'gray' };
+
 function clock(t: number): string {
   return new Date(t).toLocaleTimeString('en-GB', { hour12: false });
 }
@@ -67,6 +72,8 @@ export function App({ launchDir }: { launchDir: string }) {
   const [message, setMessage] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [now, setNow] = useState(Date.now());
+  const [git, setGit] = useState<Record<string, GitInfo | null>>({});
+  const [prs, setPrs] = useState<Record<string, PrInfo | null>>({});
   const attached = useRef(false);
   const deleteArm = useRef<{ id: string; name: string; until: number; stopping: boolean; deleteRequested: boolean } | null>(null);
   const inFlight = useRef<Promise<void> | null>(null);
@@ -89,7 +96,16 @@ export function App({ launchDir }: { launchDir: string }) {
     const t = Date.now();
     if (r.ok) {
       const next = observer.current.observe(r.rows, t);
+      // ブランチと worktree はローカルの git で速く取れるので、一覧と一緒に出す
+      const cwds = [...new Set(next.map((i) => i.row.cwd).filter((c): c is string => !!c))];
+      const infos = await Promise.all(cwds.map((c) => gitInfo(c)));
+      const byCwd = Object.fromEntries(cwds.map((c, i) => [c, infos[i]]));
+      setGit(byCwd);
       setItems(next);
+      // PR は gh のネットワーク往復を待たずに、分かったものから埋める(#12)
+      const targets = new Map<string, GitInfo>();
+      for (const g of infos) if (g?.branch) targets.set(prKey(g), g);
+      for (const [key, g] of targets) void prFor(g.top, g.branch!).then((pr) => setPrs((cur) => ({ ...cur, [key]: pr })));
       setError(null);
       setSelected((cur) => {
         const want = select?.(next) ?? cur;
@@ -334,7 +350,9 @@ export function App({ launchDir }: { launchDir: string }) {
   });
 
   const width = stdout.columns || 100;
-  const nameWidth = Math.max(12, Math.min(28, Math.floor(width * 0.2)));
+  const nameWidth = Math.max(12, Math.min(28, Math.floor(width * 0.18)));
+  const repoWidth = Math.max(10, Math.min(24, Math.floor(width * 0.14)));
+  const branchWidth = Math.max(8, width - 2 - 11 - 20 - 9 - 5 - (nameWidth + 1) - (repoWidth + 1) - 3 - 13 - 1);
 
   const header = (
     <Box>
@@ -366,14 +384,17 @@ export function App({ launchDir }: { launchDir: string }) {
     body = (
       <Box flexDirection="column">
         <Box>
-          <Text dimColor>
+          <Text dimColor wrap="truncate-end">
             {'  '}
             {'TIER'.padEnd(11)}
             {'REASON'.padEnd(20)}
             {'WAITING'.padEnd(9)}
             {'KIND'.padEnd(5)}
             {'NAME'.padEnd(nameWidth + 1)}
-            CWD
+            {'REPO'.padEnd(repoWidth + 1)}
+            {'WT'.padEnd(3)}
+            {'PR'.padEnd(13)}
+            BRANCH
           </Text>
         </Box>
         {items.map((item, i) => {
@@ -381,6 +402,9 @@ export function App({ launchDir }: { launchDir: string }) {
           const wait = formatDuration(item.since === null ? null : now - item.since);
           const kind = item.row.kind === 'background' ? 'bg' : 'tty';
           const name = item.row.name || item.row.id || item.row.sessionId.slice(0, 8);
+          const g = item.row.cwd ? git[item.row.cwd] : null;
+          const pr = g?.branch ? prs[prKey(g)] : null;
+          const repo = g ? g.repo : tildify(item.row.cwd);
           const color = item.tier === 'failed' ? 'red' : item.tier === 'working' ? 'gray' : item.tier === 'review' ? 'cyan' : 'yellow';
           return (
             <Box key={item.row.sessionId}>
@@ -391,7 +415,10 @@ export function App({ launchDir }: { launchDir: string }) {
                 {wait.padEnd(9)}
                 {kind.padEnd(5)}
                 {fit(name, nameWidth + 1)}
-                {tail(tildify(item.row.cwd), Math.max(10, width - 2 - 11 - 20 - 9 - 5 - nameWidth - 1 - 1))}
+                {fit(tail(repo, repoWidth), repoWidth + 1)}
+                {(g?.worktree ? 'wt' : '').padEnd(3)}
+                {pr ? <Text color={PR_COLOR[pr.state]}>{fit(`#${pr.number} ${pr.state}`, 13)}</Text> : ' '.repeat(13)}
+                {tail(g?.branch ?? '', branchWidth)}
               </Text>
             </Box>
           );
