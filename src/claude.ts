@@ -88,6 +88,14 @@ export async function stopSession(id: string): Promise<{ ok: boolean; message: s
   return { ok: true, message: `Stopped session ${id}.` };
 }
 
+// 一覧から消す。会話の記録は残る。未コミットの変更や未 push のコミットがある worktree は claude rm が断る(#10)
+export async function removeSession(id: string): Promise<{ ok: boolean; message: string }> {
+  const r = await run('claude', ['rm', id]);
+  const text = (r.stdout + '\n' + r.stderr).trim().replace(/\s*\n\s*/g, ' ');
+  if (r.error) return { ok: false, message: text || r.error.message };
+  return { ok: true, message: text };
+}
+
 export async function startSession(opts: { cwd: string; model: string; prompt: string }): Promise<{ ok: boolean; id?: string; message: string }> {
   const args = ['--bg'];
   if (opts.model) args.push('--model', opts.model);

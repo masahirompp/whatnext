@@ -5,9 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import stringWidth from 'string-width';
 import { Observer, TIER_LABEL, formatDuration, type ListItem } from './ladder.js';
-import { attach, fetchAgents, repoRoot, startSession, stopSession } from './claude.js';
+import { attach, fetchAgents, removeSession, repoRoot, startSession, stopSession } from './claude.js';
 
 const REFRESH_INTERVAL_MS = 60_000;
+const DELETE_WINDOW_MS = 2_000;
 
 type Mode =
   | { kind: 'list' }
@@ -67,11 +68,22 @@ export function App({ launchDir }: { launchDir: string }) {
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [now, setNow] = useState(Date.now());
   const attached = useRef(false);
-  const inFlight = useRef(false);
+  const deleteArm = useRef<{ id: string; name: string; until: number; stopping: boolean; deleteRequested: boolean } | null>(null);
+  const inFlight = useRef<Promise<void> | null>(null);
 
-  const refresh = useCallback(async (select?: (items: ListItem[]) => string | undefined) => {
-    if (inFlight.current) return;
-    inFlight.current = true;
+  const refresh = useCallback(async (select?: (items: ListItem[]) => string | undefined): Promise<void> => {
+    // 進行中の更新があれば終わるのを待ち、操作の結果を反映した状態で読み直す
+    while (inFlight.current) await inFlight.current;
+    const run = doRefresh(select);
+    inFlight.current = run;
+    try {
+      await run;
+    } finally {
+      inFlight.current = null;
+    }
+  }, []);
+
+  const doRefresh = async (select?: (items: ListItem[]) => string | undefined) => {
     setRefreshing(true);
     const r = await fetchAgents();
     const t = Date.now();
@@ -91,8 +103,7 @@ export function App({ launchDir }: { launchDir: string }) {
     }
     setLastRefresh(t);
     setRefreshing(false);
-    inFlight.current = false;
-  }, []);
+  };
 
   useEffect(() => {
     void refresh();
@@ -152,6 +163,59 @@ export function App({ launchDir }: { launchDir: string }) {
     if (key.ctrl || key.meta || key.tab || key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) return null;
     if (input) return value + input.replace(/[\r\n]/g, '');
     return null;
+  };
+
+  const doDelete = async (id: string, name: string) => {
+    setMessage(`Deleting ${name}...`);
+    const r = await removeSession(id);
+    setMessage(r.ok ? `Deleted ${name}.` : `Could not delete ${name}: ${r.message}`);
+    await refresh();
+  };
+
+  // Agent View と同じ: 1回目で止め、2秒以内の2回目で削除する(#10)
+  const ctrlX = () => {
+    const arm = deleteArm.current;
+    if (arm && (arm.stopping || Date.now() <= arm.until)) {
+      if (arm.stopping) {
+        arm.deleteRequested = true;
+        return;
+      }
+      deleteArm.current = null;
+      void doDelete(arm.id, arm.name);
+      return;
+    }
+    if (!current) return;
+    if (current.row.kind !== 'background' || !current.row.id) {
+      setMessage('Interactive sessions cannot be stopped or deleted from whatnext (no id).');
+      return;
+    }
+    const id = current.row.id;
+    const name = current.row.name || id;
+    const armed = { id, name, until: Date.now() + DELETE_WINDOW_MS, stopping: true, deleteRequested: false };
+    deleteArm.current = armed;
+    setMessage(`Stopping ${name}...`);
+    void stopSession(id).then(async (r) => {
+      const stopped = r.ok ? `Stopped ${name}.` : `Could not stop ${name}: ${r.message}.`;
+      if (deleteArm.current !== armed) {
+        // Esc などで取り消された
+        setMessage(stopped);
+        return void refresh();
+      }
+      armed.stopping = false;
+      if (armed.deleteRequested) {
+        deleteArm.current = null;
+        return void doDelete(id, name);
+      }
+      // 止める操作に時間がかかっても、結果を見てから2秒は削除を受け付ける
+      armed.until = Math.max(armed.until, Date.now() + DELETE_WINDOW_MS);
+      setMessage(`${stopped} Press Ctrl+X again within 2 seconds to delete it (Esc to cancel).`);
+      setTimeout(() => {
+        if (deleteArm.current !== armed) return;
+        deleteArm.current = null;
+        setMessage(stopped);
+      }, armed.until - Date.now() + 50);
+      await refresh();
+    });
   };
 
   useInput((input, key) => {
@@ -224,6 +288,12 @@ export function App({ launchDir }: { launchDir: string }) {
         break;
     }
 
+    if (key.ctrl && input === 'x') return ctrlX();
+    // 削除の待ち受け中に Ctrl+X 以外を押したら取り消す(別の行を消してしまわないように)
+    if (deleteArm.current) {
+      deleteArm.current = null;
+      if (key.escape) return setMessage('Delete cancelled.');
+    }
     if (input === 'q') return exit();
     if (input === 'r') {
       setMessage(null);
@@ -407,7 +477,7 @@ export function App({ launchDir }: { launchDir: string }) {
       ) : null}
       {mode.kind === 'list' ? (
         <Box marginTop={1}>
-          <Text dimColor>↑↓/jk move  Enter attach (Ctrl+Z to come back)  n new  s stop  r refresh  q quit</Text>
+          <Text dimColor>↑↓/jk move  Enter attach (Ctrl+Z to come back)  n new  s stop  ^X stop/delete  r refresh  q quit</Text>
         </Box>
       ) : null}
     </Box>
