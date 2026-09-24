@@ -33,16 +33,22 @@ export function shortLabels(paths: string[]): string[] {
   });
 }
 
-// Keep candidates whose label contains the typed characters in order; contiguous matches first.
+// Keep candidates whose label contains the typed characters in order (contiguous first),
+// then those whose full path contains them contiguously. Scattered matches on a long
+// path would let almost any query hit every candidate, so the path needs contiguity.
 export function filter(items: Candidate[], q: string): Candidate[] {
   if (!q) return items;
   const ql = q.toLowerCase();
-  const subseq = (c: Candidate) => {
+  const subseq = (s: string) => {
     let i = 0;
-    for (const ch of c.label.toLowerCase()) if (ch === ql[i]) i++;
+    for (const ch of s.toLowerCase()) if (ch === ql[i]) i++;
     return i === ql.length;
   };
-  const hits = items.filter(subseq);
-  const contiguous = hits.filter((c) => c.label.toLowerCase().includes(ql));
-  return [...contiguous, ...hits.filter((s) => !contiguous.includes(s))];
+  const ranked: [number, Candidate][] = [];
+  for (const c of items) {
+    if (c.label.toLowerCase().includes(ql)) ranked.push([0, c]);
+    else if (subseq(c.label)) ranked.push([1, c]);
+    else if (c.path.toLowerCase().includes(ql)) ranked.push([2, c]);
+  }
+  return ranked.sort((a, b) => a[0] - b[0]).map(([, c]) => c);
 }

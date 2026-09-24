@@ -17,9 +17,16 @@ describe('shortLabels', () => {
 });
 
 describe('filter', () => {
-  it('matches on the label, not the full path', () => {
-    const items = [{ path: '/g/github.com/a/foo', label: 'foo' }, { path: '/g/github.com/a/bar', label: 'bar' }];
-    expect(filter(items, 'git')).toEqual([]);
+  const items = [
+    { path: '/g/github.com/owner/tool', label: 'tool' },
+    { path: '/g/github.com/a/bar', label: 'bar' },
+    { path: '/g/github.com/a/owner-app', label: 'owner-app' },
+  ];
+  it('matches the full path too, with label matches first', () => {
+    expect(filter(items, 'owner').map((c) => c.label)).toEqual(['owner-app', 'tool']);
+  });
+  it('matches the label loosely but the path only contiguously', () => {
     expect(filter(items, 'br').map((c) => c.label)).toEqual(['bar']);
+    expect(filter(items, 'oa').map((c) => c.label)).toEqual(['owner-app']);
   });
 });
