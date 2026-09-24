@@ -101,9 +101,8 @@ export async function removeSession(id: string): Promise<{ ok: boolean; message:
   }
 }
 
-export async function startSession(opts: { cwd: string; worktree: boolean; model: string; prompt: string }): Promise<{ ok: boolean; id?: string; message: string }> {
+export async function startSession(opts: { cwd: string; model: string; prompt: string }): Promise<{ ok: boolean; id?: string; message: string }> {
   const args = ['--bg'];
-  if (opts.worktree) args.push('--worktree');
   if (opts.model) args.push('--model', opts.model);
   args.push('--', opts.prompt);
   const r = await run('claude', args, { cwd: opts.cwd, timeout: 60000 });
@@ -121,10 +120,6 @@ export async function repoRoot(dir: string): Promise<string> {
   return path.basename(common) === '.git' ? path.dirname(common) : dir;
 }
 
-export async function isGitRepo(dir: string): Promise<boolean> {
-  const r = await run('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { timeout: 5000 });
-  return !r.error && r.stdout.trim() === 'true';
-}
 
 // ghq は任意の依存。無い・失敗したときは候補を足さないだけにする(ADR-0004)
 export async function ghqRepos(): Promise<string[]> {

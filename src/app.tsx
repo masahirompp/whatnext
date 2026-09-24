@@ -6,7 +6,7 @@ import path from 'node:path';
 import stringWidth from 'string-width';
 import { Observer, cursorAfterAttach, formatDuration, tierText, type ListItem } from './ladder.js';
 import { gitInfo, isDefaultBranch, prFor, summarizeWhere, type GitInfo, type PrInfo } from './gitinfo.js';
-import { attach, fetchAgents, ghqRepos, isGitRepo, removeSession, repoRoot, startSession, stopSession } from './claude.js';
+import { attach, fetchAgents, ghqRepos, removeSession, repoRoot, startSession, stopSession } from './claude.js';
 import { fuzzyFilter } from './fuzzy.js';
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -17,9 +17,8 @@ type Mode =
   | { kind: 'confirmStop'; id: string }
   | { kind: 'newDir'; candidates: string[]; query: string; index: number }
   | { kind: 'newDirOther'; value: string; error?: string }
-  | { kind: 'newWorktree'; cwd: string }
-  | { kind: 'newModel'; cwd: string; worktree: boolean; value: string }
-  | { kind: 'newPrompt'; cwd: string; worktree: boolean; model: string; value: string; error?: string }
+  | { kind: 'newModel'; cwd: string; value: string }
+  | { kind: 'newPrompt'; cwd: string; model: string; value: string; error?: string }
   | { kind: 'busy'; label: string };
 
 const OTHER = 'Other...';
@@ -183,16 +182,10 @@ export function App({ launchDir }: { launchDir: string }) {
     setMode({ kind: 'newDir', candidates: dirs, query: '', index: 0 });
   };
 
-  // git のリポジトリのときだけ worktree を使うかを聞く
-  const chooseDir = async (cwd: string) => {
-    setMode({ kind: 'busy', label: 'Checking directory...' });
-    if (await isGitRepo(cwd)) setMode({ kind: 'newWorktree', cwd });
-    else setMode({ kind: 'newModel', cwd, worktree: false, value: '' });
-  };
-
-  const launch = async (cwd: string, worktree: boolean, model: string, prompt: string) => {
+  // worktree を使うかは claude の設定(worktree.bgIsolation)に任せる
+  const launch = async (cwd: string, model: string, prompt: string) => {
     setMode({ kind: 'busy', label: 'Starting session...' });
-    const r = await startSession({ cwd, worktree, model, prompt });
+    const r = await startSession({ cwd, model, prompt });
     setMessage(r.ok ? r.message : `Failed to start session: ${r.message}`);
     setMode({ kind: 'list' });
     if (!r.ok) return;
@@ -302,7 +295,7 @@ export function App({ launchDir }: { launchDir: string }) {
         if (key.return) {
           const choice = choices[Math.min(mode.index, choices.length - 1)];
           if (choice === OTHER) setMode({ kind: 'newDirOther', value: mode.query.trim() });
-          else void chooseDir(choice);
+          else setMode({ kind: 'newModel', cwd: choice, value: '' });
           return;
         }
         const v = editText(mode.query, input, key);
@@ -316,23 +309,16 @@ export function App({ launchDir }: { launchDir: string }) {
           if (!raw) return;
           const v = path.resolve(launchDir, raw);
           if (!fs.statSync(v, { throwIfNoEntry: false })?.isDirectory()) return setMode({ ...mode, error: `Not a directory: ${v}` });
-          void chooseDir(v);
+          setMode({ kind: 'newModel', cwd: v, value: '' });
           return;
         }
         const v = editText(mode.value, input, key);
         if (v !== null) setMode({ ...mode, value: v, error: undefined });
         return;
       }
-      case 'newWorktree': {
-        if (key.escape) return setMode({ kind: 'list' });
-        // 既定は worktree を使う
-        if (key.return || input === 'y' || input === 'Y') return setMode({ kind: 'newModel', cwd: mode.cwd, worktree: true, value: '' });
-        if (input === 'n' || input === 'N') return setMode({ kind: 'newModel', cwd: mode.cwd, worktree: false, value: '' });
-        return;
-      }
       case 'newModel': {
         if (key.escape) return setMode({ kind: 'list' });
-        if (key.return) return setMode({ kind: 'newPrompt', cwd: mode.cwd, worktree: mode.worktree, model: mode.value.trim(), value: '' });
+        if (key.return) return setMode({ kind: 'newPrompt', cwd: mode.cwd, model: mode.value.trim(), value: '' });
         const v = editText(mode.value, input, key);
         if (v !== null) setMode({ ...mode, value: v });
         return;
@@ -344,7 +330,7 @@ export function App({ launchDir }: { launchDir: string }) {
         if (key.return && mode.value.endsWith('\\')) return setMode({ ...mode, value: mode.value.slice(0, -1) + '\n', error: undefined });
         if (key.return) {
           if (!mode.value.trim()) return setMode({ ...mode, error: 'Prompt is required.' });
-          void launch(mode.cwd, mode.worktree, mode.model, mode.value.trim());
+          void launch(mode.cwd, mode.model, mode.value.trim());
           return;
         }
         const v = editText(mode.value, input, key);
@@ -521,17 +507,10 @@ export function App({ launchDir }: { launchDir: string }) {
         </Box>
       );
       break;
-    case 'newWorktree':
-      panel = (
-        <Text bold>
-          New session in {tildify(mode.cwd)} — use a new git worktree? [Y/n] (Esc cancel)
-        </Text>
-      );
-      break;
     case 'newModel':
       panel = (
         <Box flexDirection="column">
-          <Text bold>New session in {tildify(mode.cwd)}{mode.worktree ? ' (worktree)' : ''} — model (optional, Enter to use the default, Esc cancel)</Text>
+          <Text bold>New session in {tildify(mode.cwd)} — model (optional, Enter to use the default, Esc cancel)</Text>
           <Text>
             Model: {mode.value}
             <Text inverse> </Text>
@@ -544,7 +523,6 @@ export function App({ launchDir }: { launchDir: string }) {
         <Box flexDirection="column">
           <Text bold>
             New session in {tildify(mode.cwd)}
-            {mode.worktree ? ' (worktree)' : ''}
             {mode.model ? ` with ${mode.model}` : ''} — prompt (required, Enter to start and attach, Option+Enter / Ctrl+J / \+Enter for a newline, Esc cancel)
           </Text>
           {mode.value.split('\n').map((line, i, lines) => (
