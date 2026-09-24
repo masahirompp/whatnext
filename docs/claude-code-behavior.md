@@ -2,6 +2,29 @@
 
 whatnext が頼る `claude` の振る舞いを、実機での実測と公式ドキュメントから記録する。特に断りのない行は Claude Code 2.1.280 での実測。`claude` の更新で変わりうるので、食い違いを見つけたら実測し直してこの表を直す。
 
+## `claude agents --json` の行の形（2.1.281）
+
+出力は行の配列で、1行が1セッション。状態ごとの実際の行（匿名化済み）は `docs/claude-agents-json.samples.json` にある。今の `claude` との差分は `.claude/skills/checking-claude-cli/check-agents-json.mjs` で確かめる。
+
+| キー | 型 | `background` | `interactive` | 値と意味 |
+| --- | --- | --- | --- | --- |
+| `kind` | string | ○ | ○ | `"background"`（`--bg` で起動）か `"interactive"`（通常の `claude` や ACP） |
+| `sessionId` | string | ○ | ○ | UUID。同じ値の行が `background` と `interactive` の両方に出ることがある |
+| `id` | string | ○ | なし | `sessionId` の先頭 8 文字。`claude attach` / `stop` / `rm` に渡す |
+| `cwd` | string | ○ | ○ | 作業ディレクトリ。worktree に移るとそのパスに変わる |
+| `name` | string | ○ | ○ | `--name` の値、なければ自動の名前（変わりうる） |
+| `startedAt` | number | ○ | ○ | エポックミリ秒。`claude stop` のあとは値がわずかに変わる（1秒未満）ので、行の特定には使わない |
+| `pid` | number | 動いている間だけ | ○ | 止まったセッションにはキーごとない |
+| `state` | string | ○ | なし | `working` / `done` / `blocked` / `failed` / `stopped` |
+| `status` | string | 動いている間だけ | ○ | `busy` / `idle` / `waiting` |
+| `waitingFor` | string | 待っている間だけ | 待っている間だけ | `"permission prompt"` / `"input needed"` / `"sandbox request"` / `"worker request"` / `"dialog open"`（公式ドキュメント）。実機で見たのは最初の2つ |
+
+- 値が `null` の行は見ていない。ないときはキーごと省かれる。
+- 動いている `background` の行の組み合わせ: 作業中は `working` + `busy`、ターン終了後は `done` + `idle`、プロンプトなしで起動した直後は `blocked` + `idle`、権限待ちは `blocked` + `waiting` + `waitingFor`、失敗は `failed` + `idle`。
+- 止めたあとは `pid` と `status` が消え、`state` は `done` と `failed` がそのまま、`blocked` は `stopped` になる。`working` の最中に止めたときは未確認。
+
+## 振る舞い
+
 | 問い | 結果 |
 | --- | --- |
 | `--json` に対話セッションは出るか | 出る。通常の `claude` で起動したものも ACP 経由のものも `kind: "interactive"` で、`id` と `state` がなく、`status`、`waitingFor`、`pid` を持つ |
@@ -17,7 +40,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 | `--bg` のセッションの権限要求に外部から答える口 | ない。`--permission-prompts` は `--print` 専用 |
 | `--bg` は worktree を作るか（2.1.281） | 設定 `worktree.bgIsolation: "worktree"` のとき、起動した時点では作らず、ファイルを編集する時点で `<repo>/.claude/worktrees/<名前>` に作って移る。`--json` の `cwd` もそのパスに変わる。`-w` を付けると起動した時点で作る。`claude rm` は worktree もブランチも消し、未 push のコミットがあると断る |
 | whatnext の子として動かした `claude attach` で Ctrl+Z を押すとどうなるか | 子が自分で終了する（終了コード 0、signal なし）。親は止まらず、端末のジョブ制御は働かない。attach から戻ったことは子の終了で分かる |
-| 存在しないモデル名で `--bg` を起動するとどうなるか | 終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。`claude stop` のあとも `failed` のまま残る |
+| 存在しないモデル名で `--bg` を起動するとどうなるか | 終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る |
 | `pid` のない `blocked` の行に `claude attach` するとどうなるか | 最初の応答の前に止まったセッションでは、`Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らない。やり直すコマンドとして `claude respawn <id>` がある |
 | 信頼されていないディレクトリで `--bg` を起動するとどうなるか | 終了コード 1 で 「Workspace not trusted. Run claude in &lt;dir&gt; once and accept the trust prompt, then retry.」 と出して断る。一度起動できたディレクトリでも、`git worktree add` のあとに断られたことがある（理由は未確認） |
 | `--json` に PR の情報はあるか | ない（公式ドキュメント agent-view のフィールド表による）。Agent View の PR ラベルは画面だけの表示で、Claude Code が `gh`（`gh pr view` など）で結び付けたもの。whatnext が PR を出すには自分で `gh` を呼ぶしかない |
