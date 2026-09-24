@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import { Box, Text, useApp, useInput, usePaste, useStdout } from 'ink';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -86,26 +86,28 @@ export function App({ launchDir }: { launchDir: string }) {
   const [prs, setPrs] = useState<Record<string, PrInfo | null>>({});
   const attached = useRef(false);
   const deleteArm = useRef<{ id: string; until: number; stopping: boolean; deleteRequested: boolean } | null>(null);
-  const inFlight = useRef<Promise<void> | null>(null);
+  const inFlight = useRef<Promise<ListItem[] | null> | null>(null);
 
-  const refresh = useCallback(async (select?: (items: ListItem[]) => string | undefined): Promise<void> => {
+  // 読めた一覧を返す(読めなければ null)
+  const refresh = useCallback(async (select?: (items: ListItem[]) => string | undefined): Promise<ListItem[] | null> => {
     // 進行中の更新があれば終わるのを待ち、操作の結果を反映した状態で読み直す
     while (inFlight.current) await inFlight.current;
     const run = doRefresh(select);
     inFlight.current = run;
     try {
-      await run;
+      return await run;
     } finally {
       inFlight.current = null;
     }
   }, []);
 
-  const doRefresh = async (select?: (items: ListItem[]) => string | undefined) => {
+  const doRefresh = async (select?: (items: ListItem[]) => string | undefined): Promise<ListItem[] | null> => {
     setRefreshing(true);
     const r = await fetchAgents();
     const t = Date.now();
+    let next: ListItem[] | null = null;
     if (r.ok) {
-      const next = observer.current.observe(r.rows, t);
+      next = observer.current.observe(r.rows, t);
       // ブランチと worktree はローカルの git で速く取れるので、一覧と一緒に出す
       const cwds = [...new Set(next.map((i) => i.row.cwd).filter((c): c is string => !!c))];
       const infos = await Promise.all(cwds.map((c) => gitInfo(c)));
@@ -117,10 +119,11 @@ export function App({ launchDir }: { launchDir: string }) {
       for (const g of infos) if (g?.branch && !isDefaultBranch(g)) targets.set(prKey(g), g);
       for (const [key, g] of targets) void prFor(g.top, g.branch!).then((pr) => setPrs((cur) => ({ ...cur, [key]: pr })));
       setError(null);
+      const want = select?.(next);
       setSelected((cur) => {
-        const want = select?.(next) ?? cur;
+        const pick = want ?? cur;
         // カーソルは選んでいたセッションに付いていく。消えたら最上位に戻る
-        return next.some((i) => i.row.sessionId === want) ? want! : next[0]?.row.sessionId ?? null;
+        return next!.some((i) => i.row.sessionId === pick) ? pick! : next![0]?.row.sessionId ?? null;
       });
     } else {
       // 古い一覧は出さない
@@ -129,6 +132,7 @@ export function App({ launchDir }: { launchDir: string }) {
     }
     setLastRefresh(t);
     setRefreshing(false);
+    return next;
   };
 
   useEffect(() => {
@@ -191,7 +195,11 @@ export function App({ launchDir }: { launchDir: string }) {
     const r = await startSession({ cwd, worktree, model, prompt });
     setMessage(r.ok ? r.message : `Failed to start session: ${r.message}`);
     setMode({ kind: 'list' });
-    if (r.ok) await refresh((next) => next.find((i) => r.id && i.row.id === r.id)?.row.sessionId);
+    if (!r.ok) return;
+    // 起動したらそのまま attach する。id が読めない・一覧に見つからないときは一覧に戻るだけ
+    const find = (next: ListItem[]) => next.find((i) => r.id && i.row.id === r.id);
+    const started = find((await refresh((next) => find(next)?.row.sessionId)) ?? []);
+    if (started) await doAttach(started);
   };
 
   const editText = (value: string, input: string, key: any): string | null => {
@@ -253,6 +261,14 @@ export function App({ launchDir }: { launchDir: string }) {
       await refresh();
     });
   };
+
+  // プロンプトの入力中だけ貼り付けを受け、改行を残す
+  usePaste(
+    (text) => {
+      if (mode.kind === 'newPrompt') setMode({ ...mode, value: mode.value + text.replace(/\r\n?/g, '\n'), error: undefined });
+    },
+    { isActive: mode.kind === 'newPrompt' },
+  );
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
@@ -323,6 +339,9 @@ export function App({ launchDir }: { launchDir: string }) {
       }
       case 'newPrompt': {
         if (key.escape) return setMode({ kind: 'list' });
+        // 改行: Option+Enter(ESC CR。VS Code の /terminal-setup 後の Shift+Enter も同じ)、Ctrl+J(LF)、行末の \ + Enter
+        if ((key.return && (key.meta || key.shift)) || input === '\n') return setMode({ ...mode, value: mode.value + '\n', error: undefined });
+        if (key.return && mode.value.endsWith('\\')) return setMode({ ...mode, value: mode.value.slice(0, -1) + '\n', error: undefined });
         if (key.return) {
           if (!mode.value.trim()) return setMode({ ...mode, error: 'Prompt is required.' });
           void launch(mode.cwd, mode.worktree, mode.model, mode.value.trim());
@@ -526,12 +545,15 @@ export function App({ launchDir }: { launchDir: string }) {
           <Text bold>
             New session in {tildify(mode.cwd)}
             {mode.worktree ? ' (worktree)' : ''}
-            {mode.model ? ` with ${mode.model}` : ''} — prompt (required, Enter to start, Esc cancel)
+            {mode.model ? ` with ${mode.model}` : ''} — prompt (required, Enter to start and attach, Option+Enter / Ctrl+J / \+Enter for a newline, Esc cancel)
           </Text>
-          <Text>
-            Prompt: {mode.value}
-            <Text inverse> </Text>
-          </Text>
+          {mode.value.split('\n').map((line, i, lines) => (
+            <Text key={i}>
+              {i === 0 ? 'Prompt: ' : '        '}
+              {line}
+              {i === lines.length - 1 ? <Text inverse> </Text> : null}
+            </Text>
+          ))}
           {mode.error ? <Text color="red">{mode.error}</Text> : null}
         </Box>
       );
