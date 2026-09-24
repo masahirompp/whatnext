@@ -20,6 +20,7 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 
 - 永続層: `docs/`(PRODUCT.md、adr/)、`CONTEXT.md`、`.claude/skills/`、CLAUDE.md、昇格済みモジュール: `lib/` — 厳格に維持する
 - 使い捨て層: `src/` とテストコード — サイクル末に全削除する。品質は「動けばOK」
+- ルートのビルド・パッケージ設定(`package.json`、`package-lock.json`、`tsconfig.json`、`.gitignore`)は削除対象外として残るが、次サイクルの足場であり自由に書き直してよい。ビルド出力 `dist/` は使い捨て層
 
 パスは init で確定した値。cycle-end の削除対象はこの定義を正とする。コードは雑に、ドキュメントは厳格に。
 
