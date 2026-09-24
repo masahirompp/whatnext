@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Observer, formatDuration, tierText, type AgentRow } from './ladder.js';
+import { Observer, cursorAfterAttach, formatDuration, tierText, type AgentRow } from './ladder.js';
 
 // `claude agents --json --all` の出力を模した固定データ
 const rows: AgentRow[] = [
@@ -127,5 +127,35 @@ describe('段の表示(理由は段から分からないときだけ添える)',
       1000,
     );
     expect(items.map((i) => tierText(i.tier, i.reason))).toEqual(['Question (dialog open)', 'Failed (no process)']);
+  });
+});
+
+describe('attach から戻ったときのカーソル(#19)', () => {
+  const obs = () => new Observer().observe(rows, 1000);
+
+  it('先頭の行に置く', () => {
+    const items = obs();
+    expect(cursorAfterAttach(items, { sessionId: 's-done', tier: 'review' })).toBe(items[0].row.sessionId);
+  });
+
+  it('先頭が今離脱したセッションで段が変わっていなければ、次の行に置く', () => {
+    const items = obs();
+    const top = items[0];
+    expect(cursorAfterAttach(items, { sessionId: top.row.sessionId, tier: top.tier })).toBe(items[1].row.sessionId);
+  });
+
+  it('今離脱したセッションでも、段が変わっていれば先頭に置く', () => {
+    const items = obs();
+    const top = items[0];
+    expect(cursorAfterAttach(items, { sessionId: top.row.sessionId, tier: 'review' })).toBe(top.row.sessionId);
+  });
+
+  it('行が1つしかなければ、その行に置く', () => {
+    const items = new Observer().observe([rows[0]], 1000);
+    expect(cursorAfterAttach(items, { sessionId: 's-done', tier: 'review' })).toBe('s-done');
+  });
+
+  it('行がなければ決めない', () => {
+    expect(cursorAfterAttach([], { sessionId: 's-done', tier: 'review' })).toBeUndefined();
   });
 });

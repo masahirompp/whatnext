@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import stringWidth from 'string-width';
-import { Observer, formatDuration, tierText, type ListItem } from './ladder.js';
+import { Observer, cursorAfterAttach, formatDuration, tierText, type ListItem } from './ladder.js';
 import { gitInfo, isDefaultBranch, prFor, summarizeWhere, type GitInfo, type PrInfo } from './gitinfo.js';
 import { attach, fetchAgents, removeSession, repoRoot, startSession, stopSession } from './claude.js';
 
@@ -141,6 +141,7 @@ export function App({ launchDir }: { launchDir: string }) {
 
   const doAttach = async (item: ListItem) => {
     const id = item.row.id!;
+    const left = { sessionId: item.row.sessionId, tier: item.tier };
     attached.current = true;
     let result: Awaited<ReturnType<typeof attach>> | undefined;
     try {
@@ -153,7 +154,8 @@ export function App({ launchDir }: { launchDir: string }) {
     if (result?.error) setMessage(`Could not attach to session ${id}: ${result.error}`);
     else if (result && result.code !== 0) setMessage(`Detached from session ${id} (claude attach exited with ${result.signal ?? `code ${result.code}`}).`);
     else setMessage(`Detached from session ${id}.`);
-    await refresh();
+    // 戻ったら先頭(次にやるセッション)にカーソルを置く
+    await refresh((next) => cursorAfterAttach(next, left));
   };
 
   const openNew = async () => {

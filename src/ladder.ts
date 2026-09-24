@@ -129,3 +129,12 @@ export function formatDuration(ms: number | null): string {
   if (h < 24) return `${h}h${String(m % 60).padStart(2, '0')}m`;
   return `${Math.floor(h / 24)}d${h % 24}h`;
 }
+
+// attach から戻ったときのカーソルの位置(#19)。先頭の行が次にやるセッション。
+// ただし先頭が今離脱したセッションで段が変わっていなければ、済ませたものとみなして次の行に置く
+export function cursorAfterAttach(items: ListItem[], left: { sessionId: string; tier: Tier }): string | undefined {
+  const [top, second] = items;
+  if (!top) return undefined;
+  if (top.row.sessionId === left.sessionId && top.tier === left.tier && second) return second.row.sessionId;
+  return top.row.sessionId;
+}
