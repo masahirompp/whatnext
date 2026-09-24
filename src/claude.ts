@@ -1,4 +1,4 @@
-// `claude` と `git` を呼ぶ部分(ADR-0004)
+// `claude` と `git`、任意の `ghq` を呼ぶ部分(ADR-0004)
 import { execFile, spawn } from 'node:child_process';
 import path from 'node:path';
 import type { AgentRow } from './ladder.js';
@@ -101,8 +101,9 @@ export async function removeSession(id: string): Promise<{ ok: boolean; message:
   }
 }
 
-export async function startSession(opts: { cwd: string; model: string; prompt: string }): Promise<{ ok: boolean; id?: string; message: string }> {
+export async function startSession(opts: { cwd: string; worktree: boolean; model: string; prompt: string }): Promise<{ ok: boolean; id?: string; message: string }> {
   const args = ['--bg'];
+  if (opts.worktree) args.push('--worktree');
   if (opts.model) args.push('--model', opts.model);
   args.push('--', opts.prompt);
   const r = await run('claude', args, { cwd: opts.cwd, timeout: 60000 });
@@ -118,4 +119,16 @@ export async function repoRoot(dir: string): Promise<string> {
   if (r.error) return dir;
   const common = r.stdout.trim();
   return path.basename(common) === '.git' ? path.dirname(common) : dir;
+}
+
+export async function isGitRepo(dir: string): Promise<boolean> {
+  const r = await run('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { timeout: 5000 });
+  return !r.error && r.stdout.trim() === 'true';
+}
+
+// ghq は任意の依存。無い・失敗したときは候補を足さないだけにする(ADR-0004)
+export async function ghqRepos(): Promise<string[]> {
+  const r = await run('ghq', ['list', '--full-path'], { timeout: 5000 });
+  if (r.error) return [];
+  return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
 }
