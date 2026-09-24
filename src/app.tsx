@@ -5,7 +5,7 @@ import path from 'node:path';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { launch, listAgents, rm, stop } from './agents.js';
-import { candidates, filter } from './launch.js';
+import { Candidate, candidates, filter } from './launch.js';
 import { cursorAfterAttach, Entry, formatWait, observe, Seen, tierLabel } from './rank.js';
 import { Git, gitInfo, Pr, prFor, whereText } from './where.js';
 
@@ -20,7 +20,7 @@ const TERM_RESET =
 type Mode =
   | { kind: 'list' }
   | { kind: 'info'; entry: Entry }
-  | { kind: 'pickDir'; items: string[] | null; query: string; index: number }
+  | { kind: 'pickDir'; items: Candidate[] | null; query: string; index: number }
   | { kind: 'otherDir'; text: string }
   | { kind: 'model'; dir: string; text: string }
   | { kind: 'discard'; id: string; value: string; count: number };
@@ -276,14 +276,14 @@ export function App({ startDir }: { startDir: string }) {
         return;
       case 'pickDir': {
         if (key.escape) { setMode({ kind: 'list' }); return; }
-        const shown = [...filter(mode.items ?? [], mode.query), 'Other...'];
+        const shown: (Candidate | null)[] = [...filter(mode.items ?? [], mode.query), null];
         if (key.upArrow) { setMode({ ...mode, index: Math.max(0, mode.index - 1) }); return; }
         if (key.downArrow) { setMode({ ...mode, index: Math.min(shown.length - 1, mode.index + 1) }); return; }
         if (key.return) {
           if (mode.items === null) return;
           const pick = shown[Math.min(mode.index, shown.length - 1)];
-          if (pick === 'Other...') setMode({ kind: 'otherDir', text: mode.query });
-          else setMode({ kind: 'model', dir: pick, text: '' });
+          if (pick === null) setMode({ kind: 'otherDir', text: mode.query });
+          else setMode({ kind: 'model', dir: pick.path, text: '' });
           return;
         }
         if (key.ctrl || key.meta || key.tab) return;
@@ -371,7 +371,7 @@ export function App({ startDir }: { startDir: string }) {
   }
 
   if (mode.kind === 'pickDir') {
-    const shown = [...filter(mode.items ?? [], mode.query), 'Other...'];
+    const shown: (Candidate | null)[] = [...filter(mode.items ?? [], mode.query), null];
     const max = Math.max(3, rows - 7);
     const start = Math.max(0, Math.min(mode.index - Math.floor(max / 2), shown.length - max));
     return (
@@ -381,7 +381,7 @@ export function App({ startDir }: { startDir: string }) {
         <Text>{'New session — working directory: '}<Text color="cyan">{mode.query}</Text><Text inverse> </Text></Text>
         {mode.items === null && <Text dimColor>Loading candidates...</Text>}
         {shown.slice(start, start + max).map((s, i) => (
-          <Text key={s} inverse={start + i === mode.index} wrap="truncate-start">{s}</Text>
+          <Text key={s?.path ?? ''} inverse={start + i === mode.index} wrap="truncate-start">{s?.label ?? 'Other...'}</Text>
         ))}
         <Text dimColor>Type to filter · ↑↓ select · Enter choose · Esc cancel</Text>
       </Box>
