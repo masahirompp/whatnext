@@ -26,6 +26,21 @@ export const TIER_LABEL: Record<Tier, string> = {
   working: 'Working',
 };
 
+// 段から分かる理由。これと違うときだけ、段の表示に理由を添える
+const DEFAULT_REASON: Record<Tier, string> = {
+  permission: 'permission prompt',
+  question: 'input needed',
+  sandbox: 'sandbox request',
+  failed: 'failed',
+  review: 'done',
+  working: 'running',
+};
+
+// 例: "Permission"、"Failed (no process)"、"Question (dialog open)"
+export function tierText(tier: Tier, reason: string): string {
+  return reason === DEFAULT_REASON[tier] ? TIER_LABEL[tier] : `${TIER_LABEL[tier]} (${reason})`;
+}
+
 export type Classified = { tier: Tier; reason: string } | null;
 
 const hasPid = (row: AgentRow) => typeof row.pid === 'number';
@@ -41,7 +56,7 @@ export function classify(row: AgentRow): Classified {
       return { tier: 'sandbox', reason: 'sandbox request' };
   }
   if (row.state === 'failed') return { tier: 'failed', reason: 'failed' };
-  if (row.state === 'blocked' && !hasPid(row)) return { tier: 'failed', reason: 'blocked, no process' };
+  if (row.state === 'blocked' && !hasPid(row)) return { tier: 'failed', reason: 'no process' };
   // 未知の waitingFor は人の手を待って止まっているとみなし、沈めない(#3)
   if (row.waitingFor) return { tier: 'question', reason: row.waitingFor };
   if (row.state === 'blocked') return { tier: 'question', reason: 'blocked' };

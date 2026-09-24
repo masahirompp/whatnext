@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Observer, formatDuration, type AgentRow } from './ladder.js';
+import { Observer, formatDuration, tierText, type AgentRow } from './ladder.js';
 
 // `claude agents --json --all` の出力を模した固定データ
 const rows: AgentRow[] = [
@@ -104,5 +104,28 @@ describe('formatDuration', () => {
     expect(formatDuration(125_000)).toBe('2m');
     expect(formatDuration(3_900_000)).toBe('1h05m');
     expect(formatDuration(90_000_000)).toBe('1d1h');
+  });
+});
+
+describe('段の表示(理由は段から分からないときだけ添える)', () => {
+  it('段から理由が分かるときは段だけ', () => {
+    const items = new Observer().observe(rows, 1000);
+    const text = (id: string) => {
+      const i = items.find((x) => x.row.sessionId === id)!;
+      return tierText(i.tier, i.reason);
+    };
+    expect(text('s-perm-bg')).toBe('Permission');
+    expect(text('s-question')).toBe('Question');
+    expect(text('s-failed')).toBe('Failed');
+    expect(text('s-done')).toBe('Review');
+    expect(text('s-working')).toBe('Working');
+  });
+
+  it('pid のない blocked と未知の waitingFor には理由を添える', () => {
+    const items = new Observer().observe(
+      [rows[6], { cwd: '/w/x', kind: 'interactive', sessionId: 's-dialog', status: 'waiting', waitingFor: 'dialog open', pid: 9 }],
+      1000,
+    );
+    expect(items.map((i) => tierText(i.tier, i.reason))).toEqual(['Question (dialog open)', 'Failed (no process)']);
   });
 });
