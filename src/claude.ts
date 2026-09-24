@@ -90,10 +90,15 @@ export async function stopSession(id: string): Promise<{ ok: boolean; message: s
 
 // 一覧から消す。会話の記録は残る。未コミットの変更や未 push のコミットがある worktree は claude rm が断る(#10)
 export async function removeSession(id: string): Promise<{ ok: boolean; message: string }> {
-  const r = await run('claude', ['rm', id]);
-  const text = (r.stdout + '\n' + r.stderr).trim().replace(/\s*\n\s*/g, ' ');
-  if (r.error) return { ok: false, message: text || r.error.message };
-  return { ok: true, message: text };
+  // claude stop はプロセスが終わる前に戻るので、直後の rm は worktree のロックで断られることがある。
+  // 止めたプロセスが終わるまで少し待って再試行する(#16)
+  for (let attempt = 0; ; attempt++) {
+    const r = await run('claude', ['rm', id]);
+    const text = (r.stdout + '\n' + r.stderr).trim().replace(/\s*\n\s*/g, ' ');
+    if (!r.error) return { ok: true, message: text };
+    if (attempt >= 5 || !/still running/.test(text)) return { ok: false, message: text || r.error.message };
+    await new Promise((res) => setTimeout(res, 1000));
+  }
 }
 
 export async function startSession(opts: { cwd: string; model: string; prompt: string }): Promise<{ ok: boolean; id?: string; message: string }> {

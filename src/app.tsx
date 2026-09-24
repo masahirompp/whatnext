@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import stringWidth from 'string-width';
 import { Observer, TIER_LABEL, formatDuration, type ListItem } from './ladder.js';
-import { gitInfo, prFor, type GitInfo, type PrInfo } from './gitinfo.js';
+import { gitInfo, type GitInfo } from './gitinfo.js';
+import { readSessionInfo, summarizeSession, summarizeWhere, type ReviewState, type SessionInfo } from './statusline.js';
 import { attach, fetchAgents, removeSession, repoRoot, startSession, stopSession } from './claude.js';
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -52,9 +53,7 @@ function tail(s: string, width: number): string {
   return '…' + out;
 }
 
-const prKey = (g: GitInfo) => `${g.top}\0${g.branch}`;
-
-const PR_COLOR: Record<PrInfo['state'], string> = { open: 'green', draft: 'gray', merged: 'magenta', closed: 'gray' };
+const REVIEW_COLOR: Record<ReviewState, string> = { approved: 'green', pending: 'yellow', changes_requested: 'red', draft: 'gray' };
 
 function clock(t: number): string {
   return new Date(t).toLocaleTimeString('en-GB', { hour12: false });
@@ -73,7 +72,7 @@ export function App({ launchDir }: { launchDir: string }) {
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [now, setNow] = useState(Date.now());
   const [git, setGit] = useState<Record<string, GitInfo | null>>({});
-  const [prs, setPrs] = useState<Record<string, PrInfo | null>>({});
+  const [sessions, setSessions] = useState<Record<string, SessionInfo | null>>({});
   const attached = useRef(false);
   const deleteArm = useRef<{ id: string; until: number; stopping: boolean; deleteRequested: boolean } | null>(null);
   const inFlight = useRef<Promise<void> | null>(null);
@@ -101,11 +100,9 @@ export function App({ launchDir }: { launchDir: string }) {
       const infos = await Promise.all(cwds.map((c) => gitInfo(c)));
       const byCwd = Object.fromEntries(cwds.map((c, i) => [c, infos[i]]));
       setGit(byCwd);
+      // モデル、コンテキスト、PR は statusline のタップが保存した JSON から読む(#15)
+      setSessions(Object.fromEntries(next.map((i) => [i.row.sessionId, readSessionInfo(i.row.sessionId)])));
       setItems(next);
-      // PR は gh のネットワーク往復を待たずに、分かったものから埋める(#12)
-      const targets = new Map<string, GitInfo>();
-      for (const g of infos) if (g?.branch) targets.set(prKey(g), g);
-      for (const [key, g] of targets) void prFor(g.top, g.branch!).then((pr) => setPrs((cur) => ({ ...cur, [key]: pr })));
       setError(null);
       setSelected((cur) => {
         const want = select?.(next) ?? cur;
@@ -351,8 +348,8 @@ export function App({ launchDir }: { launchDir: string }) {
 
   const width = stdout.columns || 100;
   const nameWidth = Math.max(12, Math.min(28, Math.floor(width * 0.18)));
-  const repoWidth = Math.max(10, Math.min(24, Math.floor(width * 0.14)));
-  const branchWidth = Math.max(8, width - 2 - 11 - 20 - 9 - 5 - (nameWidth + 1) - (repoWidth + 1) - 3 - 13 - 1);
+  const sessionWidth = 22;
+  const whereWidth = Math.max(10, width - 2 - 11 - 20 - 9 - 5 - (nameWidth + 1) - (sessionWidth + 1) - 1);
 
   const header = (
     <Box>
@@ -391,10 +388,8 @@ export function App({ launchDir }: { launchDir: string }) {
             {'WAITING'.padEnd(9)}
             {'KIND'.padEnd(5)}
             {'NAME'.padEnd(nameWidth + 1)}
-            {'REPO'.padEnd(repoWidth + 1)}
-            {'WT'.padEnd(3)}
-            {'PR'.padEnd(13)}
-            BRANCH
+            {'SESSION'.padEnd(sessionWidth + 1)}
+            WHERE
           </Text>
         </Box>
         {items.map((item, i) => {
@@ -403,8 +398,9 @@ export function App({ launchDir }: { launchDir: string }) {
           const kind = item.row.kind === 'background' ? 'bg' : 'tty';
           const name = item.row.name || item.row.id || item.row.sessionId.slice(0, 8);
           const g = item.row.cwd ? git[item.row.cwd] : null;
-          const pr = g?.branch ? prs[prKey(g)] : null;
-          const repo = g ? g.repo : tildify(item.row.cwd);
+          const info = sessions[item.row.sessionId] ?? null;
+          const where = summarizeWhere(g, tildify(item.row.cwd), info);
+          const prText = where.pr ? ` ${where.pr.mr ? '!' : '#'}${where.pr.number}` : '';
           const color = item.tier === 'failed' ? 'red' : item.tier === 'working' ? 'gray' : item.tier === 'review' ? 'cyan' : 'yellow';
           return (
             <Box key={item.row.sessionId}>
@@ -415,10 +411,9 @@ export function App({ launchDir }: { launchDir: string }) {
                 {wait.padEnd(9)}
                 {kind.padEnd(5)}
                 {fit(name, nameWidth + 1)}
-                {fit(tail(repo, repoWidth), repoWidth + 1)}
-                {(g?.worktree ? 'wt' : '').padEnd(3)}
-                {pr ? <Text color={PR_COLOR[pr.state]}>{fit(`#${pr.number} ${pr.state}`, 13)}</Text> : ' '.repeat(13)}
-                {tail(g?.branch ?? '', branchWidth)}
+                {fit(summarizeSession(info), sessionWidth + 1)}
+                {tail(where.text, whereWidth - prText.length)}
+                {where.pr ? <Text color={where.pr.review ? REVIEW_COLOR[where.pr.review] : undefined}>{prText}</Text> : null}
               </Text>
             </Box>
           );

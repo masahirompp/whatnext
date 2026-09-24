@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "bin": {
-    "whatnext": "dist/cli.js"
+    "whatnext": "dist/cli.js",
+    "whatnext-statusline-tap": "dist/statusline-tap.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/cli.js dist/statusline-tap.js",
     "start": "node dist/cli.js",
     "test": "vitest run"
   },
