@@ -12,9 +12,15 @@ When several sessions are waiting at once, whatnext ranks them by how much it co
 - **Writes nothing and keeps no state.** Closing whatnext loses nothing; sessions started elsewhere show up too. Your settings are never modified.
 - **Never answers for you.** No input injection or auto-approval — you attach and act yourself.
 
+## Usage
+
+```sh
+npx @masahirompp/whatnext
+```
+
 ## Requirements
 
-- Node.js
+- Node.js 22 or later
 - [Claude Code](https://code.claude.com) (`claude`) and `git`
 - Optional: `ghq` (more working-directory candidates), `gh` (PR numbers on rows). Without them, whatnext works the same with less shown.
 
@@ -30,3 +36,7 @@ Design documents are written in Japanese.
 ## Development
 
 This project is rebuilt from scratch in cycles; only the docs above persist. See [CLAUDE.md](CLAUDE.md).
+
+## License
+
+MIT
