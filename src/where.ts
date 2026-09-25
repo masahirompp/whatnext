@@ -61,15 +61,16 @@ export const vscodeFolderUrl = (dir: string) => `vscode://file${encodeURI(dir)}/
 
 export type OpenTarget = { label: string; url: string };
 
-// What `e` (external) offers for a row: the checkout in local VS Code (the worktree when in one), then the PR.
+// What `e` (external) offers for a row, most used first: the PR on GitHub, the checkout in local
+// VS Code (the worktree when in one), then the PR on vscode.dev.
 export function openTargets(cwd: string, git: Git | null | undefined, pr: Pr | null | undefined): OpenTarget[] {
   const dir = git?.top ?? cwd;
   const home = os.homedir();
   const shown = dir.startsWith(`${home}/`) ? `~${dir.slice(home.length)}` : dir;
-  const out: OpenTarget[] = [{ label: `VS Code: ${shown}`, url: vscodeFolderUrl(dir) }];
-  if (!pr) return out;
-  const dev = vscodeDevUrl(pr.url);
-  if (dev) out.push({ label: `PR #${pr.number} on vscode.dev`, url: dev });
-  out.push({ label: `PR #${pr.number} on GitHub`, url: pr.url });
+  const out: OpenTarget[] = [];
+  if (pr) out.push({ label: `PR #${pr.number} on GitHub`, url: pr.url });
+  out.push({ label: `VS Code: ${shown}`, url: vscodeFolderUrl(dir) });
+  const dev = pr && vscodeDevUrl(pr.url);
+  if (pr && dev) out.push({ label: `PR #${pr.number} on vscode.dev`, url: dev });
   return out;
 }

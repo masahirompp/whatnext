@@ -139,10 +139,10 @@ Agent View を置き換えるのではなく、その前段に立つ。
   - それ以外の理由で断ったときは、その文言をそのまま示す。
   - Agent View との違い：Agent View の削除は worktree を未コミットの変更ごと消すが、`claude rm` は未コミットの変更がある worktree を残す。
   - `interactive` の行では `id` がないので効かない。
-- **`e`**（external）：選んだ行の場所や PR を、whatnext の外のアプリで見るためのメニューを一覧の下に出す（見出しは `Show <セッション名> in:`）。キーの説明に open を使わないのは、`Enter` の attach（セッションを開く）と取り違えるため。`↑↓` と `Enter`、または番号で選び、`Esc` で閉じる。開く先ごとにキーを割り当てると、開く先が増えるたびにキーが尽きるので、入口を1つにする。開く先は次の順に並べる。
-  1. **手元の VS Code**：`cwd` が属するチェックアウトの根を開く。worktree で動いているセッションならその worktree、リポジトリ本体ならリポジトリの根、git でない場所なら `cwd` そのもの。`vscode://file/<パス>/` を OS の `open` に渡す（`code` コマンドに依存しない）。`interactive` の行でも出る。
-  2. **PR を vscode.dev で**（`https://vscode.dev/github/<owner>/<repo>/pull/<番号>`）。github.com の PR のときだけ出す。
-  3. **PR を GitHub で**。
+- **`e`**（external）：選んだ行の場所や PR を、whatnext の外のアプリで見るためのメニューを一覧の下に出す（見出しは `Show <セッション名> in:`）。キーの説明に open を使わないのは、`Enter` の attach（セッションを開く）と取り違えるため。`↑↓` と `Enter`、または番号で選び、`Esc` で閉じる。開く先ごとにキーを割り当てると、開く先が増えるたびにキーが尽きるので、入口を1つにする。開く先は、よく使う順に次のように並べ、メニューを出した時点では先頭を選んでおく。
+  1. **PR を GitHub で**。
+  2. **手元の VS Code**：`cwd` が属するチェックアウトの根を開く。worktree で動いているセッションならその worktree、リポジトリ本体ならリポジトリの根、git でない場所なら `cwd` そのもの。`vscode://file/<パス>/` を OS の `open` に渡す（`code` コマンドに依存しない）。`interactive` の行でも出る。
+  3. **PR を vscode.dev で**（`https://vscode.dev/github/<owner>/<repo>/pull/<番号>`）。github.com の PR のときだけ出す。手元にチェックアウトがないときの代わりなので、手元の VS Code より下に置く。
   - PR の選択肢は、WHERE に PR が出ている行でだけ出す。出ていない行（`gh` がない、PR がない、まだ取得中）では、PR がないことをメニューに示す。
   - 開いたら何を開いたかを示し、`open` が失敗したらその出力を示す。
 - 更新や終了に使うキーの割り当ては実装で決める。
