@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentRow, formatWait, splitLast, observe, tierLabel } from './rank.js';
+import { activityKey, AgentRow, formatWait, splitGroups, observe, tierLabel } from './rank.js';
 
 const bg = (id: string, extra: Partial<AgentRow>): AgentRow => ({
   id, sessionId: `s-${id}`, kind: 'background', cwd: '/x', name: id, ...extra,
@@ -90,11 +90,42 @@ describe('last attached session (scenario 5)', () => {
   it('moves the session last left out of the ladder, and ignores one not in the list', () => {
     const { entries } = observe([bg('a', { state: 'failed' }), bg('b', { state: 'done' })], new Map(), null);
     const b = entries[1];
-    const s = splitLast(entries, b.row.id!);
+    const s = splitGroups(entries, b.row.id!, new Set());
     expect(s.last?.row.name).toBe('b');
     expect(s.rest.map((e) => e.row.name)).toEqual(['a']);
-    expect(splitLast(entries, 'gone')).toEqual({ last: null, rest: entries });
-    expect(splitLast(entries, null)).toEqual({ last: null, rest: entries });
+    expect(splitGroups(entries, 'gone', new Set())).toEqual({ last: null, rest: entries, held: [] });
+    expect(splitGroups(entries, null, new Set())).toEqual({ last: null, rest: entries, held: [] });
+  });
+});
+
+describe('sessions on hold', () => {
+  const { entries } = observe(
+    [bg('a', { state: 'failed' }), bg('b', { state: 'done' }), bg('c', { state: 'working' }), tty('t', { status: 'busy', pid: 1 })],
+    new Map(), null,
+  );
+  const names = (es: typeof entries) => es.map((e) => e.row.name);
+  it('moves held sessions below the ladder, in ladder order', () => {
+    const s = splitGroups(entries, null, new Set(['s-c', 's-a', 't']));
+    expect(names(s.rest)).toEqual(['b']);
+    expect(names(s.held)).toEqual(['a', 'c', 't']);
+  });
+  it('never shows a held session as last attached', () => {
+    const s = splitGroups(entries, 'b', new Set(['s-b']));
+    expect(s.last).toBeNull();
+    expect(names(s.rest)).toEqual(['a', 'c', 't']);
+    expect(names(s.held)).toEqual(['b']);
+  });
+  it('ignores held ids that are not in the list', () => {
+    expect(splitGroups(entries, null, new Set(['gone'])).held).toEqual([]);
+  });
+});
+
+describe('activity key', () => {
+  it('changes when the state, status or waitingFor changes', () => {
+    const r = bg('a', { state: 'done', status: 'idle', pid: 1 });
+    expect(activityKey({ ...r, pid: 2, startedAt: 5 })).toBe(activityKey(r));
+    expect(activityKey({ ...r, state: 'working', status: 'busy' })).not.toBe(activityKey(r));
+    expect(activityKey({ ...r, waitingFor: 'input needed' })).not.toBe(activityKey(r));
   });
 });
 

@@ -8,7 +8,7 @@ import { launch, listAgents, rm, run, stop } from './agents.js';
 import { Candidate, candidates, filter } from './launch.js';
 import { formatCost, formatTokens, OtelStore, startReceiver } from './otel.js';
 import { fetchUsage, Limit } from './usage.js';
-import { Entry, formatWait, observe, Seen, splitLast, tierLabel } from './rank.js';
+import { activityKey, Entry, formatWait, observe, Seen, splitGroups, tierLabel } from './rank.js';
 import { Git, gitInfo, OpenTarget, openTargets, Pr, prFor, whereText } from './where.js';
 
 const REFRESH_MS = 60_000;
@@ -78,6 +78,10 @@ export function App({ startDir }: { startDir: string }) {
   // Agent id of the session last left by attach, shown above the ladder until the next attach.
   const [lastId, setLastId] = useState<string | null>(null);
   const lastIdRef = useRef<string | null>(null);
+  // sessionIds the user put on hold, shown below the ladder. Only in memory (ADR-0002).
+  const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
+  const heldRef = useRef<ReadonlySet<string>>(new Set());
+  const entriesRef = useRef<Entry[]>([]);
   const seenRef = useRef<Seen>(new Map());
   const prevRef = useRef<number | null>(null);
   const busyRef = useRef(false); // attached or refreshing
@@ -98,8 +102,15 @@ export function App({ startDir }: { startDir: string }) {
     }
   }, []);
 
+  const updateHeld = useCallback((f: (s: Set<string>) => void) => {
+    const next = new Set(heldRef.current);
+    f(next);
+    heldRef.current = next;
+    setHeld(next);
+  }, []);
+
   // Returns the new entries so callers can act on them without waiting for a render.
-  const refresh = useCallback(async (opts: { afterAttach?: boolean } = {}) => {
+  const refresh = useCallback(async (opts: { afterAttach?: boolean } = {}): Promise<Entry[] | null> => {
     const t = Date.now();
     setRefreshing(true);
     try {
@@ -107,22 +118,31 @@ export function App({ startDir }: { startDir: string }) {
       const { entries: es, seen } = observe(rows, seenRef.current, prevRef.current, otelRef.current.lastEvent);
       seenRef.current = seen;
       prevRef.current = t;
+      entriesRef.current = es;
       setEntries(es);
       setError(null);
       setCursorId((cur) => {
-        const { last, rest } = splitLast(es, lastIdRef.current);
-        if (opts.afterAttach) return (last ?? rest[0])?.row.sessionId ?? null;
-        if (cur && es.some((e) => e.row.sessionId === cur)) return cur;
+        const { rest } = splitGroups(es, lastIdRef.current, heldRef.current);
+        // The session just left is selected whether it is in the last-attached group or on hold.
+        const left = opts.afterAttach ? es.find((e) => e.row.id === lastIdRef.current) : undefined;
+        if (left) return left.row.sessionId;
+        if (!opts.afterAttach && cur && es.some((e) => e.row.sessionId === cur)) return cur;
         return rest[0]?.row.sessionId ?? null;
       });
       loadWhere(es);
+      setRefreshing(false);
+      setLastRefresh(t);
+      setLoaded(true);
+      return es;
     } catch (e) {
+      entriesRef.current = [];
       setEntries([]);
       setError(e instanceof Error ? e.message : String(e));
     }
     setRefreshing(false);
     setLastRefresh(t);
     setLoaded(true);
+    return null;
   }, [loadWhere]);
 
   // Not on the 60s timer: only at start, after attach and on `r`. Keeps the old value while fetching.
@@ -143,14 +163,19 @@ export function App({ startDir }: { startDir: string }) {
     return () => clearTimeout(t);
   }, [lastRefresh, refresh]);
 
-  const { last, rest } = splitLast(entries, lastId);
-  const list = last ? [last, ...rest] : rest;
+  const { last, rest, held: onHold } = splitGroups(entries, lastId, held);
+  const list = [...(last ? [last] : []), ...rest, ...onHold];
   const cursor = Math.max(0, list.findIndex((e) => e.row.sessionId === cursorId));
   const current = list[cursor];
 
   const attach = useCallback(async (id: string) => {
     busyRef.current = true;
     setMessage(null);
+    // A held session stays on hold if the attach was only a look: nothing about it changed.
+    const before = entriesRef.current.find((e) => e.row.id === id);
+    const snap = before && heldRef.current.has(before.row.sessionId)
+      ? { sid: before.row.sessionId, key: activityKey(before.row), ev: otelRef.current.lastEvent.get(before.row.sessionId) ?? 0 }
+      : null;
     await suspendTerminal(async () => {
       const ignore = () => {};
       const sigs = ['SIGINT', 'SIGTSTP', 'SIGQUIT'] as const;
@@ -193,8 +218,13 @@ export function App({ startDir }: { startDir: string }) {
     loadUsage();
     lastIdRef.current = id;
     setLastId(id);
-    await refresh({ afterAttach: true });
-  }, [suspendTerminal, refresh, loadUsage]);
+    const es = await refresh({ afterAttach: true });
+    if (!snap || !es) return;
+    const after = es.find((e) => e.row.sessionId === snap.sid);
+    const touched = !after || activityKey(after.row) !== snap.key
+      || (otelRef.current.lastEvent.get(snap.sid) ?? 0) > snap.ev;
+    if (touched) updateHeld((h) => h.delete(snap.sid));
+  }, [suspendTerminal, refresh, loadUsage, updateHeld]);
 
   const removeEntry = (id: string) => {
     setEntries((es) => es.filter((e) => e.row.id !== id));
@@ -414,6 +444,22 @@ export function App({ startDir }: { startDir: string }) {
         setMessage('Refreshed.');
         setTimeout(() => setMessage((m) => (m === 'Refreshed.' ? null : m)), 2000);
       });
+    } else if (input === 'h') {
+      if (!current) return;
+      const sid = current.row.sessionId;
+      const label = current.row.name ?? sid.slice(0, 8);
+      if (heldRef.current.has(sid)) {
+        updateHeld((h) => h.delete(sid));
+        setMessage(`${label} is back in the list.`);
+      } else {
+        // Move on to the next row: holding says "not now", so the cursor should not follow it down.
+        const shown = [...(last ? [last] : []), ...rest];
+        const i = shown.indexOf(current);
+        const next = shown[i + 1] ?? shown[i - 1];
+        updateHeld((h) => h.add(sid));
+        if (next) setCursorId(next.row.sessionId);
+        setMessage(`Put ${label} on hold. It comes back when you attach and work on it, or press h on it.`);
+      }
     } else if (input === 'e') {
       setMessage(null);
       openIndexRef.current = 0;
@@ -547,10 +593,18 @@ export function App({ startDir }: { startDir: string }) {
   const ctxW = Math.max(0, ...[...ctxs.values()].map((c) => c.length));
   const nameW = Math.min(32, Math.max(7, ...entries.map((e) => (e.row.name ?? '').length + (e.row.kind === 'interactive' ? 6 : 0))));
   const maxRows = Math.max(3, rows - 6 - (usage.length > 0 ? 1 : 0));
-  // The last-attached heading and row, the blank line and the ladder heading stay put; only the ladder scrolls.
-  const ladderRows = last ? Math.max(1, maxRows - 4) : maxRows;
-  const ladderCursor = last ? Math.max(0, cursor - 1) : cursor;
-  const start = Math.max(0, Math.min(ladderCursor - Math.floor(ladderRows / 2), rest.length - ladderRows));
+  // The last-attached group and the ladder heading stay put; the ladder and the on-hold group scroll.
+  const upNext = (last !== null || onHold.length > 0) && rest.length > 0;
+  const fixed = (last ? 2 + (rest.length + onHold.length > 0 ? 1 : 0) : 0) + (upNext ? 1 : 0);
+  type Item = { entry: Entry } | { heading: string } | { blank: true };
+  const items: Item[] = [
+    ...rest.map((entry) => ({ entry })),
+    ...(onHold.length > 0 ? [...(rest.length > 0 ? [{ blank: true as const }] : []), { heading: 'On hold' }] : []),
+    ...onHold.map((entry) => ({ entry })),
+  ];
+  const regionRows = Math.max(1, maxRows - fixed);
+  const pos = Math.max(0, items.findIndex((it) => 'entry' in it && it.entry === current));
+  const start = Math.max(0, Math.min(pos - Math.floor(regionRows / 2), items.length - regionRows));
   const renderRow = (e: Entry, sel: boolean) => {
     const w = where.get(e.row.cwd);
     const name = `${e.row.name ?? e.row.sessionId.slice(0, 8)}${e.row.kind === 'interactive' ? ' (tty)' : ''}`;
@@ -591,11 +645,14 @@ export function App({ startDir }: { startDir: string }) {
         </Box>
       )}
       {last && <Text dimColor>{'  Last attached'}</Text>}
-      {last && renderRow(last, cursor === 0)}
-      {last && rest.length > 0 && <Text> </Text>}
-      {last && rest.length > 0 && <Text dimColor>{'  Up next'}</Text>}
-      {rest.slice(start, start + ladderRows).map((e, i) => renderRow(e, (last ? 1 : 0) + start + i === cursor))}
-      {rest.length > ladderRows && <Text dimColor>{`  ${cursor + 1}/${list.length}`}</Text>}
+      {last && renderRow(last, current === last)}
+      {last && rest.length + onHold.length > 0 && <Text> </Text>}
+      {upNext && <Text dimColor>{'  Up next'}</Text>}
+      {items.slice(start, start + regionRows).map((it, i) =>
+        'entry' in it ? renderRow(it.entry, it.entry === current)
+          : 'heading' in it ? <Text key={`h${start + i}`} dimColor>{`  ${it.heading}`}</Text>
+            : <Text key={`b${start + i}`}> </Text>)}
+      {items.length > regionRows && <Text dimColor>{`  ${cursor + 1}/${list.length}`}</Text>}
       <Text> </Text>
       {message && <Text color="yellow">{message}</Text>}
       {mode.kind === 'discard' && (
@@ -615,7 +672,7 @@ export function App({ startDir }: { startDir: string }) {
           </Box>
         );
       })()}
-      {mode.kind !== 'external' && <Text dimColor>↑↓ move · Enter attach · e external · n new · Ctrl+X stop/delete · r refresh · q quit</Text>}
+      {mode.kind !== 'external' && <Text dimColor>↑↓ move · Enter attach · h hold · e external · n new · Ctrl+X stop/delete · r refresh · q quit</Text>}
     </Box>
   );
 }

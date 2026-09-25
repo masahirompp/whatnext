@@ -117,9 +117,23 @@ export function formatWait(since: number | null, now: number): string {
   return `${Math.floor(h / 24)}d${h % 24}h`;
 }
 
-// The session last left by attach is shown as its own group above the ladder, until the next
-// attach. It stays out of the ladder so it is not listed twice. `id` is the agent id.
-export function splitLast(entries: Entry[], id: string | null): { last: Entry | null; rest: Entry[] } {
-  const last = id ? entries.find((e) => e.row.id === id) ?? null : null;
-  return { last, rest: last ? entries.filter((e) => e !== last) : entries };
+// The list is split into three groups: the session last left by attach (above the ladder, until the
+// next attach), the ladder, and the sessions the user put on hold (below the ladder). A held session
+// is never the last-attached one, and no session is listed twice. `lastId` is the agent id, `held`
+// holds sessionIds (interactive rows have no agent id).
+export function splitGroups(
+  entries: Entry[],
+  lastId: string | null,
+  held: ReadonlySet<string>,
+): { last: Entry | null; rest: Entry[]; held: Entry[] } {
+  const onHold = entries.filter((e) => held.has(e.row.sessionId));
+  const others = entries.filter((e) => !held.has(e.row.sessionId));
+  const last = lastId ? others.find((e) => e.row.id === lastId) ?? null : null;
+  return { last, rest: last ? others.filter((e) => e !== last) : others, held: onHold };
+}
+
+// What an attach may change about a session. If any of it differs after the attach (or an OTel event
+// arrived meanwhile), the user is taken to have worked on it rather than only looked.
+export function activityKey(r: AgentRow): string {
+  return JSON.stringify([r.state ?? null, r.status ?? null, r.waitingFor ?? null]);
 }
