@@ -8,7 +8,7 @@ import { launch, listAgents, rm, run, stop } from './agents.js';
 import { Candidate, candidates, filter } from './launch.js';
 import { fetchUsage, Limit } from './usage.js';
 import { cursorAfterAttach, Entry, formatWait, observe, Seen, tierLabel } from './rank.js';
-import { Git, gitInfo, Pr, prFor, vscodeDevUrl, vscodeFolderUrl, whereText } from './where.js';
+import { Git, gitInfo, OpenTarget, openTargets, Pr, prFor, whereText } from './where.js';
 
 const REFRESH_MS = 60_000;
 const DELETE_WINDOW_MS = 2000;
@@ -25,7 +25,8 @@ type Mode =
   | { kind: 'otherDir'; text: string }
   | { kind: 'model'; dir: string; text: string }
   | { kind: 'starting'; dir: string; model: string; at: number; failed: string | null }
-  | { kind: 'discard'; id: string; value: string; count: number };
+  | { kind: 'discard'; id: string; value: string; count: number }
+  | { kind: 'open'; entry: Entry; index: number };
 
 type Where = { git?: Git | null; pr?: Pr | null };
 
@@ -74,6 +75,8 @@ export function App({ startDir }: { startDir: string }) {
   const seenRef = useRef<Seen>(new Map());
   const prevRef = useRef<number | null>(null);
   const busyRef = useRef(false); // attached or refreshing
+  // The open menu's selection, read synchronously: ↓ and Enter can arrive before a re-render.
+  const openIndexRef = useRef(0);
   const pendingRef = useRef<{ id: string; at: number; stopping: boolean } | null>(null);
 
   const loadWhere = useCallback((es: Entry[]) => {
@@ -254,25 +257,14 @@ export function App({ startDir }: { startDir: string }) {
     await attach(r.id, null);
   };
 
-  const openUrl = async (url: string, what: string) => {
-    const r = await run('open', [url]);
-    setMessage(r.code === 0 ? `Opened ${what}.` : `${`${r.stderr}${r.stdout}`.trim() || `open exited with ${r.code}`}`);
+  const openUrl = async (t: OpenTarget) => {
+    const r = await run('open', [t.url]);
+    setMessage(r.code === 0 ? `Opened ${t.label}.` : `${`${r.stderr}${r.stdout}`.trim() || `open exited with ${r.code}`}`);
   };
 
-  // e / v / g: the checkout in local VS Code, the PR on vscode.dev, the PR on GitHub.
-  const openFor = (e: Entry, target: 'e' | 'v' | 'g') => {
+  const targetsFor = (e: Entry) => {
     const w = where.get(e.row.cwd);
-    if (target === 'e') {
-      const dir = w?.git?.top ?? e.row.cwd;
-      void openUrl(vscodeFolderUrl(dir), `${dir} in VS Code`);
-      return;
-    }
-    const pr = w?.pr;
-    if (!pr) { setMessage('No PR found for this session.'); return; }
-    if (target === 'g') { void openUrl(pr.url, `PR #${pr.number} on GitHub`); return; }
-    const url = vscodeDevUrl(pr.url);
-    if (!url) { setMessage(`PR #${pr.number} is not on github.com: ${pr.url}`); return; }
-    void openUrl(url, `PR #${pr.number} on vscode.dev`);
+    return openTargets(e.row.cwd, w?.git, w?.pr);
   };
 
   const openPicker = () => {
@@ -344,6 +336,20 @@ export function App({ startDir }: { startDir: string }) {
         setMode({ kind: 'list' });
         void refresh();
         return;
+      case 'open': {
+        const ts = targetsFor(mode.entry);
+        if (key.escape) { setMode({ kind: 'list' }); return; }
+        const move = (d: number) => {
+          openIndexRef.current = Math.max(0, Math.min(ts.length - 1, openIndexRef.current + d));
+          setMode({ ...mode, index: openIndexRef.current });
+        };
+        if (key.upArrow || input === 'k') { move(-1); return; }
+        if (key.downArrow || input === 'j') { move(1); return; }
+        const n = Number(input);
+        const pick = key.return ? ts[Math.min(openIndexRef.current, ts.length - 1)] : n >= 1 ? ts[n - 1] : undefined;
+        if (pick) { setMode({ kind: 'list' }); void openUrl(pick); }
+        return;
+      }
       case 'list':
         break;
     }
@@ -371,9 +377,10 @@ export function App({ startDir }: { startDir: string }) {
       setMessage(null);
       void refresh();
       loadUsage();
-    } else if (input === 'e' || input === 'v' || input === 'g') {
+    } else if (input === 'o') {
       setMessage(null);
-      if (current) openFor(current, input);
+      openIndexRef.current = 0;
+      if (current) setMode({ kind: 'open', entry: current, index: 0 });
     } else if (input === 'n') {
       setMessage(null);
       openPicker();
@@ -527,7 +534,21 @@ export function App({ startDir }: { startDir: string }) {
       {mode.kind === 'discard' && (
         <Text color="red">{`Discard ${mode.count} unpushed commit${mode.count === 1 ? '' : 's'} and delete session ${mode.id}? [y/N]`}</Text>
       )}
-      <Text dimColor>↑↓ move · Enter attach · e VS Code · v vscode.dev · g GitHub · n new · Ctrl+X stop/delete · r refresh · q quit</Text>
+      {mode.kind === 'open' && (() => {
+        const w = where.get(mode.entry.row.cwd);
+        const ts = targetsFor(mode.entry);
+        return (
+          <Box flexDirection="column">
+            <Text>{`Open ${mode.entry.row.name ?? mode.entry.row.sessionId.slice(0, 8)} in:`}</Text>
+            {ts.map((t, i) => (
+              <Text key={t.url} inverse={i === Math.min(mode.index, ts.length - 1)} wrap="truncate-middle">{`${i + 1}. ${t.label}`}</Text>
+            ))}
+            {!w?.pr && <Text dimColor>No PR found for this session.</Text>}
+            <Text dimColor>↑↓ select · Enter or 1-9 open · Esc cancel</Text>
+          </Box>
+        );
+      })()}
+      {mode.kind !== 'open' && <Text dimColor>↑↓ move · Enter attach · o open · n new · Ctrl+X stop/delete · r refresh · q quit</Text>}
     </Box>
   );
 }

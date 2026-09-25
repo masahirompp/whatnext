@@ -1,4 +1,5 @@
 // Location summary for the WHERE column: repo, non-default branch, worktree, PR.
+import os from 'node:os';
 import path from 'node:path';
 import { run } from './agents.js';
 
@@ -57,3 +58,18 @@ export function vscodeDevUrl(prUrl: string): string | null {
 
 // Opens a folder in local VS Code through its URL handler, so only the OS `open` is needed (ADR-0004).
 export const vscodeFolderUrl = (dir: string) => `vscode://file${encodeURI(dir)}/`;
+
+export type OpenTarget = { label: string; url: string };
+
+// What `o` offers for a row: the checkout in local VS Code (the worktree when in one), then the PR.
+export function openTargets(cwd: string, git: Git | null | undefined, pr: Pr | null | undefined): OpenTarget[] {
+  const dir = git?.top ?? cwd;
+  const home = os.homedir();
+  const shown = dir.startsWith(`${home}/`) ? `~${dir.slice(home.length)}` : dir;
+  const out: OpenTarget[] = [{ label: `VS Code: ${shown}`, url: vscodeFolderUrl(dir) }];
+  if (!pr) return out;
+  const dev = vscodeDevUrl(pr.url);
+  if (dev) out.push({ label: `PR #${pr.number} on vscode.dev`, url: dev });
+  out.push({ label: `PR #${pr.number} on GitHub`, url: pr.url });
+  return out;
+}
