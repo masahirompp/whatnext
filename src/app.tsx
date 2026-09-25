@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import React, { useEffect, useReducer } from 'react';
@@ -47,6 +48,7 @@ type Mode =
       waiter?: string;
       startedAt?: number;
       output?: string;
+      dirError?: string;
     }
   | { kind: 'confirm'; text: string; resolve: (yes: boolean) => void };
 
@@ -428,6 +430,14 @@ function toggleWait(waiter: string, target: string) {
   recompute(Date.now());
 }
 
+function isDir(p: string) {
+  try {
+    return fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 // ---------------- key handling ----------------
 
 function moveSelection(delta: number) {
@@ -542,11 +552,16 @@ function handleKey(input: string, key: any, exit: () => void, suspend: Suspend) 
       if (key.escape) m.step = 'dir';
       else if (key.return) {
         const v = m.query.trim().replace(/^~(?=$|\/)/, os.homedir());
-        if (v) {
-          m.dir = path.resolve(v);
+        const dir = v ? path.resolve(v) : process.cwd();
+        if (isDir(dir)) {
+          m.dir = dir;
+          m.dirError = undefined;
           m.step = 'model';
-        }
-      } else m.query = textEdit(m.query, input, key);
+        } else m.dirError = `Not a directory: ${dir}`;
+      } else {
+        m.query = textEdit(m.query, input, key);
+        m.dirError = undefined;
+      }
     } else if (m.step === 'model') {
       if (key.escape) m.step = 'dir';
       else if (key.upArrow) m.modelIndex = 0;
@@ -688,7 +703,7 @@ function WhereCell({ row }: { row: Row }) {
 
 type Cols = { tier: number; wait: number; name: number; ctx: number; cost: number };
 
-function RowView({ row, cols, now }: { row: Row; cols: Cols; now: number }) {
+function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
   const sel = row.sid === S.selected;
   const o = otelFor(row.sid);
   const notes: string[] = [];
@@ -702,51 +717,49 @@ function RowView({ row, cols, now }: { row: Row; cols: Cols; now: number }) {
   if (done && row.tier !== 'Waiting') notes.push(`↳ ${done.join(', ')} done`);
   const reason = S.holds.get(row.sid);
   if (reason) notes.push(`↳ ${reason}`);
-  return (
-    <Box flexDirection="column">
-      <Box>
-        <Box width={2} flexShrink={0}>
-          <Text color={sel ? 'cyan' : undefined} bold={sel}>
-            {sel ? '> ' : '  '}
-          </Text>
-        </Box>
-        <Box width={cols.tier} marginRight={1} flexShrink={0}>
-          <Text color={TIER_COLOR[row.tier]} wrap="truncate">
-            {tierLabel(row)}
-          </Text>
-        </Box>
-        <Box width={cols.wait} marginRight={2} flexShrink={0} justifyContent="flex-end">
-          <Text>{formatWaiting(row.since, now)}</Text>
-        </Box>
-        <Box width={cols.name} marginRight={2} flexShrink={0}>
-          <Text bold={sel} wrap="truncate">
-            {row.name}
-            {row.kind === 'interactive' ? ' (tty)' : ''}
-          </Text>
-        </Box>
-        {cols.ctx > 0 && (
-          <Box width={cols.ctx} marginRight={2} flexShrink={0} justifyContent="flex-end">
-            <Text>{fmtCtx(o?.ctx)}</Text>
-          </Box>
-        )}
-        {cols.cost > 0 && (
-          <Box width={cols.cost} marginRight={2} flexShrink={0} justifyContent="flex-end">
-            <Text>{fmtCost(o?.cost)}</Text>
-          </Box>
-        )}
-        <Box flexGrow={1} flexShrink={1} flexBasis={0} minWidth={0}>
-          <WhereCell row={row} />
-        </Box>
+  return [
+    <Box key={row.sid}>
+      <Box width={2} flexShrink={0}>
+        <Text color={sel ? 'cyan' : undefined} bold={sel}>
+          {sel ? '> ' : '  '}
+        </Text>
       </Box>
-      {notes.map((n, i) => (
-        <Box key={i} paddingLeft={4 + cols.tier + cols.wait + 2}>
-          <Text dimColor wrap="truncate">
-            {n}
-          </Text>
+      <Box width={cols.tier} marginRight={1} flexShrink={0}>
+        <Text color={TIER_COLOR[row.tier]} wrap="truncate">
+          {tierLabel(row)}
+        </Text>
+      </Box>
+      <Box width={cols.wait} marginRight={2} flexShrink={0} justifyContent="flex-end">
+        <Text>{formatWaiting(row.since, now)}</Text>
+      </Box>
+      <Box width={cols.name} marginRight={2} flexShrink={0}>
+        <Text bold={sel} wrap="truncate">
+          {row.name}
+          {row.kind === 'interactive' ? ' (tty)' : ''}
+        </Text>
+      </Box>
+      {cols.ctx > 0 && (
+        <Box width={cols.ctx} marginRight={2} flexShrink={0} justifyContent="flex-end">
+          <Text>{fmtCtx(o?.ctx)}</Text>
         </Box>
-      ))}
-    </Box>
-  );
+      )}
+      {cols.cost > 0 && (
+        <Box width={cols.cost} marginRight={2} flexShrink={0} justifyContent="flex-end">
+          <Text>{fmtCost(o?.cost)}</Text>
+        </Box>
+      )}
+      <Box flexGrow={1} flexShrink={1} flexBasis={0} minWidth={0}>
+        <WhereCell row={row} />
+      </Box>
+    </Box>,
+    ...notes.map((n, i) => (
+      <Box key={`${row.sid}-n${i}`} paddingLeft={4 + cols.tier + cols.wait + 2}>
+        <Text dimColor wrap="truncate">
+          {n}
+        </Text>
+      </Box>
+    )),
+  ];
 }
 
 function Heading({ text }: { text: string }) {
@@ -758,7 +771,9 @@ function Heading({ text }: { text: string }) {
   );
 }
 
-function ListView({ width }: { width: number }) {
+type Line = { key: string; node: React.ReactNode; sid?: string };
+
+function ListView({ width, maxLines }: { width: number; maxLines: number }) {
   const now = Date.now();
   if (S.error)
     return (
@@ -780,6 +795,29 @@ function ListView({ width }: { width: number }) {
     cost: hasCost ? 7 : 0,
   };
   const showUpNext = !!g.last || g.hold.length > 0;
+  const rowToLines = (r: Row): Line[] => rowLines(r, cols, now).map((node, i) => ({ key: `${r.sid}-${i}`, node, sid: i === 0 ? r.sid : undefined }));
+  // Fixed: Last attached group and the Up next heading. Scrolls: ladder and hold.
+  const fixed: Line[] = [];
+  if (g.last) {
+    fixed.push({ key: 'h-last', node: <Heading text="Last attached" /> }, ...rowToLines(g.last), { key: 'b-last', node: <Text> </Text> });
+  }
+  if (showUpNext && g.ladder.length > 0) fixed.push({ key: 'h-next', node: <Heading text="Up next" /> });
+  const body: Line[] = g.ladder.flatMap(rowToLines);
+  if (g.hold.length > 0) {
+    body.push({ key: 'b-hold', node: <Text> </Text> }, { key: 'h-hold', node: <Heading text="On hold" /> }, ...g.hold.flatMap(rowToLines));
+  }
+  let shown = body;
+  let position: string | undefined;
+  const room = maxLines - 1 - fixed.length; // - column header
+  if (body.length > room) {
+    const win = Math.max(1, room - 1); // - position line
+    const selIdx = Math.max(0, body.findIndex((l) => l.sid === S.selected));
+    const start = Math.max(0, Math.min(selIdx - Math.floor(win / 2), body.length - win));
+    shown = body.slice(start, start + win);
+    const order = flatOrder(g);
+    const i = order.findIndex((r) => r.sid === S.selected);
+    position = `  ${i + 1}/${order.length}`;
+  }
   return (
     <Box flexDirection="column">
       <Box>
@@ -794,26 +832,10 @@ function ListView({ width }: { width: number }) {
           WHERE
         </Text>
       </Box>
-      {g.last && (
-        <>
-          <Heading text="Last attached" />
-          <RowView row={g.last} cols={cols} now={now} />
-          <Text> </Text>
-        </>
-      )}
-      {showUpNext && g.ladder.length > 0 && <Heading text="Up next" />}
-      {g.ladder.map((r) => (
-        <RowView key={r.sid} row={r} cols={cols} now={now} />
+      {[...fixed, ...shown].map((l) => (
+        <React.Fragment key={l.key}>{l.node}</React.Fragment>
       ))}
-      {g.hold.length > 0 && (
-        <>
-          <Text> </Text>
-          <Heading text="On hold" />
-          {g.hold.map((r) => (
-            <RowView key={r.sid} row={r} cols={cols} now={now} />
-          ))}
-        </>
-      )}
+      {position && <Text dimColor>{position}</Text>}
     </Box>
   );
 }
@@ -897,7 +919,8 @@ function ModeView() {
             {title} — working directory path: {m.query}
             <Text inverse> </Text>
           </Text>
-          <Text dimColor>  Enter confirm · Esc back</Text>
+          {m.dirError && <Text color="red">  {m.dirError}</Text>}
+          <Text dimColor>  Enter confirm (empty: {process.cwd()}) · Esc back</Text>
         </Box>
       );
     if (m.step === 'model')
@@ -945,10 +968,31 @@ function ModeView() {
   return null;
 }
 
+const HELP = '↑↓ select · Enter attach · n new · w wait for · h hold · e show in · ^X stop/delete · r refresh · q quit';
+
+function linesOf(text: string | undefined, columns: number) {
+  if (!text) return 0;
+  return text.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / Math.max(1, columns))), 0);
+}
+
+/** Lines the panel under the list takes, so the list leaves room for it. */
+function modeLines(columns: number) {
+  const m = S.mode;
+  if (m.kind === 'hold' || m.kind === 'confirm') return 1;
+  if (m.kind === 'external') {
+    const row = S.rows.find((r) => r.sid === m.sid);
+    if (!row) return 0;
+    const { items, hasPR } = externalItems(row);
+    return 2 + Math.min(items.length, 10) + (hasPR ? 0 : 1);
+  }
+  if (m.kind === 'wait') return 2 + Math.min(waitCandidates(m).length + 1, 10);
+  return 0;
+}
+
 export function App() {
   const [, force] = useReducer((x: number) => x + 1, 0);
   const { exit, suspendTerminal } = useApp();
-  const { columns } = useWindowSize();
+  const { columns, rows } = useWindowSize();
   rerender = force;
 
   useEffect(() => {
@@ -965,6 +1009,7 @@ export function App() {
 
   const fullScreenNew = S.mode.kind === 'new';
   const status = S.refreshing ? 'refreshing...' : S.flash;
+  const maxLines = (rows || 24) - 2 - 1 - linesOf(S.message?.text, columns) - modeLines(columns) - (S.mode.kind === 'list' ? linesOf(HELP, columns) : 0);
   return (
     <Box flexDirection="column" width={columns}>
       <Box>
@@ -977,7 +1022,7 @@ export function App() {
         <ModeView />
       ) : (
         <>
-          <ListView width={columns} />
+          <ListView width={columns} maxLines={maxLines} />
           <Text dimColor>{status ?? ' '}</Text>
           {S.message && (
             <Text color={S.message.color} wrap="wrap">
@@ -987,7 +1032,7 @@ export function App() {
           <ModeView />
           {S.mode.kind === 'list' && (
             <Text dimColor>
-              ↑↓ select · Enter attach · n new · w wait for · h hold · e show in · ^X stop/delete · r refresh · q quit
+              {HELP}
             </Text>
           )}
         </>
