@@ -24,6 +24,7 @@ type Mode =
   | { kind: 'info'; entry: Entry }
   | { kind: 'pickDir'; items: Candidate[] | null; query: string; index: number }
   | { kind: 'otherDir'; text: string }
+  | { kind: 'pickModel'; dir: string; index: number }
   | { kind: 'model'; dir: string; text: string }
   | { kind: 'starting'; dir: string; model: string; at: number; failed: string | null }
   | { kind: 'discard'; id: string; value: string; count: number }
@@ -321,7 +322,7 @@ export function App({ startDir }: { startDir: string }) {
           if (mode.items === null) return;
           const pick = shown[Math.min(mode.index, shown.length - 1)];
           if (pick === null) setMode({ kind: 'otherDir', text: mode.query });
-          else setMode({ kind: 'model', dir: pick.path, text: '' });
+          else setMode({ kind: 'pickModel', dir: pick.path, index: 0 });
           return;
         }
         if (key.ctrl || key.meta || key.tab) return;
@@ -334,16 +335,31 @@ export function App({ startDir }: { startDir: string }) {
           const dir = resolveDir(mode.text);
           if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) { setMessage(`Not a directory: ${dir}`); return; }
           setMessage(null);
-          setMode({ kind: 'model', dir, text: '' });
+          setMode({ kind: 'pickModel', dir, index: 0 });
           return;
         }
         if (key.ctrl || key.meta || key.tab || key.upArrow || key.downArrow) return;
         setMode({ ...mode, text: editText(mode.text, input, key) });
         return;
       }
-      case 'model': {
+      case 'pickModel': {
+        // Only "default" or a typed name: no model list to keep up to date, and no typing by accident.
         if (key.escape) { setMode({ kind: 'list' }); return; }
-        if (key.return) { void startNew(mode.dir, mode.text.trim()); return; }
+        if (key.upArrow) { setMode({ ...mode, index: 0 }); return; }
+        if (key.downArrow) { setMode({ ...mode, index: 1 }); return; }
+        if (key.return) {
+          if (mode.index === 0) void startNew(mode.dir, '');
+          else setMode({ kind: 'model', dir: mode.dir, text: '' });
+        }
+        return;
+      }
+      case 'model': {
+        if (key.escape) { setMode({ kind: 'pickModel', dir: mode.dir, index: 1 }); return; }
+        if (key.return) {
+          const model = mode.text.trim();
+          if (model) void startNew(mode.dir, model);
+          return;
+        }
         if (key.ctrl || key.meta || key.tab || key.upArrow || key.downArrow) return;
         setMode({ ...mode, text: editText(mode.text, input, key) });
         return;
@@ -468,6 +484,21 @@ export function App({ startDir }: { startDir: string }) {
     );
   }
 
+  if (mode.kind === 'pickModel') {
+    return (
+      <Box flexDirection="column">
+        {header}
+        <Text> </Text>
+        <Text>{`New session in ${mode.dir}`}</Text>
+        <Text>Model:</Text>
+        {['default', 'Other...'].map((label, i) => (
+          <Text key={label} inverse={i === mode.index}>{label}</Text>
+        ))}
+        <Text dimColor>↑↓ select · Enter choose · Esc cancel</Text>
+      </Box>
+    );
+  }
+
   if (mode.kind === 'otherDir' || mode.kind === 'model') {
     return (
       <Box flexDirection="column">
@@ -478,11 +509,11 @@ export function App({ startDir }: { startDir: string }) {
         ) : (
           <>
             <Text>{`New session in ${mode.dir}`}</Text>
-            <Text>{'Model (leave empty for the default): '}<Text color="cyan">{mode.text}</Text><Text inverse> </Text></Text>
+            <Text>{'Model: '}<Text color="cyan">{mode.text}</Text><Text inverse> </Text></Text>
           </>
         )}
         {message && <Text color="red">{message}</Text>}
-        <Text dimColor>Enter confirm · Esc cancel</Text>
+        <Text dimColor>{mode.kind === 'model' ? 'Enter confirm · Esc back' : 'Enter confirm · Esc cancel'}</Text>
       </Box>
     );
   }
