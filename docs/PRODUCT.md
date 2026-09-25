@@ -47,7 +47,7 @@ Agent View を置き換えるのではなく、その前段に立つ。
 ### 技術と依存
 
 - Ink と Node で作る。
-- 本体が依存するコマンドは `claude` と `git` だけで、URL やエディタを開くときだけ OS の `open` を使う（[ADR-0004](adr/0004-depend-only-on-claude-and-git.md)）。任意の依存として、作業ディレクトリの候補を増やすためだけに `ghq` を、行に PR を出すためだけに `gh` を、あれば使う。
+- 本体が依存するコマンドは `claude` と `git` だけで、URL やエディタを開くときだけ OS の `open` を使う（[ADR-0004](adr/0004-depend-only-on-claude-and-git.md)）。任意の依存として、作業ディレクトリの候補を増やすためだけに `ghq` を、行に PR を出し、その PR を開くためだけに `gh` を、あれば使う。
 - Claude Code の状態は `claude agents --json --all` からだけ読む（[ADR-0001](adr/0001-read-state-only-from-agents-json.md)）。アカウントの Usage はセッションの状態ではないので、別に `claude -p "/usage"` から読む（「Usage の表示」を参照）。
 - 何も書き込まず、永続状態を持たない（[ADR-0002](adr/0002-no-writes-no-persistent-state.md)）。
 - 画面の文言とキーの説明は英語で書く。設計文書は日本語で書く。
@@ -139,6 +139,11 @@ Agent View を置き換えるのではなく、その前段に立つ。
   - それ以外の理由で断ったときは、その文言をそのまま示す。
   - Agent View との違い：Agent View の削除は worktree を未コミットの変更ごと消すが、`claude rm` は未コミットの変更がある worktree を残す。
   - `interactive` の行では `id` がないので効かない。
+- **`e`**：選んだ行の場所を手元の VS Code で開く。開くのは `cwd` が属するチェックアウトの根で、worktree で動いているセッションならその worktree、リポジトリ本体ならリポジトリの根、git でない場所なら `cwd` そのもの。`vscode://file/<パス>/` を OS の `open` に渡す（`code` コマンドに依存しない）。`interactive` の行でも効く。
+- **`v`**：選んだ行の PR を vscode.dev で開く（`https://vscode.dev/github/<owner>/<repo>/pull/<番号>`）。
+- **`g`**：選んだ行の PR を GitHub で開く。
+  - `v` と `g` は WHERE に出ている PR を開く。PR が出ていない行（`gh` がない、PR がない、まだ取得中）では、PR がないことを示すだけで何もしない。github.com でない PR は vscode.dev では開けないので、その旨を示す。
+  - 開いたら何を開いたかを示し、`open` が失敗したらその出力を示す。
 - 更新や終了に使うキーの割り当ては実装で決める。
 
 ### Claude Code の外部仕様
@@ -170,6 +175,7 @@ Agent View を置き換えるのではなく、その前段に立つ。
 11. 画面の文言はすべて英語である。
 12. npm に公開したあと、`npx @masahirompp/whatnext` を実行すると whatnext が起動し、一覧が出る。
 13. 一覧のヘッダに、Usage の枠ごとの使用率とリセットする時刻が出る。attach から戻ると、一覧を待たせずに値が新しくなる。Usage を取れないときは、Usage だけが出ず、一覧はふだんどおり使える。
+14. `e` で選んだ行の場所（worktree ならその worktree）が VS Code で開く。PR が出ている行では、`v` でその PR が vscode.dev で、`g` で GitHub で開く。PR が出ていない行では、PR がないことが示される。
 
 ### 確かめ方
 

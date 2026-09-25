@@ -4,11 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
-import { launch, listAgents, rm, stop } from './agents.js';
+import { launch, listAgents, rm, run, stop } from './agents.js';
 import { Candidate, candidates, filter } from './launch.js';
 import { fetchUsage, Limit } from './usage.js';
 import { cursorAfterAttach, Entry, formatWait, observe, Seen, tierLabel } from './rank.js';
-import { Git, gitInfo, Pr, prFor, whereText } from './where.js';
+import { Git, gitInfo, Pr, prFor, vscodeDevUrl, vscodeFolderUrl, whereText } from './where.js';
 
 const REFRESH_MS = 60_000;
 const DELETE_WINDOW_MS = 2000;
@@ -254,6 +254,27 @@ export function App({ startDir }: { startDir: string }) {
     await attach(r.id, null);
   };
 
+  const openUrl = async (url: string, what: string) => {
+    const r = await run('open', [url]);
+    setMessage(r.code === 0 ? `Opened ${what}.` : `${`${r.stderr}${r.stdout}`.trim() || `open exited with ${r.code}`}`);
+  };
+
+  // e / v / g: the checkout in local VS Code, the PR on vscode.dev, the PR on GitHub.
+  const openFor = (e: Entry, target: 'e' | 'v' | 'g') => {
+    const w = where.get(e.row.cwd);
+    if (target === 'e') {
+      const dir = w?.git?.top ?? e.row.cwd;
+      void openUrl(vscodeFolderUrl(dir), `${dir} in VS Code`);
+      return;
+    }
+    const pr = w?.pr;
+    if (!pr) { setMessage('No PR found for this session.'); return; }
+    if (target === 'g') { void openUrl(pr.url, `PR #${pr.number} on GitHub`); return; }
+    const url = vscodeDevUrl(pr.url);
+    if (!url) { setMessage(`PR #${pr.number} is not on github.com: ${pr.url}`); return; }
+    void openUrl(url, `PR #${pr.number} on vscode.dev`);
+  };
+
   const openPicker = () => {
     setMode({ kind: 'pickDir', items: null, query: '', index: 0 });
     void candidates(startDir, entries.map((e) => e.row.cwd)).then((items) =>
@@ -350,6 +371,9 @@ export function App({ startDir }: { startDir: string }) {
       setMessage(null);
       void refresh();
       loadUsage();
+    } else if (input === 'e' || input === 'v' || input === 'g') {
+      setMessage(null);
+      if (current) openFor(current, input);
     } else if (input === 'n') {
       setMessage(null);
       openPicker();
@@ -503,7 +527,7 @@ export function App({ startDir }: { startDir: string }) {
       {mode.kind === 'discard' && (
         <Text color="red">{`Discard ${mode.count} unpushed commit${mode.count === 1 ? '' : 's'} and delete session ${mode.id}? [y/N]`}</Text>
       )}
-      <Text dimColor>↑↓ move · Enter attach · n new · Ctrl+X stop/delete · r refresh · q quit</Text>
+      <Text dimColor>↑↓ move · Enter attach · e VS Code · v vscode.dev · g GitHub · n new · Ctrl+X stop/delete · r refresh · q quit</Text>
     </Box>
   );
 }

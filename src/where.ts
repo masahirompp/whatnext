@@ -2,8 +2,9 @@
 import path from 'node:path';
 import { run } from './agents.js';
 
-export type Git = { repoRoot: string; repo: string; sub: string; branch?: string; worktree: boolean };
-export type Pr = { number: number; state: 'open' | 'draft' | 'merged' | 'closed' };
+// top: the checkout the cwd is in (the worktree itself when in one); repoRoot: the main repo.
+export type Git = { top: string; repoRoot: string; repo: string; sub: string; branch?: string; worktree: boolean };
+export type Pr = { number: number; state: 'open' | 'draft' | 'merged' | 'closed'; url: string };
 
 export async function gitInfo(cwd: string): Promise<Git | null> {
   const r = await run('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--show-toplevel', '--git-dir', '--git-common-dir']);
@@ -21,20 +22,20 @@ export async function gitInfo(cwd: string): Promise<Git | null> {
   if (d.code === 0) def = d.stdout.trim().replace(/^origin\//, '');
   const isDefault = branch !== undefined && (def ? branch === def : branch === 'main' || branch === 'master');
   return {
-    repoRoot, repo: path.basename(repoRoot), sub: sub.startsWith('..') ? '' : sub,
+    top, repoRoot, repo: path.basename(repoRoot), sub: sub.startsWith('..') ? '' : sub,
     branch: isDefault ? undefined : branch, worktree,
   };
 }
 
 export async function prFor(cwd: string, branch: string): Promise<Pr | null> {
   const r = await run('gh', ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1',
-    '--json', 'number,state,isDraft'], { cwd, timeout: 15000 });
+    '--json', 'number,state,isDraft,url'], { cwd, timeout: 15000 });
   if (r.code !== 0) return null;
   try {
-    const [p] = JSON.parse(r.stdout) as { number: number; state: string; isDraft: boolean }[];
+    const [p] = JSON.parse(r.stdout) as { number: number; state: string; isDraft: boolean; url: string }[];
     if (!p) return null;
     const s = p.state.toLowerCase();
-    return { number: p.number, state: p.isDraft && s === 'open' ? 'draft' : (s as Pr['state']) };
+    return { number: p.number, state: p.isDraft && s === 'open' ? 'draft' : (s as Pr['state']), url: p.url };
   } catch {
     return null;
   }
@@ -47,3 +48,12 @@ export function whereText(cwd: string, g: Git | null | undefined): string {
   if (g.worktree) s += ' (wt)';
   return s;
 }
+
+// https://github.com/<owner>/<repo>/pull/<n> -> https://vscode.dev/github/<owner>/<repo>/pull/<n>
+export function vscodeDevUrl(prUrl: string): string | null {
+  const m = prUrl.match(/^https:\/\/github\.com\/([^/]+\/[^/]+\/pull\/\d+)/);
+  return m ? `https://vscode.dev/github/${m[1]}` : null;
+}
+
+// Opens a folder in local VS Code through its URL handler, so only the OS `open` is needed (ADR-0004).
+export const vscodeFolderUrl = (dir: string) => `vscode://file${encodeURI(dir)}/`;
