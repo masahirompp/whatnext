@@ -1,6 +1,6 @@
 # Claude Code の外部仕様（実測）
 
-whatnext が頼る `claude` の振る舞いを、実機での実測と公式ドキュメントから記録する。特に断りのない行は Claude Code 2.1.280 での実測。`claude` の更新で変わりうるので、食い違いを見つけたら実測し直してこの表を直す。
+whatnext が頼る `claude` の振る舞いを、実機での実測と公式ドキュメントから記録する。特に断りのない項目は Claude Code 2.1.280 での実測。`claude` の更新で変わりうるので、食い違いを見つけたら実測し直してこの文書を直す。
 
 ## `claude agents --json` の行の形（2.1.281）
 
@@ -25,29 +25,82 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 
 ## 振る舞い
 
-| 問い | 結果 |
+`waitingFor` の値と、止めたあとの `state` は、上の「行の形」の節にある。
+
+### `--json` の中身
+
+- 対話セッションも出る。通常の `claude` で起動したものも ACP 経由のものも `kind: "interactive"` で、`id` と `state` がなく、`status`、`waitingFor`、`pid` を持つ。
+- 通常の `claude` の権限待ちも出る。確認ダイアログの表示中は `status: "waiting"`、`waitingFor: "permission prompt"` になる。
+- 対話セッションがターンを終えたあとは `status: "idle"` で、開いているだけのセッションと区別できない。
+- `--name` の値は `name` に出る。`--name` なしのときは、最初はプロンプトの先頭で、最初のターンを終えると内容を要約した名前に付け直される。プロンプトなしで起動したときは、最初は `id` と同じ値になる（2.1.281）。名前は変わるので、行の特定には `id` を使う。
+- PR の情報はない（公式ドキュメント agent-view のフィールド表による）。Agent View の PR ラベルは画面だけの表示で、Claude Code が `gh`（`gh pr view` など）で結び付けたもの。whatnext が PR を出すには自分で `gh` を呼ぶしかない。
+- 実行時間は約 135 ms（6〜8 行の時点）。
+
+### 起動（`--bg`）
+
+- プロンプトなしで起動すると、終了コード 0 で `backgrounded · <id> · <name> (idle — send a prompt to start)` を返す。`--json` では `state: "blocked"`、`status: "idle"`、`pid` あり、`waitingFor` なしになる（2.1.281）。
+- 起動の出力（`backgrounded · <id> …`）には `id`（`sessionId` の先頭 8 文字）だけがあり、`sessionId` はない。起動したセッションを `sessionId` で扱うには、次に `--json` を読んで `id` から引く。
+- 存在しないモデル名でも、終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る。
+- `--model` の別名（`fable` / `opus` / `sonnet` など）は、そのファミリーの最新モデルを指す（`claude --help` の説明）。フルネームも受け付ける。モデルの一覧を取る公式の口はない。
+- 信頼されていないディレクトリでは、終了コード 1 で「Workspace not trusted. Run claude in &lt;dir&gt; once and accept the trust prompt, then retry.」と出して断る。一度起動できたディレクトリでも、`git worktree add` のあとに断られたことがある（理由は未確認）。
+- `claude --bg --help` はヘルプを出さず、プロンプトなしの `--bg` セッションを起動する。`--bg` のオプションは `claude --help` で調べる（2.1.281）。
+- `claude -r <sessionId> --bg` は、`claude stop` のあとなら同じ `id` で続く。稼働中（`done` で待機中を含む）ならコピーが作られ、コピーには `--name` が引き継がれない。
+
+### attach
+
+- 離脱キーは Ctrl+Z でシェルに戻る（`claude attach --help` に記載）。`←` は Agent View に戻る。
+- whatnext の子として動かした `claude attach` で Ctrl+Z を押すと、子が自分で終了する（終了コード 0、signal なし）。親は止まらず、端末のジョブ制御は働かない。attach から戻ったことは子の終了で分かる。
+- attach して何も入力せずに離脱しても、`--json` の `state`、`status`、`waitingFor` は変わらない（`blocked` + `idle` で確認。2.1.282）。`done` や `waitingFor` のある状態で同じかと、OTel を送るセッションで attach しただけでイベントが飛ぶかは未確認。
+- `pid` のない `blocked` の行（最初の応答の前に止まったセッション）に attach すると、`Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らない。やり直すコマンドとして `claude respawn <id>` がある。
+- `--bg` のセッションの権限要求に外部から答える口はない。`--permission-prompts` は `--print` 専用。
+- `claude logs` の出力は解析できない。画面の再描画の制御コードそのもの。
+
+### worktree、停止、削除
+
+- `--bg` は、設定 `worktree.bgIsolation: "worktree"` のとき、起動した時点では worktree を作らず、ファイルを編集する時点で `<repo>/.claude/worktrees/<名前>` に作って移る。`--json` の `cwd` もそのパスに変わる。`-w` を付けると起動した時点で作る（2.1.281）。
+- この worktree は、ignore していないリポジトリでは `git status` に `?? .claude/` と出て、`git add -A` で gitlink として紛れ込みうる。ignore（グローバルの `core.excludesFile` が手軽）は利用者が足す。whatnext は書き込まない。
+- worktree で作業した `--bg` のセッションは、worktree のブランチに自分でコミットを残す。そのため、止めたあとの `claude rm` は `1 unpushed commit ... deleting the worktree would lose it` と断るのが普通になり、push するか `--discard-unpushed <commit>@<worktree-id>` を渡すよう案内する（2.1.281）。
+- `claude rm` は worktree もブランチも消す。未 push のコミットか未コミットの変更があると断る（2.1.281）。
+- `claude stop` の直後に `claude rm` を打つと、worktree のセッションでは、`stop` が止めたプロセスの終了を待たずに戻るので、`kept <id> — its worktree is still at …` とロックの理由を出して、終了コード 1 で断る。数秒後なら `removed <id>` で worktree ごと消える。リポジトリ本体で動くセッションでは起きない（2.1.281）。
+- `claude rm` の強制系のオプション（2.1.281）：
+  - `--discard-unpushed <commit>@<worktree-id>` は、未 push のコミットと未コミットの変更を捨てて消す。値は未 push のコミットがあるときにだけ、直前の `claude rm` が示す。
+  - `--force-remove-worktree <worktree-id>` は、hook や git が worktree を消せなかったときに消す。追跡ファイルに未コミットの変更がないことが条件。
+  - 未コミットの変更だけがあるときに使える強制系のオプションはない。プロセスが終わっていないことによるロックを外すオプションもない。
+
+### Usage（2.1.282）
+
+- アカウントの Usage は、`claude agents --json` にも `usage` サブコマンドにもない。OTel（monitoring-usage）にも枠の使用率やリセット時刻はない。
+- `claude -p "/usage" --output-format json` は、モデルを呼ばずに約1.8秒で返る（`duration_api_ms: 0`、`local_command: "usage"`）。`result` は人間向けの文字列で、`Current session: 1% used · resets Sep 25 at 2:09pm (Asia/Tokyo)` と `Current week (all models): 25% used · resets Sep 29 at 9:59am (Asia/Tokyo)` の行に続いて、使用の内訳が付く。
+- `--no-session-persistence` を付けないと、実行した場所に会話ファイルが残る。付けても、実行した場所に対応する空のプロジェクトのフォルダ（`~/.claude/projects/<場所>/memory/`）は一度作られる。
+- stdin がパイプのまま閉じられていないと、3秒待って警告を出してから動く。呼ぶ側は stdin を閉じる。
+
+### クラウドのセッションと過去のセッション
+
+- クラウドのセッション（claude.ai/code、`--cloud`、routine）は `--json` に出ない。`kind` は `interactive` と `background` だけ。クラウドのセッションを一覧にする公式の CLI や JSON の出力もない（`--teleport` のピッカーと `/tasks` は対話専用）。`claude mcp serve` 経由の `ListAgents` は人向けの文字列で、`state`、`waitingFor`、attach 用の `id` を持たない。
+- クラウドのセッションに端末から attach できない。`claude --cloud <id>` は「Attaching to an existing cloud session is not enabled for your account.」で断る。できるのは `claude -p "msg" --cloud <id>` で指示を送ることと、`--teleport` で手元に複製を作ることだけ。
+- routine の実行の状態を読む公開 API はない（routine の公開 API は `/fire` だけで、トークンに読み取りの権限はない）。`claude mcp serve` が公開する `RemoteTrigger`（非公式で契約はない）の `list_runs` なら読めるが、終わった・返事を待っている・認証で失敗した、の3つがどれも `active` / `idle` になり、違いは最後の応答の文面にしか出ない（2026-09-24）。
+- クラウドのセッションから手元のセッションに `SendMessage` できない。routine のセッションの `ListAgents` に手元のセッションは出ず、名前を指定して送っても届かない。逆向き（手元からクラウド）は届く。
+- 過去のセッションの一覧を機械で読む口はない。選べるのは `claude --resume` の対話式のピッカーだけ。`claude agents --json --all` は、説明では「完了した background のセッションも含める」だが、試したときは `--all` なしと同じ行しか返らず、どの行が足されるのかは分かっていない（2.1.282）。
+
+## OTel（2.1.282）
+
+- logs と metrics の属性 `session.id` は、`--json` の `sessionId`（UUID の全体）と一致する。
+- metrics の属性：`session.id`、`model`（cost.usage / token.usage）、`query_source`、`type`、`terminal.type`、`start_type`（session.count）。
+- `api_request` の属性：`model`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_creation_tokens`、`cost_usd`、`duration_ms`、`ttft_ms`、`request_id`、`speed`、`query_source`、`prompt.id`、`event.sequence`。本体のターンは `query_source` が `repl_main_thread` で始まる（output style があれば `repl_main_thread:outputStyle:custom`）。ほかに `prompt_suggestion` などがある。本体のターンの `input_tokens + cache_read_tokens + cache_creation_tokens` は、statusline のコンテキストの表示と一致した。
+- metrics の既定の temporality は DELTA（`aggregationTemporality: 1`）。`OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative` で累積（`2`）になる。累積のときは、止まっているセッションも送信間隔ごとに同じ累計を送り続けるので、受け手が途中から聞き始めても次の送信で累計がそろう。受け手が落ちていた間の送信は捨てられる。
+- 権限待ちでは、最後のイベントは `hook_execution_complete`（`hook_event: PermissionRequest`）で、`--json` で `permission prompt` を観測する約0.7秒前だった。これは PermissionRequest フックがある環境での値で、フックがない環境で何が最後になるかは未確認（`api_request` か `assistant_response` と見られる）。`tool_decision` は利用者が応答したあとに出るので、止まり始めの印にならない。
+- `hook_event: Notification` の `hook_execution_*` は、セッションがすでに待っている間に発火する。最後のイベントを待機の開始とみなすときは除かないと、開始の時刻が後ろにずれる。
+- logs の到着は `OTEL_LOGS_EXPORT_INTERVAL` に従う（既定の 5000 なら最大5秒遅れる）。
+
+### `--bg` のセッションに OTel の設定を渡す経路
+
+| 経路 | 結果 |
 | --- | --- |
-| `--json` に対話セッションは出るか | 出る。通常の `claude` で起動したものも ACP 経由のものも `kind: "interactive"` で、`id` と `state` がなく、`status`、`waitingFor`、`pid` を持つ |
-| 通常の `claude` の権限待ちは `--json` に出るか | 出る。確認ダイアログの表示中は `status: "waiting"`、`waitingFor: "permission prompt"` になる |
-| 対話セッションのターン終了後の状態 | `status: "idle"`。開いているだけのセッションと区別できない |
-| `waitingFor` の実値 | 公式ドキュメント（agent-view）の値は `"permission prompt"` / `"input needed"` / `"sandbox request"` / `"worker request"` / `"dialog open"` の5つ。実機で確認したのは最初の2つ |
-| `--name` は `name` に反映されるか | 反映される |
-| `--json` の実行時間 | 約 135 ms（6〜8 行の時点） |
-| `claude -r <sessionId> --bg` は同じ `id` で続くか | `claude stop` のあとなら続く。稼働中（`done` で待機中を含む）ならコピーが作られ、コピーには `--name` が引き継がれない |
-| `claude logs` の出力は解析できるか | できない。画面の再描画の制御コードそのもの |
-| 停止したセッションの `state` | `claude stop` のあと、`done` は `done` のまま、`blocked` は `stopped` になる |
-| `claude attach` の離脱キー | Ctrl+Z でシェルに戻る（`claude attach --help` に記載）。`←` は Agent View に戻る |
-| `--bg` のセッションの権限要求に外部から答える口 | ない。`--permission-prompts` は `--print` 専用 |
-| `--bg` は worktree を作るか（2.1.281） | 設定 `worktree.bgIsolation: "worktree"` のとき、起動した時点では作らず、ファイルを編集する時点で `<repo>/.claude/worktrees/<名前>` に作って移る。`--json` の `cwd` もそのパスに変わる。`-w` を付けると起動した時点で作る。`claude rm` は worktree もブランチも消し、未 push のコミットがあると断る |
-| whatnext の子として動かした `claude attach` で Ctrl+Z を押すとどうなるか | 子が自分で終了する（終了コード 0、signal なし）。親は止まらず、端末のジョブ制御は働かない。attach から戻ったことは子の終了で分かる |
-| 存在しないモデル名で `--bg` を起動するとどうなるか | 終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る |
-| `pid` のない `blocked` の行に `claude attach` するとどうなるか | 最初の応答の前に止まったセッションでは、`Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らない。やり直すコマンドとして `claude respawn <id>` がある |
-| 信頼されていないディレクトリで `--bg` を起動するとどうなるか | 終了コード 1 で 「Workspace not trusted. Run claude in &lt;dir&gt; once and accept the trust prompt, then retry.」 と出して断る。一度起動できたディレクトリでも、`git worktree add` のあとに断られたことがある（理由は未確認） |
-| `--json` に PR の情報はあるか | ない（公式ドキュメント agent-view のフィールド表による）。Agent View の PR ラベルは画面だけの表示で、Claude Code が `gh`（`gh pr view` など）で結び付けたもの。whatnext が PR を出すには自分で `gh` を呼ぶしかない |
-| `claude stop` の直後に `claude rm` を打つとどうなるか（2.1.281） | worktree のセッションでは、`stop` が止めたプロセスの終了を待たずに戻るので、`kept <id> — its worktree is still at …` とロックの理由を出して、終了コード 1 で断る。数秒後なら `removed <id>` で worktree ごと消える。リポジトリ本体で動くセッションでは起きない |
-| `claude rm` の強制系のオプション（2.1.281） | `--discard-unpushed <commit>@<worktree-id>` は未 push のコミットと未コミットの変更を捨てて消す。`--force-remove-worktree <worktree-id>` は hook や git が worktree を消せなかったときに消す。どちらも値は直前の `claude rm` が出力したものを渡す。プロセスが終わっていないことによるロックを外すオプションはない |
-| `--bg` が作る worktree はどこに置かれるか | `<repo>/.claude/worktrees/<名前>`。ignore していないリポジトリでは `git status` に `?? .claude/` と出て、`git add -A` で worktree が gitlink として紛れ込みうる。ignore（グローバルの `core.excludesFile` が手軽）は利用者が足す。whatnext は書き込まない |
-| プロンプトなしで `--bg` を起動するとどうなるか（2.1.281） | 終了コード 0 で `backgrounded · <id> · <name> (idle — send a prompt to start)` を返す。`--json` では `state: "blocked"`、`status: "idle"`、`pid` あり、`waitingFor` なしになる。`--name` なしのときの `name` は未確認 |
-| worktree で作業した `--bg` のセッションはコミットするか（2.1.281） | する。worktree のブランチに自分でコミットを残す。そのため、止めたあとの `claude rm` は `1 unpushed commit ... deleting the worktree would lose it` と断るのが普通になり、push するか `--discard-unpushed <commit>@<worktree-id>` を渡すよう案内する |
-| `--name` なしで起動したセッションの `name`（2.1.281） | 最初はプロンプトの先頭になり、最初のターンを終えると内容を要約した名前に付け直される。名前は変わるので、行の特定には `id` を使う。プロンプトなしで起動したときの名前は未確認 |
-| アカウントの Usage を取る口はあるか（2.1.282） | `claude agents --json` にも `usage` サブコマンドにもない。`claude -p "/usage" --output-format json` はモデルを呼ばずに約1.8秒で返り（`duration_api_ms: 0`、`local_command: "usage"`）、`result` に人間向けの文字列が入る。`Current session: 1% used · resets Sep 25 at 2:09pm (Asia/Tokyo)` と `Current week (all models): 25% used · resets Sep 29 at 9:59am (Asia/Tokyo)` の行に続いて、使用の内訳が付く。`--no-session-persistence` を付けないと実行した場所に会話ファイルが残る。付けても、実行した場所に対応する空のプロジェクトのフォルダ（`~/.claude/projects/<場所>/memory/`）は一度作られる。stdin がパイプのまま閉じられていないと、3秒待って警告を出してから動くので、呼ぶ側は stdin を閉じる。OTel（monitoring-usage）にも枠の使用率やリセット時刻はない |
+| `claude --bg` を起動したシェルの環境変数 | 届かない（実測）。`--bg` はデーモンが事前に起こした `claude bg-spare` が引き受け、起動要求に載る環境変数は許可リスト（`CLAUDE_CONFIG_DIR`、モデル指定、プロバイダの設定、`PATH` など）だけ |
+| `--settings '{"env":{...}}'` | 届く（実測）。`claude respawn` のあとも引き継がれる |
+| プロジェクトの `.claude/settings.json` / `settings.local.json` の `env` | 届かない（実測。`--bg` でも `-p` でも）。プロジェクトの設定からは `OTEL_EXPORTER_OTLP_*` などを設定できない |
+| デーモンの環境変数 | 届く見込み（未確認）。デーモンは最初に起動した `claude` の環境を持つので、どのシェルがデーモンを起こしたかに左右される |
+| 利用者の `~/.claude/settings.json`、managed settings の `env` | 届く見込み（未確認） |
+
+- 外で起動した `--bg` のセッションに、あとから OTel を付ける手段はない。`claude respawn <id>` はフラグを取らず、保存済みの起動時の引数で起動し直す。止めてから `claude --bg --resume <sessionId> --settings '...'` とすると、別の ID のコピーが起動し、元のセッションも残る。
+- 同じ版での `claude respawn` は、プロンプトキャッシュをほぼ捨てない（書き直しは 71 token だった）。版が変わる respawn は未確認。

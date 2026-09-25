@@ -6,7 +6,7 @@ description: whatnext が頼る `claude` CLI の出力(特に `claude agents --j
 
 ## まず記録を読む
 - 行の形(キー・型・値): `docs/claude-code-behavior.md` の「`claude agents --json` の行の形」と、見本 `docs/claude-agents-json.samples.json`。
-- 振る舞い(いつどの値になるか): 同じ docs の表。
+- 振る舞い(いつどの値になるか): 同じ docs の「振る舞い」節(話題ごとの箇条書き)。
 - 型はこの記録から書く。実機で形を調べ直さない。
 
 ## 差分を確かめる(サイクルの開始時、`claude --version` が見本の `claudeVersion` と違うとき)

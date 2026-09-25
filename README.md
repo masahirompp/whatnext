@@ -9,6 +9,7 @@ When several sessions are waiting at once, whatnext ranks them by how much it co
 ## Principles
 
 - **Reads session state only from `claude agents --json`.** No private files, no screen scraping. Account usage comes from `claude`'s own `/usage`, which calls no model.
+- **Sessions whatnext starts report cost and context size to whatnext over OpenTelemetry on 127.0.0.1:14318, only while whatnext is open.** Nothing leaves your machine and nothing is stored. Rows are still ranked from `claude agents --json` alone.
 - **Writes nothing and keeps no state.** Closing whatnext loses nothing; sessions started elsewhere show up too. Your settings are never modified.
 - **Never answers for you.** No input injection or auto-approval — you attach and act yourself.
 
