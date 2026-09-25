@@ -516,8 +516,8 @@ export function App({ startDir }: { startDir: string }) {
   const ctxW = Math.max(0, ...[...ctxs.values()].map((c) => c.length));
   const nameW = Math.min(32, Math.max(7, ...entries.map((e) => (e.row.name ?? '').length + (e.row.kind === 'interactive' ? 6 : 0))));
   const maxRows = Math.max(3, rows - 6 - (usage.length > 0 ? 1 : 0));
-  // The last-attached heading and row and the blank line under them stay put; only the ladder scrolls.
-  const ladderRows = last ? Math.max(1, maxRows - 3) : maxRows;
+  // The last-attached heading and row, the blank line and the ladder heading stay put; only the ladder scrolls.
+  const ladderRows = last ? Math.max(1, maxRows - 4) : maxRows;
   const ladderCursor = last ? Math.max(0, cursor - 1) : cursor;
   const start = Math.max(0, Math.min(ladderCursor - Math.floor(ladderRows / 2), rest.length - ladderRows));
   const renderRow = (e: Entry, sel: boolean) => {
@@ -562,6 +562,7 @@ export function App({ startDir }: { startDir: string }) {
       {last && <Text dimColor>{'  Last attached'}</Text>}
       {last && renderRow(last, cursor === 0)}
       {last && rest.length > 0 && <Text> </Text>}
+      {last && rest.length > 0 && <Text dimColor>{'  Up next'}</Text>}
       {rest.slice(start, start + ladderRows).map((e, i) => renderRow(e, (last ? 1 : 0) + start + i === cursor))}
       {rest.length > ladderRows && <Text dimColor>{`  ${cursor + 1}/${list.length}`}</Text>}
       <Text> </Text>
