@@ -12,6 +12,7 @@ import {
   trackSince,
   unfinishedTargets,
   wouldCycle,
+  waitedByOther,
   type RawRow,
   type Row,
   type Waits,
@@ -151,9 +152,54 @@ describe('wait-for (scenarios 18-21)', () => {
   it('held rows go to the hold group, last attached on top', () => {
     const rows: Row[] = sessions({ A: 'done', B: 'perm', C: 'busy' }).map((s) => ({ ...s, tier: s.baseTier, since: 0 }));
     const g = group(rows, 'C', new Map([['A', 'why']]));
-    expect(g.last?.sid).toBe('C');
+    expect(g.last.map((r) => r.sid)).toEqual(['C']);
     expect(g.ladder.map((r) => r.sid)).toEqual(['B']);
     expect(g.hold.map((r) => r.sid)).toEqual(['A']);
+  });
+});
+
+describe('nested trees (User Story 14)', () => {
+  const mk = (sid: string, tier: Row['tier'], since: number | null = 0): Row =>
+    ({ sid, id: sid, kind: 'background', cwd: '/r', name: sid, baseTier: tier, tier, since }) as Row;
+  const waits = (o: Record<string, string[]>): Waits => new Map(Object.entries(o).map(([k, v]) => [k, new Set(v)]));
+  const view = (rows: Row[]) => rows.map((r) => `${'.'.repeat(r.depth ?? 0)}${r.sid}`);
+
+  it('nests targets under the waiter and places the tree by its best member', () => {
+    const rows = [mk('A', 'Waiting'), mk('B', 'Permission', 5), mk('C', 'Question'), mk('D', 'Review')];
+    const g = group(rows, undefined, new Map(), waits({ A: ['B'] }));
+    expect(view(g.ladder)).toEqual(['A', '.B', 'C', 'D']);
+    expect(g.ladderTop).toBe('B');
+  });
+  it('a tree of working rows stays low', () => {
+    const rows = [mk('A', 'Waiting'), mk('B', 'Working'), mk('C', 'Review')];
+    expect(view(group(rows, undefined, new Map(), waits({ A: ['B'] })).ladder)).toEqual(['C', 'A', '.B']);
+  });
+  it('nests deeper levels and sorts siblings by the ladder', () => {
+    const rows = [mk('A', 'Waiting'), mk('B', 'Working'), mk('C', 'Failed'), mk('D', 'Question')];
+    expect(view(group(rows, undefined, new Map(), waits({ A: ['B', 'C'], B: ['D'] })).ladder)).toEqual(['A', '.C', '.B', '..D']);
+  });
+  it('holding the root moves the whole tree; a held member stays but does not count', () => {
+    const rows = [mk('A', 'Waiting'), mk('B', 'Permission'), mk('C', 'Review')];
+    const w = waits({ A: ['B'] });
+    const g1 = group(rows, undefined, new Map([['A', '']]), w);
+    expect(view(g1.hold)).toEqual(['A', '.B']);
+    expect(view(g1.ladder)).toEqual(['C']);
+    const g2 = group(rows, undefined, new Map([['B', '']]), w);
+    expect(view(g2.ladder)).toEqual(['C', 'A', '.B']);
+  });
+  it('the tree holding the last attached session goes on top', () => {
+    const rows = [mk('A', 'Waiting'), mk('B', 'Working'), mk('C', 'Permission')];
+    const g = group(rows, 'B', new Map(), waits({ A: ['B'] }));
+    expect(view(g.last)).toEqual(['A', '.B']);
+    expect(view(g.ladder)).toEqual(['C']);
+  });
+  it('a target whose waiter is not listed stands alone', () => {
+    const rows = [mk('B', 'Working')];
+    expect(view(group(rows, undefined, new Map(), waits({ A: ['B'] })).ladder)).toEqual(['B']);
+  });
+  it('refuses a second waiter for the same target', () => {
+    expect(waitedByOther(waits({ A: ['C'] }), 'X', 'C')).toBe(true);
+    expect(waitedByOther(waits({ A: ['C'] }), 'A', 'C')).toBe(false);
   });
 });
 

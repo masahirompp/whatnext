@@ -7,6 +7,8 @@ import {
   cascadeTargets,
   effectiveTiers,
   flatOrder,
+  sortSessions,
+  waitedByOther,
   formatWaiting,
   group,
   pruneWaits,
@@ -101,12 +103,12 @@ function recompute(prevRefreshAt: number | undefined) {
 }
 
 function groups() {
-  return group(S.rows, S.lastAttached, S.holds);
+  return group(S.rows, S.lastAttached, S.holds, S.waits);
 }
 
 function ladderTop() {
   const g = groups();
-  return (g.ladder[0] ?? g.last ?? g.hold[0])?.sid;
+  return g.ladderTop ?? (g.last[0] ?? g.hold[0])?.sid;
 }
 
 function selectedRow() {
@@ -407,8 +409,10 @@ async function launch(suspend: Suspend, m: Extract<Mode, { kind: 'new' }>) {
 
 function waitCandidates(m: Extract<Mode, { kind: 'wait' }>) {
   const targets = S.waits.get(m.sid) ?? new Set<string>();
-  const cands = S.rows.filter((r) => r.sid !== m.sid && (targets.has(r.sid) || !wouldCycle(S.waits, m.sid, r.sid)));
-  const sorted = flatOrder(group(cands, S.lastAttached, S.holds));
+  const cands = S.rows.filter(
+    (r) => r.sid !== m.sid && (targets.has(r.sid) || (!wouldCycle(S.waits, m.sid, r.sid) && !waitedByOther(S.waits, m.sid, r.sid))),
+  );
+  const sorted = sortSessions(cands);
   return filterItems(sorted, m.query, (r) => r.name, (r) => r.cwd);
 }
 
@@ -418,7 +422,7 @@ function toggleWait(waiter: string, target: string) {
     set.delete(target);
     setMessage(`${nameOf(waiter)} no longer waits for ${nameOf(target)}.`);
   } else {
-    if (wouldCycle(S.waits, waiter, target)) return;
+    if (wouldCycle(S.waits, waiter, target) || waitedByOther(S.waits, waiter, target)) return;
     set.add(target);
     setMessage(`${nameOf(waiter)} now waits for ${nameOf(target)}.`);
   }
@@ -472,7 +476,9 @@ function handleKey(input: string, key: any, exit: () => void, suspend: Suspend) 
       const order = flatOrder(groups());
       const i = order.findIndex((r) => r.sid === m.sid);
       S.holds.set(m.sid, m.text.trim());
-      const next = order.slice(i + 1).find((r) => !S.holds.has(r.sid)) ?? order.slice(0, i).reverse().find((r) => !S.holds.has(r.sid));
+      const moved = new Set(groups().hold.map((r) => r.sid));
+      const ok = (r: Row) => r.sid !== m.sid && !moved.has(r.sid);
+      const next = order.slice(i + 1).find(ok) ?? order.slice(0, i).reverse().find(ok);
       S.selected = next?.sid ?? m.sid;
       S.mode = { kind: 'list' };
       S.message = { text: `Put ${nameOf(m.sid)} on hold. It comes back when you attach and work on it, or press h on it.` };
@@ -704,16 +710,14 @@ function WhereCell({ row }: { row: Row }) {
 
 type Cols = { tier: number; wait: number; name: number; ctx: number; cost: number };
 
+function indent(row: Row) {
+  return row.depth ? `${'  '.repeat(row.depth - 1)}└ ` : '';
+}
+
 function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
   const sel = row.sid === S.selected;
   const o = otelFor(row.sid);
   const notes: string[] = [];
-  if (row.tier === 'Waiting') {
-    const all = [...(S.waits.get(row.sid) ?? [])];
-    const tiers = new Map(S.rows.map((r) => [r.sid, r.tier]));
-    const open = unfinishedTargets(row.sid, S.waits, tiers).map((t) => nameOf(t) + (S.holds.has(t) ? ' (on hold)' : ''));
-    notes.push(all.length === 1 ? `↳ for ${open.join(', ')}` : `↳ for ${open.length} of ${all.length}: ${open.join(', ')}`);
-  }
   const done = S.doneNotes.get(row.sid);
   if (done && row.tier !== 'Waiting') notes.push(`↳ ${done.join(', ')} done`);
   const reason = S.holds.get(row.sid);
@@ -735,8 +739,10 @@ function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
       </Box>
       <Box width={cols.name} marginRight={2} flexShrink={0}>
         <Text bold={sel} wrap="truncate">
+          {indent(row)}
           {row.name}
           {row.kind === 'interactive' ? ' (tty)' : ''}
+          {row.depth && S.holds.has(row.sid) ? <Text dimColor> (on hold)</Text> : ''}
         </Text>
       </Box>
       {cols.ctx > 0 && (
@@ -791,16 +797,19 @@ function ListView({ width, maxLines }: { width: number; maxLines: number }) {
   const cols: Cols = {
     tier: Math.max(4, ...rowsAll.map((r) => tierLabel(r).length)),
     wait: 7,
-    name: Math.min(Math.max(7, ...rowsAll.map((r) => r.name.length + (r.kind === 'interactive' ? 6 : 0))), Math.max(12, Math.floor(width * 0.3))),
+    name: Math.min(
+      Math.max(7, ...flatOrder(g).map((r) => indent(r).length + r.name.length + (r.kind === 'interactive' ? 6 : 0) + (r.depth && S.holds.has(r.sid) ? 10 : 0))),
+      Math.max(12, Math.floor(width * 0.35)),
+    ),
     ctx: hasCtx ? 5 : 0,
     cost: hasCost ? 7 : 0,
   };
-  const showUpNext = !!g.last || g.hold.length > 0;
+  const showUpNext = g.last.length > 0 || g.hold.length > 0;
   const rowToLines = (r: Row): Line[] => rowLines(r, cols, now).map((node, i) => ({ key: `${r.sid}-${i}`, node, sid: i === 0 ? r.sid : undefined }));
   // Fixed: Last attached group and the Up next heading. Scrolls: ladder and hold.
   const fixed: Line[] = [];
-  if (g.last) {
-    fixed.push({ key: 'h-last', node: <Heading text="Last attached" /> }, ...rowToLines(g.last), { key: 'b-last', node: <Text> </Text> });
+  if (g.last.length) {
+    fixed.push({ key: 'h-last', node: <Heading text="Last attached" /> }, ...g.last.flatMap(rowToLines), { key: 'b-last', node: <Text> </Text> });
   }
   if (showUpNext && g.ladder.length > 0) fixed.push({ key: 'h-next', node: <Heading text="Up next" /> });
   const body: Line[] = g.ladder.flatMap(rowToLines);

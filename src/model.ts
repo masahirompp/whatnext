@@ -233,16 +233,20 @@ export function trackSince(
   return next;
 }
 
-export function sortSessions<T extends { sid: string; tier: Tier; since: number | null; name: string }>(xs: T[]): T[] {
-  return [...xs].sort((a, b) => {
-    const ta = TIERS.indexOf(a.tier);
-    const tb = TIERS.indexOf(b.tier);
-    if (ta !== tb) return ta - tb;
-    if (a.since == null && b.since != null) return -1;
-    if (b.since == null && a.since != null) return 1;
-    if (a.since != null && b.since != null && a.since !== b.since) return a.since - b.since;
-    return a.name.localeCompare(b.name);
-  });
+type Sortable = { sid: string; tier: Tier; since: number | null; name: string };
+
+export function compareRows(a: Sortable, b: Sortable) {
+  const ta = TIERS.indexOf(a.tier);
+  const tb = TIERS.indexOf(b.tier);
+  if (ta !== tb) return ta - tb;
+  if (a.since == null && b.since != null) return -1;
+  if (b.since == null && a.since != null) return 1;
+  if (a.since != null && b.since != null && a.since !== b.since) return a.since - b.since;
+  return a.name.localeCompare(b.name);
+}
+
+export function sortSessions<T extends Sortable>(xs: T[]): T[] {
+  return [...xs].sort(compareRows);
 }
 
 export function formatWaiting(since: number | null, now: number) {
@@ -257,17 +261,66 @@ export function formatWaiting(since: number | null, now: number) {
 
 // ---- grouping ----
 
-export type Row = Session & { tier: Tier; since: number | null };
-export type Groups = { last?: Row; ladder: Row[]; hold: Row[] };
+export type Row = Session & { tier: Tier; since: number | null; depth?: number };
+/** Rows flattened in display order; each tree is a waiter with its targets nested below. */
+export type Groups = { last: Row[]; ladder: Row[]; hold: Row[]; ladderTop?: string };
 
-export function group(rows: Row[], lastAttached: string | undefined, holds: Map<string, string>): Groups {
-  const sorted = sortSessions(rows);
-  const hold = sorted.filter((r) => holds.has(r.sid));
-  const last = sorted.find((r) => r.sid === lastAttached && !holds.has(r.sid));
-  const ladder = sorted.filter((r) => !holds.has(r.sid) && r.sid !== last?.sid);
-  return { last, ladder, hold };
+/** The waiter of each visible target (a target has at most one waiter). */
+export function parentsOf(rows: { sid: string }[], waits: Waits): Map<string, string> {
+  const vis = new Set(rows.map((r) => r.sid));
+  const parent = new Map<string, string>();
+  for (const [w, ts] of waits) {
+    if (!vis.has(w)) continue;
+    for (const t of ts) if (vis.has(t) && !parent.has(t) && t !== w) parent.set(t, w);
+  }
+  return parent;
+}
+
+/**
+ * Trees move along the ladder as a unit, placed by their best member. A held
+ * member inside a tree stays in place but does not count for placement; a held
+ * root sends the whole tree to the hold group. The tree holding the last
+ * attached session goes on top.
+ */
+export function group(rows: Row[], lastAttached: string | undefined, holds: Map<string, string>, waits: Waits = new Map()): Groups {
+  const parent = parentsOf(rows, waits);
+  const children = new Map<string, Row[]>();
+  for (const r of rows) {
+    const p = parent.get(r.sid);
+    if (p) children.set(p, [...(children.get(p) ?? []), r]);
+  }
+  for (const [k, v] of children) children.set(k, sortSessions(v));
+  type Tree = { root: Row; flat: Row[]; best: Row };
+  const trees: Tree[] = rows
+    .filter((r) => !parent.has(r.sid))
+    .map((root) => {
+      const flat: Row[] = [];
+      const walk = (r: Row, depth: number) => {
+        flat.push({ ...r, depth });
+        for (const c of children.get(r.sid) ?? []) walk(c, depth + 1);
+      };
+      walk(root, 0);
+      const counted = flat.filter((r) => r.depth === 0 || !holds.has(r.sid));
+      return { root, flat, best: sortSessions(counted)[0] };
+    })
+    .sort((a, b) => compareRows(a.best, b.best));
+  const held = (t: Tree) => holds.has(t.root.sid);
+  const lastTree = trees.find((t) => !held(t) && t.flat.some((r) => r.sid === lastAttached));
+  const ladderTrees = trees.filter((t) => !held(t) && t !== lastTree);
+  return {
+    last: lastTree?.flat ?? [],
+    ladder: ladderTrees.flatMap((t) => t.flat),
+    hold: trees.filter(held).flatMap((t) => t.flat),
+    ladderTop: ladderTrees[0]?.best.sid,
+  };
 }
 
 export function flatOrder(g: Groups): Row[] {
-  return [...(g.last ? [g.last] : []), ...g.ladder, ...g.hold];
+  return [...g.last, ...g.ladder, ...g.hold];
+}
+
+/** Someone other than `waiter` already waits for `target`. */
+export function waitedByOther(waits: Waits, waiter: string, target: string) {
+  for (const [w, ts] of waits) if (w !== waiter && ts.has(target)) return true;
+  return false;
 }
