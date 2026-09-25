@@ -61,7 +61,7 @@ export const vscodeFolderUrl = (dir: string) => `vscode://file${encodeURI(dir)}/
 
 export type OpenTarget = { label: string; url: string };
 
-// What `o` offers for a row: the checkout in local VS Code (the worktree when in one), then the PR.
+// What `e` (external) offers for a row: the checkout in local VS Code (the worktree when in one), then the PR.
 export function openTargets(cwd: string, git: Git | null | undefined, pr: Pr | null | undefined): OpenTarget[] {
   const dir = git?.top ?? cwd;
   const home = os.homedir();

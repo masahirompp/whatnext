@@ -26,7 +26,7 @@ type Mode =
   | { kind: 'model'; dir: string; text: string }
   | { kind: 'starting'; dir: string; model: string; at: number; failed: string | null }
   | { kind: 'discard'; id: string; value: string; count: number }
-  | { kind: 'open'; entry: Entry; index: number };
+  | { kind: 'external'; entry: Entry; index: number };
 
 type Where = { git?: Git | null; pr?: Pr | null };
 
@@ -75,7 +75,7 @@ export function App({ startDir }: { startDir: string }) {
   const seenRef = useRef<Seen>(new Map());
   const prevRef = useRef<number | null>(null);
   const busyRef = useRef(false); // attached or refreshing
-  // The open menu's selection, read synchronously: ↓ and Enter can arrive before a re-render.
+  // The external menu's selection, read synchronously: ↓ and Enter can arrive before a re-render.
   const openIndexRef = useRef(0);
   const pendingRef = useRef<{ id: string; at: number; stopping: boolean } | null>(null);
 
@@ -336,7 +336,7 @@ export function App({ startDir }: { startDir: string }) {
         setMode({ kind: 'list' });
         void refresh();
         return;
-      case 'open': {
+      case 'external': {
         const ts = targetsFor(mode.entry);
         if (key.escape) { setMode({ kind: 'list' }); return; }
         const move = (d: number) => {
@@ -377,10 +377,10 @@ export function App({ startDir }: { startDir: string }) {
       setMessage(null);
       void refresh();
       loadUsage();
-    } else if (input === 'o') {
+    } else if (input === 'e') {
       setMessage(null);
       openIndexRef.current = 0;
-      if (current) setMode({ kind: 'open', entry: current, index: 0 });
+      if (current) setMode({ kind: 'external', entry: current, index: 0 });
     } else if (input === 'n') {
       setMessage(null);
       openPicker();
@@ -534,12 +534,12 @@ export function App({ startDir }: { startDir: string }) {
       {mode.kind === 'discard' && (
         <Text color="red">{`Discard ${mode.count} unpushed commit${mode.count === 1 ? '' : 's'} and delete session ${mode.id}? [y/N]`}</Text>
       )}
-      {mode.kind === 'open' && (() => {
+      {mode.kind === 'external' && (() => {
         const w = where.get(mode.entry.row.cwd);
         const ts = targetsFor(mode.entry);
         return (
           <Box flexDirection="column">
-            <Text>{`Open ${mode.entry.row.name ?? mode.entry.row.sessionId.slice(0, 8)} in:`}</Text>
+            <Text>{`Show ${mode.entry.row.name ?? mode.entry.row.sessionId.slice(0, 8)} in:`}</Text>
             {ts.map((t, i) => (
               <Text key={t.url} inverse={i === Math.min(mode.index, ts.length - 1)} wrap="truncate-middle">{`${i + 1}. ${t.label}`}</Text>
             ))}
@@ -548,7 +548,7 @@ export function App({ startDir }: { startDir: string }) {
           </Box>
         );
       })()}
-      {mode.kind !== 'open' && <Text dimColor>↑↓ move · Enter attach · o open · n new · Ctrl+X stop/delete · r refresh · q quit</Text>}
+      {mode.kind !== 'external' && <Text dimColor>↑↓ move · Enter attach · e external · n new · Ctrl+X stop/delete · r refresh · q quit</Text>}
     </Box>
   );
 }
