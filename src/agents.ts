@@ -6,7 +6,7 @@ export type Run = { code: number; stdout: string; stderr: string };
 
 export function run(cmd: string, args: string[], opts: { cwd?: string; timeout?: number } = {}): Promise<Run> {
   return new Promise((resolve) => {
-    execFile(cmd, args, { cwd: opts.cwd, timeout: opts.timeout ?? 30000, maxBuffer: 16 * 1024 * 1024 },
+    const child = execFile(cmd, args, { cwd: opts.cwd, timeout: opts.timeout ?? 30000, maxBuffer: 16 * 1024 * 1024 },
       (err, stdout, stderr) => {
         const e = err as (NodeJS.ErrnoException & { code?: number | string }) | null;
         let code = 0;
@@ -15,6 +15,8 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; timeout?:
         else if (e && typeof e.code === 'string') stderr = `${stderr}${e.message}`;
         resolve({ code, stdout: String(stdout), stderr: String(stderr) });
       });
+    // Nothing is piped in; `claude -p` otherwise waits 3s for stdin before running.
+    child.stdin?.end();
   });
 }
 

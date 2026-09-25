@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { launch, listAgents, rm, stop } from './agents.js';
 import { Candidate, candidates, filter } from './launch.js';
+import { fetchUsage, Limit } from './usage.js';
 import { cursorAfterAttach, Entry, formatWait, observe, Seen, tierLabel } from './rank.js';
 import { Git, gitInfo, Pr, prFor, whereText } from './where.js';
 
@@ -69,6 +70,7 @@ export function App({ startDir }: { startDir: string }) {
   const [where, setWhere] = useState<Map<string, Where>>(new Map());
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [message, setMessage] = useState<string | null>(null);
+  const [usage, setUsage] = useState<Limit[]>([]);
   const seenRef = useRef<Seen>(new Map());
   const prevRef = useRef<number | null>(null);
   const busyRef = useRef(false); // attached or refreshing
@@ -110,7 +112,10 @@ export function App({ startDir }: { startDir: string }) {
     setLoaded(true);
   }, [loadWhere]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  // Not on the 60s timer: only at start, after attach and on `r`. Keeps the old value while fetching.
+  const loadUsage = useCallback(() => { void fetchUsage().then(setUsage); }, []);
+
+  useEffect(() => { void refresh(); loadUsage(); }, [refresh, loadUsage]);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -166,8 +171,9 @@ export function App({ startDir }: { startDir: string }) {
       }
     });
     busyRef.current = false;
+    loadUsage();
     await refresh({ left, afterAttach: true });
-  }, [suspendTerminal, refresh]);
+  }, [suspendTerminal, refresh, loadUsage]);
 
   const removeEntry = (id: string) => {
     setEntries((es) => es.filter((e) => e.row.id !== id));
@@ -343,6 +349,7 @@ export function App({ startDir }: { startDir: string }) {
     } else if (input === 'r') {
       setMessage(null);
       void refresh();
+      loadUsage();
     } else if (input === 'n') {
       setMessage(null);
       openPicker();
@@ -356,9 +363,23 @@ export function App({ startDir }: { startDir: string }) {
   const ago = lastRefresh === null ? '' : `updated ${Math.max(0, Math.floor((now - lastRefresh) / 1000))}s ago`;
 
   const header = (
-    <Box>
-      <Text bold>whatnext</Text>
-      <Text dimColor>{`  ${loaded && !error ? `${entries.length} session${entries.length === 1 ? '' : 's'} · ` : ''}${ago}`}</Text>
+    <Box flexDirection="column">
+      <Box>
+        <Text bold>whatnext</Text>
+        <Text dimColor>{`  ${loaded && !error ? `${entries.length} session${entries.length === 1 ? '' : 's'} · ` : ''}${ago}`}</Text>
+      </Box>
+      {usage.length > 0 && (
+        <Text wrap="truncate">
+          {usage.map((u, i) => (
+            <Text key={u.label}>
+              {i > 0 ? <Text dimColor>{' · '}</Text> : null}
+              <Text dimColor>{`${u.label} `}</Text>
+              <Text color={u.percent >= 80 ? 'red' : u.percent >= 50 ? 'yellow' : undefined}>{`${u.percent}%`}</Text>
+              {u.resets ? <Text dimColor>{` (resets ${u.resets})`}</Text> : null}
+            </Text>
+          ))}
+        </Text>
+      )}
     </Box>
   );
 
@@ -438,7 +459,7 @@ export function App({ startDir }: { startDir: string }) {
 
   const tierW = Math.max(4, ...entries.map((e) => tierLabel(e).length));
   const nameW = Math.min(32, Math.max(7, ...entries.map((e) => (e.row.name ?? '').length + (e.row.kind === 'interactive' ? 6 : 0))));
-  const maxRows = Math.max(3, rows - 6);
+  const maxRows = Math.max(3, rows - 6 - (usage.length > 0 ? 1 : 0));
   const start = Math.max(0, Math.min(cursor - Math.floor(maxRows / 2), entries.length - maxRows));
 
   return (

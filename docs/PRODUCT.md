@@ -48,7 +48,7 @@ Agent View を置き換えるのではなく、その前段に立つ。
 
 - Ink と Node で作る。
 - 本体が依存するコマンドは `claude` と `git` だけで、URL やエディタを開くときだけ OS の `open` を使う（[ADR-0004](adr/0004-depend-only-on-claude-and-git.md)）。任意の依存として、作業ディレクトリの候補を増やすためだけに `ghq` を、行に PR を出すためだけに `gh` を、あれば使う。
-- Claude Code の状態は `claude agents --json --all` からだけ読む（[ADR-0001](adr/0001-read-state-only-from-agents-json.md)）。
+- Claude Code の状態は `claude agents --json --all` からだけ読む（[ADR-0001](adr/0001-read-state-only-from-agents-json.md)）。アカウントの Usage はセッションの状態ではないので、別に `claude -p "/usage"` から読む（「Usage の表示」を参照）。
 - 何も書き込まず、永続状態を持たない（[ADR-0002](adr/0002-no-writes-no-persistent-state.md)）。
 - 画面の文言とキーの説明は英語で書く。設計文書は日本語で書く。
 
@@ -106,6 +106,16 @@ Agent View を置き換えるのではなく、その前段に立つ。
 - 対象の行が1件もないときは、そのことをメッセージで示す。
 - `--json` の取得に失敗したとき（`claude` が見つからない、出力を解析できないなど）は、エラーの内容を示し、古い一覧は出さない。次の更新で再び読む。
 
+### Usage の表示
+
+- 一覧のヘッダに、アカウントの Usage を出す。`/usage` が示す枠ごとに、使用率とリセットする時刻を並べる（例：`session 42% (resets 2:09pm) · week (all models) 25% (resets Sep 29 9:59am)`）。リセットが今日なら日付を省く。使用率が50%以上なら黄、80%以上なら赤で示す。
+- 目的は、rate limit にいつ当たりそうかを見ることと、新しいセッションのモデルを決める材料にすること。
+- 取得するのは、whatnext の起動時、attach から戻ったとき（新しく起動したセッションから戻ったときを含む）、更新キーを押したときに限る。60秒ごとの更新では取らない。Usage は数分で大きく動くものではなく、一覧に戻る時点の値があれば判断に足りる。
+- 取得は一覧の更新を待たせず、非同期に行う。取得中は前の値を出したままにする。
+- 取得には `claude -p "/usage" --no-session-persistence --output-format json` を使う。モデルを呼ばないので rate limit を消費しない。`--no-session-persistence` を付けないと、呼ぶたびに会話ファイルが残る。プロジェクトの設定や hook を拾わないよう、一時ディレクトリで実行する。
+- `/usage` の結果は人間向けの文字列なので、`Current <枠>: <N>% used · resets <時刻>` の行を読む。取得に失敗したとき、または読める行が1つもないときは、Usage を出さない。エラーは示さず、一覧のほかの動作は変えない。
+- 出る値はアカウント全体のもので、他の端末や claude.ai での利用も含む。セッションごとの内訳は出さない。
+
 ### 操作
 
 - **`Enter`（`background` の行）**：`claude attach <id>` に端末を渡す。離脱キーは Ctrl+Z とする（`claude attach` の公式の離脱キー。`←` と `/exit` は Agent View を開いてしまう）。離脱して一覧に戻ったとき、端末に子の設定（代替画面、マウスの追跡など）が残ってはならず、子が異常終了した場合も同じである。attach している間、キー入力が whatnext と子の両方に届いてはならない。`claude attach` が 0 以外の終了コードで終わったときは、子の出したメッセージを画面に残したまま、キーが押されるのを待ってから一覧に戻る。すぐに描き直すと、attach できなかった理由と対処（`claude respawn` など）が読めない。正常に離脱したときは待たずに戻る。画面の解析や入力の注入はしない（[ADR-0003](adr/0003-no-input-injection-or-proxy-response.md)）。
@@ -159,6 +169,7 @@ Agent View を置き換えるのではなく、その前段に立つ。
 10. 対象の行がないときはメッセージが出る。`--json` の取得に失敗したときはエラーが出て、古い一覧は出ない。
 11. 画面の文言はすべて英語である。
 12. npm に公開したあと、`npx @masahirompp/whatnext` を実行すると whatnext が起動し、一覧が出る。
+13. 一覧のヘッダに、Usage の枠ごとの使用率とリセットする時刻が出る。attach から戻ると、一覧を待たせずに値が新しくなる。Usage を取れないときは、Usage だけが出ず、一覧はふだんどおり使える。
 
 ### 確かめ方
 
