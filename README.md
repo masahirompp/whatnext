@@ -8,7 +8,7 @@ When several sessions are waiting at once, whatnext ranks them by how much it co
 
 ## Principles
 
-- **Reads state only from `claude agents --json`.** No private files, no screen scraping.
+- **Reads session state only from `claude agents --json`.** No private files, no screen scraping. Account usage comes from `claude`'s own `/usage`, which calls no model.
 - **Writes nothing and keeps no state.** Closing whatnext loses nothing; sessions started elsewhere show up too. Your settings are never modified.
 - **Never answers for you.** No input injection or auto-approval — you attach and act yourself.
 
@@ -22,7 +22,7 @@ npx @masahirompp/whatnext
 
 - Node.js 22 or later
 - [Claude Code](https://code.claude.com) (`claude`) and `git`
-- Optional: `ghq` (more working-directory candidates), `gh` (PR numbers on rows). Without them, whatnext works the same with less shown.
+- Optional: `ghq` (more working-directory candidates), `gh` (PR numbers on rows, and opening those PRs). Without them, whatnext works the same with less shown.
 
 ## Documentation
 
