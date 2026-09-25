@@ -28,6 +28,7 @@ type Mode =
   | { kind: 'model'; dir: string; text: string }
   | { kind: 'starting'; dir: string; model: string; at: number; failed: string | null }
   | { kind: 'discard'; id: string; value: string; count: number }
+  | { kind: 'holdReason'; entry: Entry; text: string }
   | { kind: 'external'; entry: Entry; index: number };
 
 type Where = { git?: Git | null; pr?: Pr | null };
@@ -78,9 +79,10 @@ export function App({ startDir }: { startDir: string }) {
   // Agent id of the session last left by attach, shown above the ladder until the next attach.
   const [lastId, setLastId] = useState<string | null>(null);
   const lastIdRef = useRef<string | null>(null);
-  // sessionIds the user put on hold, shown below the ladder. Only in memory (ADR-0002).
-  const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
-  const heldRef = useRef<ReadonlySet<string>>(new Set());
+  // sessionId -> optional reason, for sessions the user put on hold (shown below the ladder).
+  // Only in memory (ADR-0002).
+  const [held, setHeld] = useState<ReadonlyMap<string, string>>(new Map());
+  const heldRef = useRef<ReadonlyMap<string, string>>(new Map());
   const entriesRef = useRef<Entry[]>([]);
   const seenRef = useRef<Seen>(new Map());
   const prevRef = useRef<number | null>(null);
@@ -102,8 +104,8 @@ export function App({ startDir }: { startDir: string }) {
     }
   }, []);
 
-  const updateHeld = useCallback((f: (s: Set<string>) => void) => {
-    const next = new Set(heldRef.current);
+  const updateHeld = useCallback((f: (m: Map<string, string>) => void) => {
+    const next = new Map(heldRef.current);
     f(next);
     heldRef.current = next;
     setHeld(next);
@@ -338,6 +340,25 @@ export function App({ startDir }: { startDir: string }) {
       case 'info':
         setMode({ kind: 'list' });
         return;
+      case 'holdReason': {
+        if (key.escape) { setMode({ kind: 'list' }); return; }
+        if (key.return) {
+          const e = mode.entry;
+          const label = e.row.name ?? e.row.sessionId.slice(0, 8);
+          // Move on to the next row: holding says "not now", so the cursor should not follow it down.
+          const shown = [...(last ? [last] : []), ...rest];
+          const i = shown.indexOf(e);
+          const next = shown[i + 1] ?? shown[i - 1];
+          updateHeld((h) => h.set(e.row.sessionId, mode.text.trim()));
+          if (next) setCursorId(next.row.sessionId);
+          setMode({ kind: 'list' });
+          setMessage(`Put ${label} on hold. It comes back when you attach and work on it, or press h on it.`);
+          return;
+        }
+        if (key.ctrl || key.meta || key.tab || key.upArrow || key.downArrow) return;
+        setMode({ ...mode, text: editText(mode.text, input, key) });
+        return;
+      }
       case 'discard':
         setMode({ kind: 'list' });
         if (input.toLowerCase() === 'y') void doDelete(mode.id, mode.value);
@@ -452,13 +473,8 @@ export function App({ startDir }: { startDir: string }) {
         updateHeld((h) => h.delete(sid));
         setMessage(`${label} is back in the list.`);
       } else {
-        // Move on to the next row: holding says "not now", so the cursor should not follow it down.
-        const shown = [...(last ? [last] : []), ...rest];
-        const i = shown.indexOf(current);
-        const next = shown[i + 1] ?? shown[i - 1];
-        updateHeld((h) => h.add(sid));
-        if (next) setCursorId(next.row.sessionId);
-        setMessage(`Put ${label} on hold. It comes back when you attach and work on it, or press h on it.`);
+        setMessage(null);
+        setMode({ kind: 'holdReason', entry: current, text: '' });
       }
     } else if (input === 'e') {
       setMessage(null);
@@ -596,11 +612,14 @@ export function App({ startDir }: { startDir: string }) {
   // The last-attached group and the ladder heading stay put; the ladder and the on-hold group scroll.
   const upNext = (last !== null || onHold.length > 0) && rest.length > 0;
   const fixed = (last ? 2 + (rest.length + onHold.length > 0 ? 1 : 0) : 0) + (upNext ? 1 : 0);
-  type Item = { entry: Entry } | { heading: string } | { blank: true };
+  type Item = { entry: Entry } | { heading: string } | { reason: string; sid: string } | { blank: true };
   const items: Item[] = [
     ...rest.map((entry) => ({ entry })),
     ...(onHold.length > 0 ? [...(rest.length > 0 ? [{ blank: true as const }] : []), { heading: 'On hold' }] : []),
-    ...onHold.map((entry) => ({ entry })),
+    ...onHold.flatMap((entry) => {
+      const reason = held.get(entry.row.sessionId);
+      return reason ? [{ entry }, { reason, sid: entry.row.sessionId }] : [{ entry }];
+    }),
   ];
   const regionRows = Math.max(1, maxRows - fixed);
   const pos = Math.max(0, items.findIndex((it) => 'entry' in it && it.entry === current));
@@ -651,10 +670,17 @@ export function App({ startDir }: { startDir: string }) {
       {items.slice(start, start + regionRows).map((it, i) =>
         'entry' in it ? renderRow(it.entry, it.entry === current)
           : 'heading' in it ? <Text key={`h${start + i}`} dimColor>{`  ${it.heading}`}</Text>
+            : 'reason' in it ? <Text key={`r${it.sid}`} dimColor wrap="truncate">{`      ↳ ${it.reason}`}</Text>
             : <Text key={`b${start + i}`}> </Text>)}
       {items.length > regionRows && <Text dimColor>{`  ${cursor + 1}/${list.length}`}</Text>}
       <Text> </Text>
       {message && <Text color="yellow">{message}</Text>}
+      {mode.kind === 'holdReason' && (
+        <Text>
+          {`Put ${mode.entry.row.name ?? mode.entry.row.sessionId.slice(0, 8)} on hold. Reason (optional): `}
+          <Text color="cyan">{mode.text}</Text><Text inverse> </Text>
+        </Text>
+      )}
       {mode.kind === 'discard' && (
         <Text color="red">{`Discard ${mode.count} unpushed commit${mode.count === 1 ? '' : 's'} and delete session ${mode.id}? [y/N]`}</Text>
       )}
@@ -672,7 +698,8 @@ export function App({ startDir }: { startDir: string }) {
           </Box>
         );
       })()}
-      {mode.kind !== 'external' && <Text dimColor>↑↓ move · Enter attach · h hold · e external · n new · Ctrl+X stop/delete · r refresh · q quit</Text>}
+      {mode.kind === 'holdReason' && <Text dimColor>Enter hold · Esc cancel</Text>}
+      {mode.kind !== 'external' && mode.kind !== 'holdReason' && <Text dimColor>↑↓ move · Enter attach · h hold · e external · n new · Ctrl+X stop/delete · r refresh · q quit</Text>}
     </Box>
   );
 }

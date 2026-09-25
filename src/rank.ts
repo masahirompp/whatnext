@@ -120,11 +120,11 @@ export function formatWait(since: number | null, now: number): string {
 // The list is split into three groups: the session last left by attach (above the ladder, until the
 // next attach), the ladder, and the sessions the user put on hold (below the ladder). A held session
 // is never the last-attached one, and no session is listed twice. `lastId` is the agent id, `held`
-// holds sessionIds (interactive rows have no agent id).
+// is keyed by sessionId (interactive rows have no agent id).
 export function splitGroups(
   entries: Entry[],
   lastId: string | null,
-  held: ReadonlySet<string>,
+  held: { has(sessionId: string): boolean },
 ): { last: Entry | null; rest: Entry[]; held: Entry[] } {
   const onHold = entries.filter((e) => held.has(e.row.sessionId));
   const others = entries.filter((e) => !held.has(e.row.sessionId));
