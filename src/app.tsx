@@ -475,6 +475,7 @@ function handleKey(input: string, key: any, exit: () => void, suspend: Suspend) 
       const next = order.slice(i + 1).find((r) => !S.holds.has(r.sid)) ?? order.slice(0, i).reverse().find((r) => !S.holds.has(r.sid));
       S.selected = next?.sid ?? m.sid;
       S.mode = { kind: 'list' };
+      S.message = { text: `Put ${nameOf(m.sid)} on hold. It comes back when you attach and work on it, or press h on it.` };
     } else m.text = textEdit(m.text, input, key);
     rerender();
     return;
@@ -614,7 +615,7 @@ function handleKey(input: string, key: any, exit: () => void, suspend: Suspend) 
   else if (input === 'h' && row) {
     if (S.holds.has(row.sid)) {
       S.holds.delete(row.sid);
-      setMessage(`${row.name} is no longer on hold.`);
+      setMessage(`${row.name} is back in the list.`);
     } else S.mode = { kind: 'hold', sid: row.sid, text: '' };
   } else if (input === 'e' && row) S.mode = { kind: 'external', sid: row.sid, index: 0 };
   else if (input === 'w' && row) S.mode = { kind: 'wait', sid: row.sid, query: '', index: 0 };
