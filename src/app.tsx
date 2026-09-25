@@ -522,7 +522,7 @@ export function App({ startDir }: { startDir: string }) {
             <Box flexGrow={1}>
               <Text wrap="truncate">
                 {whereText(e.row.cwd, w?.git)}
-                {w?.pr ? <Text color={PR_COLOR[w.pr.state]}>{` #${w.pr.number}`}</Text> : null}
+                {w?.pr ? <Text color={PR_COLOR[w.pr.state]}>{` #${w.pr.number} (${w.pr.state})`}</Text> : null}
               </Text>
             </Box>
           </Box>
