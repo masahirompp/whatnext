@@ -23,6 +23,7 @@ type Mode =
   | { kind: 'pickDir'; items: Candidate[] | null; query: string; index: number }
   | { kind: 'otherDir'; text: string }
   | { kind: 'model'; dir: string; text: string }
+  | { kind: 'starting'; dir: string; model: string; at: number; failed: string | null }
   | { kind: 'discard'; id: string; value: string; count: number };
 
 type Where = { git?: Git | null; pr?: Pr | null };
@@ -235,14 +236,15 @@ export function App({ startDir }: { startDir: string }) {
   };
 
   const startNew = async (dir: string, model: string) => {
-    setMode({ kind: 'list' });
-    setMessage(`Starting a session in ${dir}...`);
+    // Stay on the new-session screen until attach: going back to the list reads as done or cancelled.
+    const starting = { kind: 'starting', dir, model, at: Date.now(), failed: null } as const;
+    setMode(starting);
     const r = await launch(dir, model);
     if (!r.id) {
-      setMessage(r.out || `claude --bg exited with ${r.code}`);
-      await refresh();
+      setMode({ ...starting, failed: r.out || `claude --bg exited with ${r.code}` });
       return;
     }
+    setMode({ kind: 'list' });
     await attach(r.id, null);
   };
 
@@ -310,6 +312,11 @@ export function App({ startDir }: { startDir: string }) {
         setMode({ ...mode, text: editText(mode.text, input, key) });
         return;
       }
+      case 'starting':
+        if (mode.failed === null) return;
+        setMode({ kind: 'list' });
+        void refresh();
+        return;
       case 'list':
         break;
     }
@@ -403,6 +410,28 @@ export function App({ startDir }: { startDir: string }) {
         )}
         {message && <Text color="red">{message}</Text>}
         <Text dimColor>Enter confirm · Esc cancel</Text>
+      </Box>
+    );
+  }
+
+  if (mode.kind === 'starting') {
+    return (
+      <Box flexDirection="column">
+        {header}
+        <Text> </Text>
+        <Text>{`New session in ${mode.dir}`}</Text>
+        <Text>{`Model: ${mode.model || '(default)'}`}</Text>
+        <Text> </Text>
+        {mode.failed === null ? (
+          <Text color="cyan">{`Starting session... ${Math.max(0, Math.floor((now - mode.at) / 1000))}s`}</Text>
+        ) : (
+          <>
+            <Text color="red">Could not start the session:</Text>
+            <Text>{mode.failed}</Text>
+            <Text> </Text>
+            <Text dimColor>Press any key to return to the list.</Text>
+          </>
+        )}
       </Box>
     );
   }
