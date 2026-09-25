@@ -428,7 +428,7 @@ export function App({ startDir }: { startDir: string }) {
 
   const rows = stdout.rows ?? 24;
   const cols = stdout.columns ?? 80;
-  const ago = refreshing ? 'refreshing...' : lastRefresh === null ? '' : `updated ${Math.max(0, Math.floor((now - lastRefresh) / 1000))}s ago`;
+  const ago = refreshing ? 'refreshing...' : lastRefresh === null ? '' : `updated ${formatWait(lastRefresh, now)} ago`;
 
   const header = (
     <Box flexDirection="column">
