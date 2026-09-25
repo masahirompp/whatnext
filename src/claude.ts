@@ -117,6 +117,11 @@ export async function runInTerminal(args: string[], opts: { cwd?: string; pauseM
   }
   sttyRestore(saved);
   process.stdout.write(RESET_MODES);
+  try {
+    if (stdin._readableState) stdin._readableState.reading = false;
+  } catch {
+    // best effort
+  }
   if (code !== 0) {
     process.stdout.write(`\r\n${opts.pauseMessage ?? `claude ${args[0]} exited with code ${code}.`} Press any key to return to the list.\r\n`);
     await waitKey(stdin);
@@ -124,11 +129,6 @@ export async function runInTerminal(args: string[], opts: { cwd?: string; pauseM
   }
   // Leave the child's alternate screen, if any.
   process.stdout.write('\x1b[?1049l');
-  try {
-    if (stdin._readableState) stdin._readableState.reading = false;
-  } catch {
-    // best effort
-  }
   for (const l of listeners) stdin.addListener('readable', l);
   stdin.read(0);
   return code;
