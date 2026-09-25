@@ -67,6 +67,7 @@ export function App({ startDir }: { startDir: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [cursorId, setCursorId] = useState<string | null>(null);
   const [where, setWhere] = useState<Map<string, Where>>(new Map());
@@ -99,6 +100,7 @@ export function App({ startDir }: { startDir: string }) {
   // Returns the new entries so callers can act on them without waiting for a render.
   const refresh = useCallback(async (opts: { afterAttach?: boolean } = {}) => {
     const t = Date.now();
+    setRefreshing(true);
     try {
       const rows = await listAgents();
       const { entries: es, seen } = observe(rows, seenRef.current, prevRef.current, otelRef.current.lastEvent);
@@ -117,6 +119,7 @@ export function App({ startDir }: { startDir: string }) {
       setEntries([]);
       setError(e instanceof Error ? e.message : String(e));
     }
+    setRefreshing(false);
     setLastRefresh(t);
     setLoaded(true);
   }, [loadWhere]);
@@ -388,9 +391,13 @@ export function App({ startDir }: { startDir: string }) {
         setMode({ kind: 'info', entry: current });
       }
     } else if (input === 'r') {
+      // The list often looks the same after a refresh, so say it happened.
       setMessage(null);
-      void refresh();
       loadUsage();
+      void refresh().then(() => {
+        setMessage('Refreshed.');
+        setTimeout(() => setMessage((m) => (m === 'Refreshed.' ? null : m)), 2000);
+      });
     } else if (input === 'e') {
       setMessage(null);
       openIndexRef.current = 0;
@@ -405,7 +412,7 @@ export function App({ startDir }: { startDir: string }) {
 
   const rows = stdout.rows ?? 24;
   const cols = stdout.columns ?? 80;
-  const ago = lastRefresh === null ? '' : `updated ${Math.max(0, Math.floor((now - lastRefresh) / 1000))}s ago`;
+  const ago = refreshing ? 'refreshing...' : lastRefresh === null ? '' : `updated ${Math.max(0, Math.floor((now - lastRefresh) / 1000))}s ago`;
 
   const header = (
     <Box flexDirection="column">
@@ -509,8 +516,8 @@ export function App({ startDir }: { startDir: string }) {
   const ctxW = Math.max(0, ...[...ctxs.values()].map((c) => c.length));
   const nameW = Math.min(32, Math.max(7, ...entries.map((e) => (e.row.name ?? '').length + (e.row.kind === 'interactive' ? 6 : 0))));
   const maxRows = Math.max(3, rows - 6 - (usage.length > 0 ? 1 : 0));
-  // The last-attached row and the blank line under it stay put; only the ladder scrolls.
-  const ladderRows = last ? Math.max(1, maxRows - 2) : maxRows;
+  // The last-attached heading and row and the blank line under them stay put; only the ladder scrolls.
+  const ladderRows = last ? Math.max(1, maxRows - 3) : maxRows;
   const ladderCursor = last ? Math.max(0, cursor - 1) : cursor;
   const start = Math.max(0, Math.min(ladderCursor - Math.floor(ladderRows / 2), rest.length - ladderRows));
   const renderRow = (e: Entry, sel: boolean) => {
@@ -552,6 +559,7 @@ export function App({ startDir }: { startDir: string }) {
           <Text dimColor>WHERE</Text>
         </Box>
       )}
+      {last && <Text dimColor>{'  Last attached'}</Text>}
       {last && renderRow(last, cursor === 0)}
       {last && rest.length > 0 && <Text> </Text>}
       {rest.slice(start, start + ladderRows).map((e, i) => renderRow(e, (last ? 1 : 0) + start + i === cursor))}

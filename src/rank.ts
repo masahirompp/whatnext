@@ -108,7 +108,8 @@ export function sortEntries(entries: Entry[]): Entry[] {
 export function formatWait(since: number | null, now: number): string {
   if (since === null) return '?';
   const s = Math.max(0, Math.floor((now - since) / 1000));
-  if (s < 60) return `${s}s`;
+  // Minutes are the smallest unit: a per-second counter flickers and the order only cares about minutes.
+  if (s < 60) return '<1m';
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);

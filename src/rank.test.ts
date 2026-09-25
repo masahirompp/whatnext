@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentRow, splitLast, observe, tierLabel } from './rank.js';
+import { AgentRow, formatWait, splitLast, observe, tierLabel } from './rank.js';
 
 const bg = (id: string, extra: Partial<AgentRow>): AgentRow => ({
   id, sessionId: `s-${id}`, kind: 'background', cwd: '/x', name: id, ...extra,
@@ -76,6 +76,13 @@ describe('wait time (scenarios 2, 3)', () => {
     const a = observe([bg('x', { state: 'working', status: 'busy', pid: 1 })], new Map(), null);
     const b = observe([bg('x', { state: 'done', pid: 1 })], a.seen, 5000);
     expect(b.entries[0].since).toBe(5000);
+  });
+});
+
+describe('wait format', () => {
+  it('counts in minutes, showing under a minute as <1m', () => {
+    expect([0, 59_000, 60_000, 3_660_000].map((ms) => formatWait(0, ms))).toEqual(['<1m', '<1m', '1m', '1h01m']);
+    expect(formatWait(null, 0)).toBe('?');
   });
 });
 
