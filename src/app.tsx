@@ -60,7 +60,6 @@ const S = {
   loaded: false,
   error: undefined as string | undefined,
   waits: new Map() as Waits,
-  prevAllFinished: new Map<string, boolean>(),
   doneNotes: new Map<string, string[]>(),
   pendingWait: undefined as { waiter: string; id: string } | undefined,
   holds: new Map<string, string>(),
@@ -88,13 +87,12 @@ function nameOf(sid: string) {
 function recompute(prevRefreshAt: number | undefined) {
   const visible = S.rawSessions;
   const tiers = effectiveTiers(visible, S.waits);
-  // "↳ <B> done": targets went from unfinished to all finished.
+  // "↳ <B> done": the waiter left Waiting because every target finished.
   for (const [w, ts] of S.waits) {
     if (!tiers.has(w)) continue;
     const all = unfinishedTargets(w, S.waits, tiers).length === 0;
-    if (S.prevAllFinished.get(w) === false && all) S.doneNotes.set(w, [...ts].map(nameOf));
+    if (S.tracked.get(w)?.tier === 'Waiting' && tiers.get(w) !== 'Waiting' && all) S.doneNotes.set(w, [...ts].map(nameOf));
     if (!all) S.doneNotes.delete(w);
-    S.prevAllFinished.set(w, all);
   }
   S.tracked = trackSince(S.tracked, tiers, prevRefreshAt, (sid) => otelFor(sid)?.lastEventAt);
   S.rows = visible.map((s) => ({ ...s, tier: tiers.get(s.sid)!, since: S.tracked.get(s.sid)?.since ?? null }));
@@ -151,7 +149,6 @@ async function refresh(opts: { manual?: boolean } = {}) {
     }
     recompute(prevRefreshAt ?? undefined);
     pruneWaits(S.waits, all);
-    for (const w of [...S.prevAllFinished.keys()]) if (!S.waits.has(w)) S.prevAllFinished.delete(w);
     const visibleSids = new Set(visible.map((s) => s.sid));
     for (const sid of [...S.holds.keys()]) if (!visibleSids.has(sid)) S.holds.delete(sid);
     for (const sid of [...S.doneNotes.keys()]) if (!visibleSids.has(sid)) S.doneNotes.delete(sid);
@@ -426,7 +423,6 @@ function toggleWait(waiter: string, target: string) {
   if (set.size) S.waits.set(waiter, set);
   else {
     S.waits.delete(waiter);
-    S.prevAllFinished.delete(waiter);
     S.doneNotes.delete(waiter);
   }
   recompute(Date.now());
@@ -709,34 +705,36 @@ function RowView({ row, cols, now }: { row: Row; cols: Cols; now: number }) {
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color={sel ? 'cyan' : undefined} bold={sel}>
-          {sel ? '> ' : '  '}
-        </Text>
-        <Box width={cols.tier} marginRight={1}>
+        <Box width={2} flexShrink={0}>
+          <Text color={sel ? 'cyan' : undefined} bold={sel}>
+            {sel ? '> ' : '  '}
+          </Text>
+        </Box>
+        <Box width={cols.tier} marginRight={1} flexShrink={0}>
           <Text color={TIER_COLOR[row.tier]} wrap="truncate">
             {tierLabel(row)}
           </Text>
         </Box>
-        <Box width={cols.wait} marginRight={2} justifyContent="flex-end">
+        <Box width={cols.wait} marginRight={2} flexShrink={0} justifyContent="flex-end">
           <Text>{formatWaiting(row.since, now)}</Text>
         </Box>
-        <Box width={cols.name} marginRight={2}>
+        <Box width={cols.name} marginRight={2} flexShrink={0}>
           <Text bold={sel} wrap="truncate">
             {row.name}
             {row.kind === 'interactive' ? ' (tty)' : ''}
           </Text>
         </Box>
         {cols.ctx > 0 && (
-          <Box width={cols.ctx} marginRight={2} justifyContent="flex-end">
+          <Box width={cols.ctx} marginRight={2} flexShrink={0} justifyContent="flex-end">
             <Text>{fmtCtx(o?.ctx)}</Text>
           </Box>
         )}
         {cols.cost > 0 && (
-          <Box width={cols.cost} marginRight={2} justifyContent="flex-end">
+          <Box width={cols.cost} marginRight={2} flexShrink={0} justifyContent="flex-end">
             <Text>{fmtCost(o?.cost)}</Text>
           </Box>
         )}
-        <Box flexGrow={1} flexShrink={1}>
+        <Box flexGrow={1} flexShrink={1} flexBasis={0} minWidth={0}>
           <WhereCell row={row} />
         </Box>
       </Box>
