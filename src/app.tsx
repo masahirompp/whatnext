@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { launch, listAgents, rm, run, stop } from './agents.js';
 import { Candidate, candidates, filter } from './launch.js';
+import { formatCost, formatTokens, OtelStore, startReceiver } from './otel.js';
 import { fetchUsage, Limit } from './usage.js';
 import { cursorAfterAttach, Entry, formatWait, observe, Seen, tierLabel } from './rank.js';
 import { Git, gitInfo, OpenTarget, openTargets, Pr, prFor, whereText } from './where.js';
@@ -78,6 +79,7 @@ export function App({ startDir }: { startDir: string }) {
   // The external menu's selection, read synchronously: ↓ and Enter can arrive before a re-render.
   const openIndexRef = useRef(0);
   const pendingRef = useRef<{ id: string; at: number; stopping: boolean } | null>(null);
+  const otelRef = useRef(new OtelStore());
 
   const loadWhere = useCallback((es: Entry[]) => {
     const cwds = [...new Set(es.map((e) => e.row.cwd))];
@@ -96,7 +98,7 @@ export function App({ startDir }: { startDir: string }) {
     const t = Date.now();
     try {
       const rows = await listAgents();
-      const { entries: es, seen } = observe(rows, seenRef.current, prevRef.current);
+      const { entries: es, seen } = observe(rows, seenRef.current, prevRef.current, otelRef.current.lastEvent);
       seenRef.current = seen;
       prevRef.current = t;
       setEntries(es);
@@ -119,6 +121,10 @@ export function App({ startDir }: { startDir: string }) {
   const loadUsage = useCallback(() => { void fetchUsage().then(setUsage); }, []);
 
   useEffect(() => { void refresh(); loadUsage(); }, [refresh, loadUsage]);
+  useEffect(() => {
+    const p = startReceiver(otelRef.current, () => {});
+    return () => { void p.then((s) => s?.close()); };
+  }, []);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -489,6 +495,10 @@ export function App({ startDir }: { startDir: string }) {
   }
 
   const tierW = Math.max(4, ...entries.map((e) => tierLabel(e).length));
+  const costs = new Map(entries.map((e) => [e.row.sessionId, formatCost(otelRef.current.costOf(e.row.sessionId))]));
+  const costW = Math.max(0, ...[...costs.values()].map((c) => c.length));
+  const ctxs = new Map(entries.map((e) => [e.row.sessionId, formatTokens(otelRef.current.contextOf(e.row.sessionId))]));
+  const ctxW = Math.max(0, ...[...ctxs.values()].map((c) => c.length));
   const nameW = Math.min(32, Math.max(7, ...entries.map((e) => (e.row.name ?? '').length + (e.row.kind === 'interactive' ? 6 : 0))));
   const maxRows = Math.max(3, rows - 6 - (usage.length > 0 ? 1 : 0));
   const start = Math.max(0, Math.min(cursor - Math.floor(maxRows / 2), entries.length - maxRows));
@@ -506,6 +516,8 @@ export function App({ startDir }: { startDir: string }) {
           <Box width={tierW + 2}><Text dimColor>TIER</Text></Box>
           <Box width={9}><Text dimColor>WAITING</Text></Box>
           <Box width={nameW + 2}><Text dimColor>SESSION</Text></Box>
+          {ctxW > 0 && <Box width={Math.max(3, ctxW) + 2}><Text dimColor>CTX</Text></Box>}
+          {costW > 0 && <Box width={Math.max(4, costW) + 2}><Text dimColor>COST</Text></Box>}
           <Text dimColor>WHERE</Text>
         </Box>
       )}
@@ -519,6 +531,8 @@ export function App({ startDir }: { startDir: string }) {
             <Box width={tierW + 2}><Text color={TIER_COLOR[e.tier]} bold={sel}>{tierLabel(e)}</Text></Box>
             <Box width={9}><Text bold={sel}>{formatWait(e.since, now).padStart(7)}</Text></Box>
             <Box width={nameW + 2}><Text bold={sel} wrap="truncate">{name}</Text></Box>
+            {ctxW > 0 && <Box width={Math.max(3, ctxW) + 2}><Text bold={sel}>{(ctxs.get(e.row.sessionId) ?? '').padStart(Math.max(3, ctxW))}</Text></Box>}
+            {costW > 0 && <Box width={Math.max(4, costW) + 2}><Text bold={sel}>{(costs.get(e.row.sessionId) ?? '').padStart(Math.max(4, costW))}</Text></Box>}
             <Box flexGrow={1}>
               <Text wrap="truncate">
                 {whereText(e.row.cwd, w?.git)}

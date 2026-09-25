@@ -88,3 +88,16 @@ describe('cursor after attach (scenario 5)', () => {
     expect(cursorAfterAttach(entries.slice(0, 1), { sessionId: top.row.sessionId, key: top.tier })).toBe(0);
   });
 });
+
+describe('OTel last event (#58)', () => {
+  it('uses the last event as the wait start for waiting rows, and sorts by it', () => {
+    const rows = [
+      bg('a', { state: 'done', status: 'idle', pid: 1 }),
+      bg('b', { state: 'done', status: 'idle', pid: 2 }),
+      bg('w', { state: 'working', status: 'busy', pid: 3 }),
+    ];
+    const ev = new Map([['s-a', 5000], ['s-b', 1000], ['s-w', 4000]]);
+    const { entries } = observe(rows, new Map(), null, ev);
+    expect(entries.map((e) => [e.row.name, e.since])).toEqual([['b', 1000], ['a', 5000], ['w', null]]);
+  });
+});

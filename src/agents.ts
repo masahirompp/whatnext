@@ -1,5 +1,6 @@
 // Thin wrappers around the `claude` CLI (ADR-0001: state comes only from `claude agents --json`).
 import { execFile } from 'node:child_process';
+import { OTEL_SETTINGS } from './otel.js';
 import type { AgentRow } from './rank.js';
 
 export type Run = { code: number; stdout: string; stderr: string };
@@ -39,7 +40,7 @@ export const rm = (id: string, discard?: string) =>
 
 // `claude --bg` without a prompt. Returns the new id if it could be read from the output.
 export async function launch(cwd: string, model: string): Promise<{ id?: string; out: string; code: number }> {
-  const args = ['--bg'];
+  const args = ['--bg', '--settings', OTEL_SETTINGS];
   if (model) args.push('--model', model);
   const r = await run('claude', args, { cwd });
   const out = `${r.stdout}${r.stderr}`.trim();

@@ -71,10 +71,12 @@ export type Entry = Classified & { since: number | null };
 
 // Apply one refresh. `prevRefresh` is the time of the previous refresh (null on the first one).
 // New arrivals in a tier are pessimistically assumed to have waited since the previous refresh.
+// `lastEvent` (OTel trial, #58): a waiting row's last event time is taken as when it stopped.
 export function observe(
   rows: AgentRow[],
   seen: Seen,
   prevRefresh: number | null,
+  lastEvent: Map<string, number> = new Map(),
 ): { entries: Entry[]; seen: Seen } {
   const next: Seen = new Map();
   const entries: Entry[] = [];
@@ -83,7 +85,8 @@ export function observe(
     if (!c) continue;
     const key = c.tier;
     const old = seen.get(r.sessionId);
-    const since = old && old.key === key ? old.since : prevRefresh;
+    const ev = c.tier === 'Working' ? undefined : lastEvent.get(r.sessionId);
+    const since = ev ?? (old && old.key === key ? old.since : prevRefresh);
     next.set(r.sessionId, { key, since });
     entries.push({ ...c, since });
   }
