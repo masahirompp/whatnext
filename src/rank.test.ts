@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentRow, cursorAfterAttach, observe, tierLabel } from './rank.js';
+import { AgentRow, splitLast, observe, tierLabel } from './rank.js';
 
 const bg = (id: string, extra: Partial<AgentRow>): AgentRow => ({
   id, sessionId: `s-${id}`, kind: 'background', cwd: '/x', name: id, ...extra,
@@ -79,13 +79,15 @@ describe('wait time (scenarios 2, 3)', () => {
   });
 });
 
-describe('cursor after attach (scenario 5)', () => {
-  it('skips the top row if it is the session just left with the same tier', () => {
-    const { entries } = observe([bg('a', { state: 'done' }), bg('b', { state: 'done' })], new Map(), null);
-    const top = entries[0];
-    expect(cursorAfterAttach(entries, { sessionId: top.row.sessionId, key: top.tier })).toBe(1);
-    expect(cursorAfterAttach(entries, { sessionId: top.row.sessionId, key: 'Permission' })).toBe(0);
-    expect(cursorAfterAttach(entries.slice(0, 1), { sessionId: top.row.sessionId, key: top.tier })).toBe(0);
+describe('last attached session (scenario 5)', () => {
+  it('moves the session last left out of the ladder, and ignores one not in the list', () => {
+    const { entries } = observe([bg('a', { state: 'failed' }), bg('b', { state: 'done' })], new Map(), null);
+    const b = entries[1];
+    const s = splitLast(entries, b.row.id!);
+    expect(s.last?.row.name).toBe('b');
+    expect(s.rest.map((e) => e.row.name)).toEqual(['a']);
+    expect(splitLast(entries, 'gone')).toEqual({ last: null, rest: entries });
+    expect(splitLast(entries, null)).toEqual({ last: null, rest: entries });
   });
 });
 

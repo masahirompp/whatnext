@@ -8,7 +8,7 @@ import { launch, listAgents, rm, run, stop } from './agents.js';
 import { Candidate, candidates, filter } from './launch.js';
 import { formatCost, formatTokens, OtelStore, startReceiver } from './otel.js';
 import { fetchUsage, Limit } from './usage.js';
-import { cursorAfterAttach, Entry, formatWait, observe, Seen, tierLabel } from './rank.js';
+import { Entry, formatWait, observe, Seen, splitLast, tierLabel } from './rank.js';
 import { Git, gitInfo, OpenTarget, openTargets, Pr, prFor, whereText } from './where.js';
 
 const REFRESH_MS = 60_000;
@@ -73,6 +73,9 @@ export function App({ startDir }: { startDir: string }) {
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [message, setMessage] = useState<string | null>(null);
   const [usage, setUsage] = useState<Limit[]>([]);
+  // Agent id of the session last left by attach, shown above the ladder until the next attach.
+  const [lastId, setLastId] = useState<string | null>(null);
+  const lastIdRef = useRef<string | null>(null);
   const seenRef = useRef<Seen>(new Map());
   const prevRef = useRef<number | null>(null);
   const busyRef = useRef(false); // attached or refreshing
@@ -94,7 +97,7 @@ export function App({ startDir }: { startDir: string }) {
   }, []);
 
   // Returns the new entries so callers can act on them without waiting for a render.
-  const refresh = useCallback(async (opts: { left?: { sessionId: string; key: string } | null; afterAttach?: boolean } = {}) => {
+  const refresh = useCallback(async (opts: { afterAttach?: boolean } = {}) => {
     const t = Date.now();
     try {
       const rows = await listAgents();
@@ -104,9 +107,10 @@ export function App({ startDir }: { startDir: string }) {
       setEntries(es);
       setError(null);
       setCursorId((cur) => {
-        if (opts.afterAttach) return es[cursorAfterAttach(es, opts.left ?? null)]?.row.sessionId ?? null;
+        const { last, rest } = splitLast(es, lastIdRef.current);
+        if (opts.afterAttach) return (last ?? rest[0])?.row.sessionId ?? null;
         if (cur && es.some((e) => e.row.sessionId === cur)) return cur;
-        return es[0]?.row.sessionId ?? null;
+        return rest[0]?.row.sessionId ?? null;
       });
       loadWhere(es);
     } catch (e) {
@@ -135,10 +139,12 @@ export function App({ startDir }: { startDir: string }) {
     return () => clearTimeout(t);
   }, [lastRefresh, refresh]);
 
-  const cursor = Math.max(0, entries.findIndex((e) => e.row.sessionId === cursorId));
-  const current = entries[cursor];
+  const { last, rest } = splitLast(entries, lastId);
+  const list = last ? [last, ...rest] : rest;
+  const cursor = Math.max(0, list.findIndex((e) => e.row.sessionId === cursorId));
+  const current = list[cursor];
 
-  const attach = useCallback(async (id: string, left: { sessionId: string; key: string } | null) => {
+  const attach = useCallback(async (id: string) => {
     busyRef.current = true;
     setMessage(null);
     await suspendTerminal(async () => {
@@ -181,15 +187,17 @@ export function App({ startDir }: { startDir: string }) {
     });
     busyRef.current = false;
     loadUsage();
-    await refresh({ left, afterAttach: true });
+    lastIdRef.current = id;
+    setLastId(id);
+    await refresh({ afterAttach: true });
   }, [suspendTerminal, refresh, loadUsage]);
 
   const removeEntry = (id: string) => {
     setEntries((es) => es.filter((e) => e.row.id !== id));
     setCursorId((cur) => {
-      const gone = entries.find((e) => e.row.id === id)?.row.sessionId;
+      const gone = list.find((e) => e.row.id === id)?.row.sessionId;
       if (cur !== gone) return cur;
-      return entries.find((e) => e.row.id !== id)?.row.sessionId ?? null;
+      return list.find((e) => e.row.id !== id)?.row.sessionId ?? null;
     });
   };
 
@@ -260,7 +268,7 @@ export function App({ startDir }: { startDir: string }) {
       return;
     }
     setMode({ kind: 'list' });
-    await attach(r.id, null);
+    await attach(r.id);
   };
 
   const openUrl = async (t: OpenTarget) => {
@@ -367,15 +375,15 @@ export function App({ startDir }: { startDir: string }) {
     // Any other key cancels a pending delete.
     if (pendingRef.current) { pendingRef.current = null; setMessage(null); if (key.escape) return; }
     if (key.upArrow || input === 'k') {
-      const e = entries[Math.max(0, cursor - 1)];
+      const e = list[Math.max(0, cursor - 1)];
       if (e) setCursorId(e.row.sessionId);
     } else if (key.downArrow || input === 'j') {
-      const e = entries[Math.min(entries.length - 1, cursor + 1)];
+      const e = list[Math.min(list.length - 1, cursor + 1)];
       if (e) setCursorId(e.row.sessionId);
     } else if (key.return) {
       if (!current) return;
       if (current.row.kind === 'background' && current.row.id) {
-        void attach(current.row.id, { sessionId: current.row.sessionId, key: current.tier });
+        void attach(current.row.id);
       } else {
         setMode({ kind: 'info', entry: current });
       }
@@ -501,7 +509,30 @@ export function App({ startDir }: { startDir: string }) {
   const ctxW = Math.max(0, ...[...ctxs.values()].map((c) => c.length));
   const nameW = Math.min(32, Math.max(7, ...entries.map((e) => (e.row.name ?? '').length + (e.row.kind === 'interactive' ? 6 : 0))));
   const maxRows = Math.max(3, rows - 6 - (usage.length > 0 ? 1 : 0));
-  const start = Math.max(0, Math.min(cursor - Math.floor(maxRows / 2), entries.length - maxRows));
+  // The last-attached row and the blank line under it stay put; only the ladder scrolls.
+  const ladderRows = last ? Math.max(1, maxRows - 2) : maxRows;
+  const ladderCursor = last ? Math.max(0, cursor - 1) : cursor;
+  const start = Math.max(0, Math.min(ladderCursor - Math.floor(ladderRows / 2), rest.length - ladderRows));
+  const renderRow = (e: Entry, sel: boolean) => {
+    const w = where.get(e.row.cwd);
+    const name = `${e.row.name ?? e.row.sessionId.slice(0, 8)}${e.row.kind === 'interactive' ? ' (tty)' : ''}`;
+    return (
+      <Box key={e.row.sessionId}>
+        <Box width={2}><Text color="cyan">{sel ? '›' : ' '}</Text></Box>
+        <Box width={tierW + 2}><Text color={TIER_COLOR[e.tier]} bold={sel}>{tierLabel(e)}</Text></Box>
+        <Box width={9}><Text bold={sel}>{formatWait(e.since, now).padStart(7)}</Text></Box>
+        <Box width={nameW + 2}><Text bold={sel} wrap="truncate">{name}</Text></Box>
+        {ctxW > 0 && <Box width={Math.max(3, ctxW) + 2}><Text bold={sel}>{(ctxs.get(e.row.sessionId) ?? '').padStart(Math.max(3, ctxW))}</Text></Box>}
+        {costW > 0 && <Box width={Math.max(4, costW) + 2}><Text bold={sel}>{(costs.get(e.row.sessionId) ?? '').padStart(Math.max(4, costW))}</Text></Box>}
+        <Box flexGrow={1}>
+          <Text wrap="truncate">
+            {whereText(e.row.cwd, w?.git)}
+            {w?.pr ? <Text color={PR_COLOR[w.pr.state]}>{` #${w.pr.number} (${w.pr.state})`}</Text> : null}
+          </Text>
+        </Box>
+      </Box>
+    );
+  };
 
   return (
     <Box flexDirection="column" width={cols}>
@@ -521,28 +552,10 @@ export function App({ startDir }: { startDir: string }) {
           <Text dimColor>WHERE</Text>
         </Box>
       )}
-      {entries.slice(start, start + maxRows).map((e, i) => {
-        const sel = start + i === cursor;
-        const w = where.get(e.row.cwd);
-        const name = `${e.row.name ?? e.row.sessionId.slice(0, 8)}${e.row.kind === 'interactive' ? ' (tty)' : ''}`;
-        return (
-          <Box key={e.row.sessionId}>
-            <Box width={2}><Text color="cyan">{sel ? '›' : ' '}</Text></Box>
-            <Box width={tierW + 2}><Text color={TIER_COLOR[e.tier]} bold={sel}>{tierLabel(e)}</Text></Box>
-            <Box width={9}><Text bold={sel}>{formatWait(e.since, now).padStart(7)}</Text></Box>
-            <Box width={nameW + 2}><Text bold={sel} wrap="truncate">{name}</Text></Box>
-            {ctxW > 0 && <Box width={Math.max(3, ctxW) + 2}><Text bold={sel}>{(ctxs.get(e.row.sessionId) ?? '').padStart(Math.max(3, ctxW))}</Text></Box>}
-            {costW > 0 && <Box width={Math.max(4, costW) + 2}><Text bold={sel}>{(costs.get(e.row.sessionId) ?? '').padStart(Math.max(4, costW))}</Text></Box>}
-            <Box flexGrow={1}>
-              <Text wrap="truncate">
-                {whereText(e.row.cwd, w?.git)}
-                {w?.pr ? <Text color={PR_COLOR[w.pr.state]}>{` #${w.pr.number} (${w.pr.state})`}</Text> : null}
-              </Text>
-            </Box>
-          </Box>
-        );
-      })}
-      {entries.length > maxRows && <Text dimColor>{`  ${cursor + 1}/${entries.length}`}</Text>}
+      {last && renderRow(last, cursor === 0)}
+      {last && rest.length > 0 && <Text> </Text>}
+      {rest.slice(start, start + ladderRows).map((e, i) => renderRow(e, (last ? 1 : 0) + start + i === cursor))}
+      {rest.length > ladderRows && <Text dimColor>{`  ${cursor + 1}/${list.length}`}</Text>}
       <Text> </Text>
       {message && <Text color="yellow">{message}</Text>}
       {mode.kind === 'discard' && (

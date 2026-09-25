@@ -116,14 +116,9 @@ export function formatWait(since: number | null, now: number): string {
   return `${Math.floor(h / 24)}d${h % 24}h`;
 }
 
-// Cursor after returning from attach: top row, or the next one if the top is the session we just
-// left and its tier did not change.
-export function cursorAfterAttach(
-  entries: Entry[],
-  left: { sessionId: string; key: string } | null,
-): number {
-  if (entries.length <= 1 || !left) return 0;
-  const top = entries[0];
-  if (top.row.sessionId === left.sessionId && top.tier === left.key) return 1;
-  return 0;
+// The session last left by attach is shown as its own group above the ladder, until the next
+// attach. It stays out of the ladder so it is not listed twice. `id` is the agent id.
+export function splitLast(entries: Entry[], id: string | null): { last: Entry | null; rest: Entry[] } {
+  const last = id ? entries.find((e) => e.row.id === id) ?? null : null;
+  return { last, rest: last ? entries.filter((e) => e !== last) : entries };
 }
