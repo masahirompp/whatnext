@@ -1,6 +1,9 @@
 ---
-status: accepted
+status: superseded
+superseded_by: 0010
 ---
+
+> Superseded by [ADR-0010](0010-workbench-lives-inside-whatnext.md)（サイクル4）。`ctrl+q l` で戻ったときは `claude attach` を残し、作業台は whatnext を閉じると閉じるようにした。作業台のキーを決めた。
 
 # 作業台は whatnext 専用の tmux サーバに置き、セッションの画面の上に popup で出す
 

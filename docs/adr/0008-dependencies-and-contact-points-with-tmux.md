@@ -4,12 +4,12 @@ status: accepted
 
 # 本体が依存するコマンドは `claude`、`git`、`tmux` だけにし、外部の出来事はセッションとして拾う（改訂2）
 
-[ADR-0005](0005-dependencies-and-contact-points.md) の改訂版。サイクル3の終わりに、作業台のために tmux を必須にした（[ADR-0007](0007-workbench-in-a-dedicated-tmux-server.md)）。また、起動したセッションからフックを受けるようにした（[ADR-0009](0009-receive-hooks-and-otel-from-launched-sessions.md)）。
+[ADR-0005](0005-dependencies-and-contact-points.md) の改訂版。サイクル3の終わりに、作業台のために tmux を必須にした（[ADR-0010](0010-workbench-lives-inside-whatnext.md)、改訂前は ADR-0007）。また、起動したセッションからフックを受けるようにした（[ADR-0009](0009-receive-hooks-and-otel-from-launched-sessions.md)）。
 
 whatnext 本体が依存するコマンドは `claude`、`git`、`tmux` だけにする。
 `git` を許すのは、`claude --bg` が worktree を使うため、whatnext を使う環境には事実上 `git` があるからである。
 `tmux` は作業台のために必須にする。popup（`display-popup`）を使うので 3.2 以上が要る（確かめたのは 3.7c）。whatnext は専用のサーバで使い、利用者の tmux の設定には触れない。
-URL やエディタを開く `open`、端末の設定を保存・復元する `stty`、フックが値を送る `curl` は、macOS と主な Linux に常にある基本コマンドなので、依存を増やすものとして扱わない。
+URL やエディタを開く `open`、端末の設定を保存・復元する `stty`、フックが値を送る `curl`、作業台で動いているもののコマンド行を引く `ps` は、macOS と主な Linux に常にある基本コマンドなので、依存を増やすものとして扱わない。
 
 次の基準のどれかに当たる機能は本体に入れず、別ツールにする。
 
