@@ -34,6 +34,7 @@ describe('tier rules (scenario 4)', () => {
     expect(got['sample-stopped']).toBeNull();
     expect(got['sample-done-after-stop']).toEqual({ tier: 'Review' });
     expect(got['sample-interactive-busy']).toEqual({ tier: 'Working' });
+    expect(got['sample-working-idle-after-deny']).toEqual({ tier: 'Question' });
   });
   it('drops interactive idle', () => {
     expect(classify({ kind: 'interactive', status: 'idle', pid: 1 })).toBeNull();

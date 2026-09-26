@@ -68,10 +68,34 @@ export function otelListening() {
   return listening;
 }
 
-/** Open the receiver on 127.0.0.1. Resolves false (silently) if the port is taken. */
-export function startOtel(): Promise<boolean> {
+/** Asks whoever holds the port whether it is a whatnext. */
+function whatnextAnswers(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port: OTEL_PORT, path: '/v1/whatnext', timeout: 1000 }, (res) => {
+      let body = '';
+      res.on('data', (c) => (body += c));
+      res.on('end', () => resolve(body.includes('"app":"whatnext"')));
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+/**
+ * Open the receiver on 127.0.0.1. 'taken' when some other program holds the
+ * port (run without hooks and OTel), 'running' when another whatnext does.
+ */
+export function startOtel(): Promise<'listening' | 'taken' | 'running'> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
+      if (req.method === 'GET' && req.url?.startsWith('/v1/whatnext')) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{"app":"whatnext"}');
+        return;
+      }
       const chunks: Buffer[] = [];
       req.on('data', (c) => chunks.push(c));
       req.on('end', () => {
@@ -86,11 +110,11 @@ export function startOtel(): Promise<boolean> {
         res.end('{}');
       });
     });
-    server.once('error', () => resolve(false));
+    server.once('error', () => void whatnextAnswers().then((yes) => resolve(yes ? 'running' : 'taken')));
     server.listen(OTEL_PORT, '127.0.0.1', () => {
       listening = true;
       server.unref();
-      resolve(true);
+      resolve('listening');
     });
   });
 }

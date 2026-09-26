@@ -21,7 +21,10 @@ for (const a of process.argv.slice(2)) {
   }
 }
 
-await startOtel();
+if ((await startOtel()) === 'running') {
+  console.error('whatnext is already running in another terminal. Use that one, or quit it first.');
+  process.exit(1);
+}
 const instance = render(<App />, { alternateScreen: true, exitOnCtrlC: false });
 await instance.waitUntilExit();
 process.exit(0);

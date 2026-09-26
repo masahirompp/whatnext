@@ -9,6 +9,7 @@ status: accepted
 whatnext 本体が依存するコマンドは `claude` と `git` だけにする。
 `git` を許すのは、`claude --bg` が worktree を使うため、whatnext を使う環境には事実上 `git` があるからである。
 URL やエディタを開くには OS の `open` を、attach の前後で端末の設定を保存・復元するには POSIX の `stty` を使う。どちらも macOS と Linux に常にある基本コマンドなので、依存を増やすものとして扱わない。
+whatnext が起動したセッションのフックが whatnext に値を送るには `curl` を使う。`curl` も macOS と主な Linux に標準で入っているので、同じ扱いにする（サイクル3で追加。フックのコマンドに whatnext の置き場所を書き込まずに済み、入れ直しの影響を受けない）。
 
 次の基準のどれかに当たる機能は本体に入れず、別ツールにする。
 

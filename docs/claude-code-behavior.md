@@ -80,7 +80,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - クラウドのセッションに端末から attach できない。`claude --cloud <id>` は「Attaching to an existing cloud session is not enabled for your account.」で断る。できるのは `claude -p "msg" --cloud <id>` で指示を送ることと、`--teleport` で手元に複製を作ることだけ。
 - routine の実行の状態を読む公開 API はない（routine の公開 API は `/fire` だけで、トークンに読み取りの権限はない）。`claude mcp serve` が公開する `RemoteTrigger`（非公式で契約はない）の `list_runs` なら読めるが、終わった・返事を待っている・認証で失敗した、の3つがどれも `active` / `idle` になり、違いは最後の応答の文面にしか出ない（2026-09-24）。
 - クラウドのセッションから手元のセッションに `SendMessage` できない。routine のセッションの `ListAgents` に手元のセッションは出ず、名前を指定して送っても届かない。逆向き（手元からクラウド）は届く。
-- 過去のセッションの一覧を機械で読む口はない。選べるのは `claude --resume` の対話式のピッカーだけ。`claude agents --json --all` は、説明では「完了した background のセッションも含める」だが、試したときは `--all` なしと同じ行しか返らず、どの行が足されるのかは分かっていない（2.1.282）。
+- 過去のセッションの一覧を機械で読む口はない。選べるのは `claude --resume` の対話式のピッカーだけ。`claude agents --json --all` は、`--all` なしの結果に `done` と `stopped` の `background` の行を足す（2.1.283。2.1.282 で試したときは同じ行しか返らなかったが、そのとき該当する行がなかった可能性がある）。
 
 ## OTel（2.1.282）
 
@@ -119,5 +119,6 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
   - `PreToolUse`：`tool_name`、`tool_input`、`tool_use_id`。
   - `Notification`：`message`、`title`、`notification_type`。
 - `PermissionRequest` の `command` フックが何も出力せず終了コード 0 で終わると、権限の確認はふだんどおりセッションに出る。
-- 権限の確認で `No` を選ぶとターンが中断され（`Interrupted · What should Claude do instead?`）、`Stop` は発火しない。
+- フックの `command` はシェルで実行される。`… 2>/dev/null; exit 0` と書けば、コマンドが失敗しても何も出ない。コマンドが 0 以外で終わると、セッションの画面に `Stop hook error: Failed with non-blocking status code: <stderr>` と出る。
+- 権限の確認で `No` を選ぶとターンが中断され（`Interrupted · What should Claude do instead?`）、`Stop` は発火しない。そのあと `--json` の行は `state: "working"`、`status: "idle"` のまま、次の指示でターンを終えるまで変わらない（90秒観測）。
 - 端末のタイトル（tmux の `pane_title`）は `✳ <name>` で、要約にはならない。`--name` なしのときは、最初のターンの途中で一時的に内容の説明（例：`docs/adr の ADR ファイル一覧と ADR-0003 の内容確認`）が出てから、短い名前に変わった。

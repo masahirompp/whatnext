@@ -55,6 +55,8 @@ export function classify(row: RawRow): { tier: Tier; reason?: string } | null {
   if (state === 'stopped') return null;
   if (state === 'failed') return { tier: 'Failed' };
   if (state === 'blocked' && row.pid == null) return { tier: 'Failed', reason: 'no process' };
+  // Denying a permission prompt interrupts the turn and leaves working + idle: it waits for your next instruction.
+  if (state === 'working' && row.status === 'idle') return { tier: 'Question' };
   if (row.status === 'busy' || state === 'working') return { tier: 'Working' };
   if (state === 'done') return { tier: 'Review' };
   const raw = [state, row.status].filter(Boolean).join(', ');

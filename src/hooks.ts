@@ -1,6 +1,5 @@
 // Hook events from sessions whatnext launched: the one-line summary under each
 // row and the time a session entered its current tier. Memory only (ADR-0002).
-import { fileURLToPath } from 'node:url';
 import type { Tier } from './model.js';
 
 type Mark = { text: string; at: number };
@@ -123,10 +122,13 @@ export function promptedAfter(sid: string, t: number) {
   return at !== undefined && at > t;
 }
 
-/** `hooks` for --settings: every event goes through the forwarder script. */
+/**
+ * `hooks` for --settings. The command holds no path to whatnext, so it keeps
+ * working after whatnext moves, and it stays silent when nobody listens.
+ */
 export function hooksSettings(port: number) {
-  const script = fileURLToPath(new URL('./hook.js', import.meta.url));
-  const hooks = [{ type: 'command', command: `"${process.execPath}" "${script}" ${port}`, timeout: 5 }];
+  const command = `curl -s -m 1 -o /dev/null --data-binary @- http://127.0.0.1:${port}/v1/hooks; exit 0`;
+  const hooks = [{ type: 'command', command, timeout: 5 }];
   return {
     UserPromptSubmit: [{ hooks }],
     Stop: [{ hooks }],
