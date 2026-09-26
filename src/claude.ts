@@ -4,7 +4,6 @@ import { parseAgentsJson, type RawRow } from './model.js';
 import { otelListening, otelSettingsJson } from './otel.js';
 
 export async function listAgents(): Promise<RawRow[]> {
-  if (process.env.WHATNEXT_DEMO) return (await import('./demo.js')).demoRows;
   const r = await run('claude', ['agents', '--json', '--all'], { timeoutMs: 20000 });
   if (r.error) throw new Error(r.error.includes('ENOENT') ? '`claude` was not found on PATH.' : r.error);
   if (r.code !== 0) throw new Error(`claude agents --json failed (exit ${r.code}): ${(r.stderr || r.stdout).trim()}`);

@@ -131,15 +131,6 @@ async function refresh(opts: { manual?: boolean } = {}) {
   const now = Date.now();
   if (raw) {
     const { visible, all } = toSessions(raw);
-    if (process.env.WHATNEXT_DEMO && !S.loaded) {
-      const { demoWaits } = await import('./demo.js');
-      const sidOf = (name: string) => raw.find((r) => r.name === name)?.sessionId;
-      for (const [w, t] of demoWaits) {
-        const ws = sidOf(w);
-        const ts = sidOf(t);
-        if (ws && ts) S.waits.set(ws, new Set([...(S.waits.get(ws) ?? []), ts]));
-      }
-    }
     rememberIds(raw);
     S.rawSessions = visible;
     S.allSids = all;
@@ -676,7 +667,7 @@ const TIER_COLOR: Record<Tier, string> = {
 const PR_COLOR = { open: 'green', draft: 'gray', merged: 'magenta', closed: 'red' } as const;
 
 function fmtCtx(n?: number) {
-  if (n == null) return '';
+  if (n == null) return '-';
   return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 }
 function fmtCost(n?: number) {
@@ -733,7 +724,7 @@ function nameWidth(r: Row) {
   return indent(r).length + r.name.length + (r.kind === 'interactive' ? 6 : 0) + (r.depth && S.holds.has(r.sid) ? 10 : 0);
 }
 
-/** One line of the table: SESSION / STATUS / WHERE / WAITING / CTX / COST. Shared by the header and rows. */
+/** One line of the table: SESSION / STATUS / WHERE / CTX / COST / WAITING. Shared by the header and rows. */
 function Columns(p: {
   cols: Cols;
   mark: React.ReactNode;
@@ -759,19 +750,17 @@ function Columns(p: {
       <Box width={cols.where} flexShrink={1} minWidth={5} marginRight={2}>
         {p.where}
       </Box>
-      <Box width={cols.wait} flexShrink={0} justifyContent="flex-end">
-        {p.wait}
+      <Box width={cols.ctx} flexShrink={0} justifyContent="flex-end">
+        {p.ctx}
       </Box>
-      {cols.ctx > 0 && (
-        <Box width={cols.ctx} marginLeft={2} flexShrink={0} justifyContent="flex-end">
-          {p.ctx}
-        </Box>
-      )}
       {cols.cost > 0 && (
         <Box width={cols.cost} marginLeft={2} flexShrink={0} justifyContent="flex-end">
           {p.cost}
         </Box>
       )}
+      <Box width={cols.wait} marginLeft={2} flexShrink={0} justifyContent="flex-end">
+        {p.wait}
+      </Box>
     </Box>
   );
 }
@@ -851,7 +840,6 @@ function ListView({ width, maxLines }: { width: number; maxLines: number }) {
   if (!S.rows.length) return <Text>No sessions need attention. Press n to start one.</Text>;
   const g = groups();
   const rowsAll = S.rows;
-  const hasCtx = rowsAll.some((r) => otelFor(r.sid)?.ctx != null);
   const hasCost = rowsAll.some((r) => otelFor(r.sid)?.cost != null);
   const cols: Cols = {
     tier: Math.max(6, ...rowsAll.map((r) => tierLabel(r).length)),
@@ -860,11 +848,11 @@ function ListView({ width, maxLines }: { width: number; maxLines: number }) {
       Math.max(7, ...flatOrder(g).map(nameWidth)),
       Math.max(12, Math.floor(width * 0.35)),
     ),
-    ctx: hasCtx ? 5 : 0,
+    ctx: 5,
     cost: hasCost ? 7 : 0,
     where: 0,
   };
-  const whereRoom = width - 2 - (cols.name + 2) - (cols.tier + 2) - 2 - cols.wait - (cols.ctx ? cols.ctx + 2 : 0) - (cols.cost ? cols.cost + 2 : 0);
+  const whereRoom = width - 2 - (cols.name + 2) - (cols.tier + 2) - cols.ctx - (cols.cost ? cols.cost + 2 : 0) - 2 - cols.wait;
   cols.where = Math.max(5, Math.min(whereRoom, Math.max(5, ...rowsAll.map(whereLen))));
   const showUpNext = g.last.length > 0 || g.hold.length > 0;
   const rowToLines = (r: Row): Line[] => rowLines(r, cols, now).map((node, i) => ({ key: `${r.sid}-${i}`, node, sid: i === 0 ? r.sid : undefined }));

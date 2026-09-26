@@ -96,7 +96,7 @@ describe('order and waiting time (scenarios 1-3)', () => {
     expect(t.get('w')!.since).toBeNull();
   });
   it('formats minutes', () => {
-    expect(formatWaiting(null, 0)).toBe('?');
+    expect(formatWaiting(null, 0)).toBe('-');
     expect(formatWaiting(0, 30000)).toBe('<1m');
     expect(formatWaiting(0, 5 * 60000)).toBe('5m');
     expect(formatWaiting(0, 125 * 60000)).toBe('2h05m');

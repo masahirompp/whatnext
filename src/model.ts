@@ -250,7 +250,7 @@ export function sortSessions<T extends Sortable>(xs: T[]): T[] {
 }
 
 export function formatWaiting(since: number | null, now: number) {
-  if (since == null) return '?';
+  if (since == null) return '-';
   const m = Math.floor((now - since) / 60000);
   if (m < 1) return '<1m';
   if (m < 60) return `${m}m`;
