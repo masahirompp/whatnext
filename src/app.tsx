@@ -176,7 +176,7 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 				continue;
 			}
 			if (b === 'Waiting' && a && targets.size) {
-				st.doneNotices.set(waiter, [...targets].map(nameOf));
+				st.doneNotices.set(waiter, [...targets]);
 			}
 		}
 		for (const w of [...st.doneNotices.keys()]) if (!st.waits.get(w)?.size) st.doneNotices.delete(w);
@@ -328,7 +328,8 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 			} finally {
 				if (saved) spawnSync('stty', [saved], {stdio: ['inherit', 'pipe', 'pipe']});
 				// Ink re-enters the alternate screen at the saved cursor position; start from the top.
-				process.stdout.write('\x1b[H');
+				// tmux leaves "[detached (from session …)]" / "[exited]" on the main screen; erase that line.
+				process.stdout.write('\x1b[1A\x1b[2K\x1b[H');
 				for (const s of sigs) process.removeListener(s, noop);
 				if (stdin._readableState) stdin._readableState.reading = false;
 				for (const l of listeners) stdin.on('readable', l);
@@ -650,8 +651,10 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 				const idx = order.indexOf(p.sid);
 				st.holds.set(p.sid, p.text.trim());
 				st.panel = null;
-				const nextSid = order.slice(idx + 1).find(x => x !== p.sid) ?? order.slice(0, idx).reverse()[0] ?? null;
-				st.cursor = nextSid;
+				// skip the rows that moved to the hold group together with this one
+				const moved = new Set(derive().view.hold.map(n => n.sid));
+				const ok = (x: string) => x !== p.sid && !moved.has(x);
+				st.cursor = order.slice(idx + 1).find(ok) ?? order.slice(0, idx).reverse().find(ok) ?? p.sid;
 				say(`Put ${nameOf(p.sid)} on hold. It comes back when you attach and work on it, or press h on it.`, 6000);
 				return;
 			}
@@ -720,7 +723,8 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 				const t = editText(p.query, input, key);
 				if (t !== null) {
 					p.query = t;
-					p.sel = 0;
+					// typing filters the existing sessions; select the first match
+					p.sel = t && waitItems(p.sid, t).length > 1 ? 1 : 0;
 				}
 			}
 			bump();
@@ -1019,7 +1023,7 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 		const running = s.id ? st.running.get(s.id) : undefined;
 		if (running?.length) noteLine('g', `⚙ ${running.join(' · ')}`, 'yellow');
 		const done = st.doneNotices.get(n.sid);
-		if (done?.length) noteLine('d', `↳ ${done.join(', ')} done`, 'green');
+		if (done?.length) noteLine('d', `↳ ${done.map(nameOf).join(', ')} done`, 'green');
 		const reason = st.holds.get(n.sid);
 		if (reason) noteLine('h', `↳ ${reason}`, 'gray');
 		return lines;
@@ -1085,10 +1089,14 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 	else if (st.loaded && !hasRows) bottom.push({key: 'empty', el: <Text dimColor>No sessions to show.</Text>});
 	if (msgText) bottom.push({key: 'msg', el: <Text color={st.refreshing ? 'gray' : st.message?.color} wrap="wrap">{msgText}</Text>});
 	const p = st.panel;
-	const menu = (items: {label: string; mark?: string}[], sel: number, max = 8) => {
-		const start = Math.max(0, Math.min(sel - Math.floor(max / 2), items.length - max));
-		return items.slice(start, start + max).map((it, i) => {
-			const idx = start + i;
+	const menu = (items: {label: string; mark?: string}[], sel: number, max = 8, pinLast = false) => {
+		const body = pinLast ? items.slice(0, -1) : items;
+		const bmax = pinLast ? max - 1 : max;
+		const start = Math.max(0, Math.min(sel - Math.floor(bmax / 2), body.length - bmax));
+		const idxs = body.slice(start, start + bmax).map((_, i) => start + i);
+		if (pinLast) idxs.push(items.length - 1);
+		return idxs.map(idx => {
+			const it = items[idx]!;
 			return {
 				key: `m-${idx}`,
 				el: (
@@ -1130,7 +1138,7 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 		const items = dirItems(p);
 		bottom.push({key: 'dt', el: <Text wrap="truncate-end"><Text bold>New session{p.waiter ? ` for ${nameOf(p.waiter)} to wait for` : ''} · directory:</Text> {p.query}<Text inverse> </Text></Text>});
 		if (!p.cands.length) bottom.push({key: 'dl', el: <Text dimColor>  loading...</Text>});
-		bottom.push(...menu(items.map(it => ({label: it.label})), p.sel));
+		bottom.push(...menu(items.map(it => ({label: it.label})), p.sel, 8, true));
 		help = 'type to filter · ↑↓ select · enter choose · esc cancel';
 	} else if (p?.kind === 'dirOther') {
 		bottom.push({key: 'do', el: <Text wrap="truncate-end"><Text bold>Directory:</Text> {p.text}<Text inverse> </Text></Text>});
