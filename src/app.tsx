@@ -28,10 +28,14 @@ import { launchBg, listAgents, removeSession, runInTerminal, stopSession } from 
 import { fetchPR, gitInfo, type Where } from './where.js';
 import { fetchUsage, type UsageItem } from './usage.js';
 import { otelFor } from './otel.js';
+import { hookSince, promptedAfter, summaryFor } from './hooks.js';
 import { displayNames, filterItems } from './filter.js';
 import { run } from './exec.js';
 
 // ---------------- state (mutable, read by key handlers) ----------------
+
+/** Startup options (set by cli.tsx before rendering). */
+export const OPTIONS = { compareWait: false };
 
 type Mode =
   | { kind: 'list' }
@@ -59,6 +63,7 @@ const S = {
   allSids: new Set<string>(),
   rows: [] as Row[],
   tracked: new Map<string, Tracked>(),
+  trackedOtel: new Map<string, Tracked>(), // --compare-wait: the same estimate from OTel
   lastRefreshAt: undefined as number | undefined,
   refreshing: false,
   loaded: false,
@@ -98,7 +103,9 @@ function recompute(prevRefreshAt: number | undefined) {
     if (S.tracked.get(w)?.tier === 'Waiting' && tiers.get(w) !== 'Waiting' && all) S.doneNotes.set(w, [...ts].map(nameOf));
     if (!all) S.doneNotes.delete(w);
   }
-  S.tracked = trackSince(S.tracked, tiers, prevRefreshAt, (sid) => otelFor(sid)?.lastEventAt);
+  S.tracked = trackSince(S.tracked, tiers, prevRefreshAt, hookSince);
+  if (OPTIONS.compareWait)
+    S.trackedOtel = trackSince(S.trackedOtel, tiers, prevRefreshAt, (sid, tier) => (tier === 'Working' ? undefined : otelFor(sid)?.lastEventAt));
   S.rows = visible.map((s) => ({ ...s, tier: tiers.get(s.sid)!, since: S.tracked.get(s.sid)?.since ?? null }));
 }
 
@@ -242,6 +249,7 @@ async function afterAttach(sid: string | undefined, before: Session | undefined,
       after.state !== before.state ||
       after.status !== before.status ||
       after.waitingFor !== before.waitingFor ||
+      promptedAfter(sid, startedAt) ||
       (o?.lastEventAt !== undefined && o.lastEventAt > startedAt);
     if (worked) S.holds.delete(sid);
   }
@@ -757,7 +765,8 @@ function Columns(p: {
 
 function HeaderRow({ cols }: { cols: Cols }) {
   const h = (t: string) => <Text dimColor>{t}</Text>;
-  return <Columns cols={cols} mark={h('')} name={h('SESSION')} status={h('STATUS')} where={h('WHERE')} wait={h('WAITING')} ctx={h('CTX')} />;
+  const wait = OPTIONS.compareWait ? 'HOOK/OTEL' : 'WAITING';
+  return <Columns cols={cols} mark={h('')} name={h('SESSION')} status={h('STATUS')} where={h('WHERE')} wait={h(wait)} ctx={h('CTX')} />;
 }
 
 function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
@@ -768,6 +777,8 @@ function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
   if (done && row.tier !== 'Waiting') notes.push(`↳ ${done.join(', ')} done`);
   const reason = S.holds.get(row.sid);
   if (reason) notes.push(`↳ ${reason}`);
+  const summary = summaryFor(row.sid, row.tier);
+  const otelSince = S.trackedOtel.get(row.sid)?.since ?? null;
   return [
     <Columns
       key={row.sid}
@@ -791,9 +802,25 @@ function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
         </Text>
       }
       where={<WhereCell row={row} />}
-      wait={<Text>{formatWaiting(row.since, now)}</Text>}
+      wait={
+        <Text>
+          {formatWaiting(row.since, now)}
+          {OPTIONS.compareWait ? <Text dimColor>/{formatWaiting(otelSince, now)}</Text> : ''}
+        </Text>
+      }
       ctx={<Text>{fmtCtx(o?.ctx)}</Text>}
     />,
+    ...(summary
+      ? [
+          <Box key={`${row.sid}-s`} paddingLeft={2}>
+            <Text wrap="truncate">
+              <Text dimColor>{row.noteRail ?? ''}</Text>
+              {'  '}
+              {summary}
+            </Text>
+          </Box>,
+        ]
+      : []),
     ...notes.map((n, i) => (
       <Box key={`${row.sid}-n${i}`} paddingLeft={2}>
         <Text dimColor wrap="truncate">
@@ -831,7 +858,7 @@ function ListView({ width, maxLines }: { width: number; maxLines: number }) {
   const rowsAll = S.rows;
   const cols: Cols = {
     tier: Math.max(6, ...rowsAll.map((r) => tierLabel(r).length)),
-    wait: 7,
+    wait: OPTIONS.compareWait ? 11 : 7,
     name: Math.min(
       Math.max(7, ...flatOrder(g).map(nameWidth)),
       Math.max(12, Math.floor(width * 0.35)),

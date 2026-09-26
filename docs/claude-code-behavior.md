@@ -104,3 +104,20 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 
 - 外で起動した `--bg` のセッションに、あとから OTel を付ける手段はない。`claude respawn <id>` はフラグを取らず、保存済みの起動時の引数で起動し直す。止めてから `claude --bg --resume <sessionId> --settings '...'` とすると、別の ID のコピーが起動し、元のセッションも残る。
 - 同じ版での `claude respawn` は、プロンプトキャッシュをほぼ捨てない（書き直しは 71 token だった）。版が変わる respawn は未確認。
+
+## フック（2.1.283）
+
+- `--bg` のセッションでも、`--settings` で渡したフックが動く。利用者の `~/.claude/settings.json` やプロジェクトの `.claude/settings.local.json` のフックと併せて動き、上書きされない（`Stop` で3つの出どころのフックがすべて動いた）。
+- `http` のフックは、送り先が閉じているとセッションの画面に `Stop hook error: connect ECONNREFUSED 127.0.0.1:<port>` と `Stop hook error occurred · ctrl+o to see` を出す。`command` のフックが何も出力せず終了コード 0 で終われば、何も出ない。
+- `http` のフックは、sandbox のプロキシを経由することがあり、組織の管理設定 `allowedHttpHookUrls` で送り先が制限されうる（`claude` の本体の文字列による。実際に届かない条件は未確認）。
+- 入力の主な項目：
+  - 共通：`session_id`（`--json` の `sessionId` と一致）、`transcript_path`、`cwd`、`permission_mode`、`hook_event_name`。
+  - `Stop`：`last_assistant_message`（最後の応答の全文。記録ファイルを読まずに済むように用意された項目）、`stop_hook_active`。
+  - `StopFailure`：`error`、`error_details`、`last_assistant_message`。
+  - `UserPromptSubmit`：`prompt`（全文）、`source`（`user` / `sdk` / `system` / `loop_wakeup` など）。`--name` を付けたときは `session_title` も付く。
+  - `PermissionRequest`：`tool_name`、`tool_input`（`Bash` なら `command` と `description`）、`permission_suggestions`。
+  - `PreToolUse`：`tool_name`、`tool_input`、`tool_use_id`。
+  - `Notification`：`message`、`title`、`notification_type`。
+- `PermissionRequest` の `command` フックが何も出力せず終了コード 0 で終わると、権限の確認はふだんどおりセッションに出る。
+- 権限の確認で `No` を選ぶとターンが中断され（`Interrupted · What should Claude do instead?`）、`Stop` は発火しない。
+- 端末のタイトル（tmux の `pane_title`）は `✳ <name>` で、要約にはならない。`--name` なしのときは、最初のターンの途中で一時的に内容の説明（例：`docs/adr の ADR ファイル一覧と ADR-0003 の内容確認`）が出てから、短い名前に変わった。

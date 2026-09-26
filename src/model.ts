@@ -212,13 +212,14 @@ export type Tracked = { tier: Tier; since: number | null };
 /**
  * Pessimistic waiting time. First sighting at the first refresh is unknown
  * (null). Any later change of tier (or a new row) counts from the previous
- * refresh. OTel's last event, when present, tightens it for non-Working tiers.
+ * refresh. A hint (the hook time the session entered this tier), when present,
+ * tightens it.
  */
 export function trackSince(
   prev: Map<string, Tracked>,
   tiers: Map<string, Tier>,
   prevRefreshAt: number | undefined,
-  otelLast: (sid: string) => number | undefined,
+  hint: (sid: string, tier: Tier) => number | undefined,
 ): Map<string, Tracked> {
   const next = new Map<string, Tracked>();
   for (const [sid, tier] of tiers) {
@@ -226,7 +227,7 @@ export function trackSince(
     let since: number | null;
     if (p && p.tier === tier) since = p.since;
     else since = prevRefreshAt ?? null;
-    const o = tier === 'Working' ? undefined : otelLast(sid);
+    const o = hint(sid, tier);
     if (o !== undefined) since = since == null ? o : Math.max(since, o);
     next.set(sid, { tier, since });
   }

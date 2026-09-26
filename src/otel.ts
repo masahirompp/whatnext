@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { hooksSettings, ingestHook } from './hooks.js';
 
 export const OTEL_PORT = 14318;
 
@@ -77,6 +78,7 @@ export function startOtel(): Promise<boolean> {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           if (req.url?.startsWith('/v1/logs')) ingestLogs(body);
+          else if (req.url?.startsWith('/v1/hooks')) ingestHook(body);
         } catch {
           // ignore malformed payloads
         }
@@ -93,9 +95,11 @@ export function startOtel(): Promise<boolean> {
   });
 }
 
-export function otelSettingsJson() {
+/** --settings for sessions whatnext launches: OTel logs and the hook forwarder. */
+export function launchSettingsJson() {
   const e = `http://127.0.0.1:${OTEL_PORT}`;
   return JSON.stringify({
+    hooks: hooksSettings(OTEL_PORT),
     env: {
       CLAUDE_CODE_ENABLE_TELEMETRY: '1',
       OTEL_LOGS_EXPORTER: 'otlp',

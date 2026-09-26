@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { run } from './exec.js';
 import { parseAgentsJson, type RawRow } from './model.js';
-import { otelListening, otelSettingsJson } from './otel.js';
+import { launchSettingsJson, otelListening } from './otel.js';
 
 export async function listAgents(): Promise<RawRow[]> {
   const r = await run('claude', ['agents', '--json', '--all'], { timeoutMs: 20000 });
@@ -43,7 +43,7 @@ export type LaunchResult = { id?: string; output: string; code: number };
 export async function launchBg(cwd: string, model?: string): Promise<LaunchResult> {
   const args = ['--bg'];
   if (model) args.push('--model', model);
-  if (otelListening()) args.push('--settings', otelSettingsJson());
+  if (otelListening()) args.push('--settings', launchSettingsJson());
   const r = await run('claude', args, { cwd, timeoutMs: 120000 });
   const output = `${r.stdout}${r.stderr}`.trim() || r.error || '';
   const m = output.match(/backgrounded\s*·\s*([0-9a-f]{6,})/i);

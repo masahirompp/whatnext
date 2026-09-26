@@ -90,10 +90,16 @@ describe('order and waiting time (scenarios 1-3)', () => {
     expect(t.get('a')!.since).toBe(2000);
     expect(t.get('b')!.since).toBe(1000);
   });
-  it('uses the OTel last event outside Working', () => {
-    const t = trackSince(new Map(), new Map([['a', 'Permission' as const], ['w', 'Working' as const]]), undefined, () => 1234);
+  it('uses the hint for the tier', () => {
+    const hint = (_: string, tier: string) => (tier === 'Working' ? undefined : 1234);
+    const t = trackSince(new Map(), new Map([['a', 'Permission' as const], ['w', 'Working' as const]]), undefined, hint);
     expect(t.get('a')!.since).toBe(1234);
     expect(t.get('w')!.since).toBeNull();
+  });
+  it('a newer hint moves the time forward when the tier is re-entered between refreshes', () => {
+    let t = trackSince(new Map(), new Map([['a', 'Review' as const]]), undefined, () => 1000);
+    t = trackSince(t, new Map([['a', 'Review' as const]]), 5000, () => 4000);
+    expect(t.get('a')!.since).toBe(4000);
   });
   it('formats minutes', () => {
     expect(formatWaiting(null, 0)).toBe('-');

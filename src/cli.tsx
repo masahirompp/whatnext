@@ -1,8 +1,25 @@
 #!/usr/bin/env node
 import React from 'react';
 import { render } from 'ink';
-import { App } from './app.js';
+import { App, OPTIONS } from './app.js';
 import { startOtel } from './otel.js';
+
+const USAGE = `Usage: whatnext [options]
+
+Options:
+  --compare-wait  Show the waiting time from hooks and from OTel side by side (HOOK/OTEL).
+  -h, --help      Show this help.`;
+
+for (const a of process.argv.slice(2)) {
+  if (a === '--compare-wait') OPTIONS.compareWait = true;
+  else if (a === '-h' || a === '--help') {
+    console.log(USAGE);
+    process.exit(0);
+  } else {
+    console.error(`whatnext: unknown option ${a}\n\n${USAGE}`);
+    process.exit(2);
+  }
+}
 
 await startOtel();
 const instance = render(<App />, { alternateScreen: true, exitOnCtrlC: false });
