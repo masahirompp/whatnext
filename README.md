@@ -9,7 +9,7 @@ When several sessions are waiting at once, whatnext ranks them by how much it co
 ## Principles
 
 - **Reads session state only from `claude agents --json`.** No private files, no screen scraping. Account usage comes from `claude`'s own `/usage`, which calls no model.
-- **Sessions whatnext starts report cost and context size to whatnext over OpenTelemetry on 127.0.0.1:14318, only while whatnext is open.** Nothing leaves your machine and nothing is stored. Rows are still ranked from `claude agents --json` alone.
+- **Sessions whatnext starts send their context size (OpenTelemetry) and hook events to whatnext on 127.0.0.1:14318, only while whatnext is open.** Nothing leaves your machine and nothing is stored. Rows are still ranked from `claude agents --json` alone.
 - **Writes nothing and keeps no state.** Closing whatnext loses nothing; sessions started elsewhere show up too. Your settings are never modified.
 - **Never answers for you.** No input injection or auto-approval — you attach and act yourself.
 
@@ -22,7 +22,7 @@ npx @masahirompp/whatnext
 ## Requirements
 
 - Node.js 22 or later
-- [Claude Code](https://code.claude.com) (`claude`) and `git`
+- [Claude Code](https://code.claude.com) (`claude`), `git`, and `tmux` 3.2 or later (whatnext runs sessions in its own tmux server; your tmux config is not touched)
 - Optional: `ghq` (more working-directory candidates), `gh` (PR numbers on rows, and opening those PRs). Without them, whatnext works the same with less shown.
 
 ## Documentation

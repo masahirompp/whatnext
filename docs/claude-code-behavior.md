@@ -12,12 +12,12 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 | `sessionId` | string | ○ | ○ | UUID。同じ値の行が `background` と `interactive` の両方に出ることがある |
 | `id` | string | ○ | なし | `sessionId` の先頭 8 文字。`claude attach` / `stop` / `rm` に渡す |
 | `cwd` | string | ○ | ○ | 作業ディレクトリ。worktree に移るとそのパスに変わる |
-| `name` | string | ○ | ○ | `--name` の値、なければ自動の名前（変わりうる） |
+| `name` | string | ないことがある | ○ | `--name` の値、なければ自動の名前（変わりうる）。2.1.282 で、`state: stopped` の行と、`pid` のない `state: blocked` の行に `name` キーがないものを見た。ないときは `id` を名前として扱う |
 | `startedAt` | number | ○ | ○ | エポックミリ秒。`claude stop` のあとは値がわずかに変わる（1秒未満）ので、行の特定には使わない |
 | `pid` | number | 動いている間だけ | ○ | 止まったセッションにはキーごとない |
 | `state` | string | ○ | なし | `working` / `done` / `blocked` / `failed` / `stopped` |
 | `status` | string | 動いている間だけ | ○ | `busy` / `idle` / `waiting` |
-| `waitingFor` | string | 待っている間だけ | 待っている間だけ | `"permission prompt"` / `"input needed"` / `"sandbox request"` / `"worker request"` / `"dialog open"`（公式ドキュメント）。実機で見たのは最初の2つ |
+| `waitingFor` | string | 待っている間だけ | 待っている間だけ | `"permission prompt"` / `"input needed"` / `"sandbox request"` / `"worker request"` / `"dialog open"`（公式ドキュメント）。実機で見たのは最初の3つ（`"sandbox request"` は 2.1.283） |
 
 - 値が `null` の行は見ていない。ないときはキーごと省かれる。
 - 動いている `background` の行の組み合わせ: 作業中は `working` + `busy`、ターン終了後は `done` + `idle`、プロンプトなしで起動した直後は `blocked` + `idle`、権限待ちは `blocked` + `waiting` + `waitingFor`、失敗は `failed` + `idle`。
@@ -39,6 +39,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 ### 起動（`--bg`）
 
 - プロンプトなしで起動すると、終了コード 0 で `backgrounded · <id> · <name> (idle — send a prompt to start)` を返す。`--json` では `state: "blocked"`、`status: "idle"`、`pid` あり、`waitingFor` なしになる（2.1.281）。
+- バックグラウンドのサービスが止まっている状態で、プロンプト付きの `claude --bg` を実行すると、`Starting background service…` に続いて `backgrounded · <id> · <name>` が出た。そのセッションは1分以上 `blocked` + `idle` + `pid` ありのままで、最初のターンが始まらなかった。直後に続けて起動した3つは正常だった。1回だけの観測で、原因は確かめていない（サービスの起動と重なった最初の1つだけで起きた可能性）（2.1.282）。whatnext の `n` はプロンプトなしで起動するので直接の影響はないが、プロンプト付きで起動する外部 watcher には影響しうる。
 - 起動の出力（`backgrounded · <id> …`）には `id`（`sessionId` の先頭 8 文字）だけがあり、`sessionId` はない。起動したセッションを `sessionId` で扱うには、次に `--json` を読んで `id` から引く。
 - 存在しないモデル名でも、終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る。
 - `--model` の別名（`fable` / `opus` / `sonnet` など）は、そのファミリーの最新モデルを指す（`claude --help` の説明）。フルネームも受け付ける。モデルの一覧を取る公式の口はない。
@@ -49,15 +50,29 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 ### attach
 
 - 離脱キーは Ctrl+Z でシェルに戻る（`claude attach --help` に記載）。`←` は Agent View に戻る。
+- `claude attach --help` の説明は「← returns to agent view, Ctrl+Z drops back to your shell. The session keeps running either way.」。attach の中で空のプロンプトの ← を押すと Agent View に入り、端末のタイトル（tmux の `pane_title`）が `claude agents`、続いて `1 awaiting input · claude agents` に変わる。Agent View から `Enter` でセッションに戻ると、タイトルはセッション名に戻る。セッションの画面にいる間、タイトルは tmux の既定（ホスト名）のことがある。← で変わるのは attach のクライアントだけで、セッション本体の `--json` の値は変わらない（2.1.283）。
+- `--bg` でない普通の `claude`（対話セッション）にも `← for agents` がある。空のプロンプトで ← を押すと Agent View に入り、「Your conversation moved to the background」と出て、会話が新しい `background` のセッションに移る。`--json` からは元の `interactive` の行が消え、新しい `id` と `pid` を持つ `background` の行（`blocked` + `idle`）ができる。名前は引き継がれず、`id` と同じ値になる（2.1.283）。
+- 同じセッションに `claude attach` を2つ同時につなげる。後からつないでも先のクライアントは切れず、両方に同じ画面が出る。一方を Ctrl+Z で離脱しても、もう一方はつながったまま。`claude attach` 1本あたり RSS は約 140MB（2.1.283、tmux 3.7c）。
+- attach していても `--json` の `state` / `status` は変わらない（クライアント0・1・2本、recap の生成後のいずれでも同じ）。
+- ウィンドウの大きさを変えると、claude は画面を描き直し、折り返しも追従する。
+- 処理中は入力欄の上に `✽ <動詞>… (27s · ↓ 2.5k tokens)` が出て、終わると `✻ <動詞> for 27s · done 11:35 AM` に変わる。権限待ちでは、実行しようとしているコマンドと選択肢がそのまま画面に出る。
 - whatnext の子として動かした `claude attach` で Ctrl+Z を押すと、子が自分で終了する（終了コード 0、signal なし）。親は止まらず、端末のジョブ制御は働かない。attach から戻ったことは子の終了で分かる。
 - attach して何も入力せずに離脱しても、`--json` の `state`、`status`、`waitingFor` は変わらない（`blocked` + `idle` で確認。2.1.282）。`done` や `waitingFor` のある状態で同じかと、OTel を送るセッションで attach しただけでイベントが飛ぶかは未確認。
-- `pid` のない `blocked` の行（最初の応答の前に止まったセッション）に attach すると、`Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らない。やり直すコマンドとして `claude respawn <id>` がある。
+- `pid` のない `blocked` の行に attach すると、2.1.281 では `Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らなかった（やり直すコマンドとして `claude respawn <id>` がある）。2.1.282 では、会話の記録があるセッションも、記録のない（プロンプトなしで起動してプロセスを `kill -9` で落とした）セッションも、attach で起き直り、離脱後は `blocked` + `idle` + `pid` ありになった。`Couldn't wake` は再現できなかった。
 - `--bg` のセッションの権限要求に外部から答える口はない。`--permission-prompts` は `--print` 専用。
 - `claude logs` の出力は解析できない。画面の再描画の制御コードそのもの。
+
+### recap（away summary）（2.1.283）
+
+- 端末のフォーカスが外れた状態で、ターンの終了から既定で3分（ただしプロンプトキャッシュが切れる前）たつと生成される。ユーザーのプロンプトが3回以上あり、前回の recap から2回以上増えていることが条件。API を呼ぶ。
+- 常駐させたクライアントはフォーカスの通知を受けないので、放っておいても生成されなかった（3分半待った）。新しく attach しただけでも出ない。フォーカスが外れた通知（`ESC [O`）を送ると数秒で生成された。
+- recap はセッションの記録に残り、あとからつないだクライアントにも出る。
+- 強制的に生成させる非公式の経路として `~/.claude/jobs/<id>/recap.trigger` がある（本体の文字列 `RECAP_TRIGGER_FILE`）。jobs 以下は非公式なので使わない（ADR-0001）。
 
 ### worktree、停止、削除
 
 - `--bg` は、設定 `worktree.bgIsolation: "worktree"` のとき、起動した時点では worktree を作らず、ファイルを編集する時点で `<repo>/.claude/worktrees/<名前>` に作って移る。`--json` の `cwd` もそのパスに変わる。`-w` を付けると起動した時点で作る（2.1.281）。
+- worktree に移ったセッションを `claude stop` で止めると、`--json` の `cwd` は worktree のパスから元のリポジトリの根に戻る。worktree 自体は残る（`claude rm` の断りの文言に worktree のパスが出る）（2.1.282）。
 - この worktree は、ignore していないリポジトリでは `git status` に `?? .claude/` と出て、`git add -A` で gitlink として紛れ込みうる。ignore（グローバルの `core.excludesFile` が手軽）は利用者が足す。whatnext は書き込まない。
 - worktree で作業した `--bg` のセッションは、worktree のブランチに自分でコミットを残す。そのため、止めたあとの `claude rm` は `1 unpushed commit ... deleting the worktree would lose it` と断るのが普通になり、push するか `--discard-unpushed <commit>@<worktree-id>` を渡すよう案内する（2.1.281）。
 - `claude rm` は worktree もブランチも消す。未 push のコミットか未コミットの変更があると断る（2.1.281）。
@@ -122,3 +137,13 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - フックの `command` はシェルで実行される。`… 2>/dev/null; exit 0` と書けば、コマンドが失敗しても何も出ない。コマンドが 0 以外で終わると、セッションの画面に `Stop hook error: Failed with non-blocking status code: <stderr>` と出る。
 - 権限の確認で `No` を選ぶとターンが中断され（`Interrupted · What should Claude do instead?`）、`Stop` は発火しない。そのあと `--json` の行は `state: "working"`、`status: "idle"` のまま、次の指示でターンを終えるまで変わらない（90秒観測）。
 - 端末のタイトル（tmux の `pane_title`）は `✳ <name>` で、要約にはならない。`--name` なしのときは、最初のターンの途中で一時的に内容の説明（例：`docs/adr の ADR ファイル一覧と ADR-0003 の内容確認`）が出てから、短い名前に変わった。
+- sandbox に弾かれた Bash は `PostToolUseFailure` に入り、`tool_input.command` と `error` を持つ。`error` は `Exit code 7` のような終了コードだけで、sandbox が原因だという印はない（同じコマンドは sandbox の外では成功した）。モデル（haiku）の応答も、sandbox が原因だとは気づかなかった（2.1.283）。
+- sandbox で `allowUnsandboxedCommands: false` のとき、許可していない接続先へのネットワークアクセスは `waitingFor: "sandbox request"` で止まる（2.1.283）。
+
+### モデルへの指示（本体の文字列、2.1.283）
+
+- 人にシェルのコマンドを動かしてもらう必要があるときは、プロンプトに `! <command>` と打つよう勧めよ、という指示がある（一部の構成では付かない）。
+- sandbox の構成で `dangerouslyDisableSandbox` が無効なときは、「タスクに必要なコマンドが sandbox の制限で失敗したら、どの制限に当たったかを人に伝えよ。sandbox の設定を変えるのは人の判断」という指示がある。条件によって、「`/sandbox exclude <pattern>` で除外するか、`!` を付けて自分で動かすこと」が続く。
+- SDK の説明には「ローカルの TUI の `!cmd` の経路は sandbox なし」とある。ただし、sandbox の設定で credential のファイルを読めなくしている環境では、`!` で打ったコマンドも読めずに失敗する（利用者の環境で繰り返し確認）。
+- 公式ドキュメントに載っていないキー操作 `app:toggleTerminal`（既定のキーなし）がある。中身は確かめていない。
+- どれも公開された仕様ではなく、版によって変わりうる。

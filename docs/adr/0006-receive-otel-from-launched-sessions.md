@@ -1,6 +1,9 @@
 ---
-status: accepted
+status: superseded
+superseded_by: 0009
 ---
+
+> Superseded by [ADR-0009](0009-receive-hooks-and-otel-from-launched-sessions.md)（サイクル3）。フックを受けるようになり、COST の列をやめた。
 
 # whatnext が起動したセッションには OTel を付け、起動している間だけ受ける
 
