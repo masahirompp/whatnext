@@ -670,10 +670,6 @@ function fmtCtx(n?: number) {
   if (n == null) return '-';
   return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 }
-function fmtCost(n?: number) {
-  return n == null ? '' : `$${n.toFixed(2)}`;
-}
-
 function UsageLine() {
   if (!S.usage) return null;
   return (
@@ -714,7 +710,7 @@ function WhereCell({ row }: { row: Row }) {
   );
 }
 
-type Cols = { tier: number; wait: number; name: number; ctx: number; cost: number; where: number };
+type Cols = { tier: number; wait: number; name: number; ctx: number; where: number };
 
 function indent(row: Row) {
   return row.prefix ?? '';
@@ -724,7 +720,7 @@ function nameWidth(r: Row) {
   return indent(r).length + r.name.length + (r.kind === 'interactive' ? 6 : 0) + (r.depth && S.holds.has(r.sid) ? 10 : 0);
 }
 
-/** One line of the table: SESSION / STATUS / WHERE / CTX / COST / WAITING. Shared by the header and rows. */
+/** One line of the table: SESSION / STATUS / WHERE / CTX / WAITING. Shared by the header and rows. */
 function Columns(p: {
   cols: Cols;
   mark: React.ReactNode;
@@ -733,7 +729,6 @@ function Columns(p: {
   where: React.ReactNode;
   wait: React.ReactNode;
   ctx: React.ReactNode;
-  cost: React.ReactNode;
 }) {
   const { cols } = p;
   return (
@@ -753,11 +748,6 @@ function Columns(p: {
       <Box width={cols.ctx} flexShrink={0} justifyContent="flex-end">
         {p.ctx}
       </Box>
-      {cols.cost > 0 && (
-        <Box width={cols.cost} marginLeft={2} flexShrink={0} justifyContent="flex-end">
-          {p.cost}
-        </Box>
-      )}
       <Box width={cols.wait} marginLeft={2} flexShrink={0} justifyContent="flex-end">
         {p.wait}
       </Box>
@@ -767,7 +757,7 @@ function Columns(p: {
 
 function HeaderRow({ cols }: { cols: Cols }) {
   const h = (t: string) => <Text dimColor>{t}</Text>;
-  return <Columns cols={cols} mark={h('')} name={h('SESSION')} status={h('STATUS')} where={h('WHERE')} wait={h('WAITING')} ctx={h('CTX')} cost={h('COST')} />;
+  return <Columns cols={cols} mark={h('')} name={h('SESSION')} status={h('STATUS')} where={h('WHERE')} wait={h('WAITING')} ctx={h('CTX')} />;
 }
 
 function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
@@ -803,7 +793,6 @@ function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
       where={<WhereCell row={row} />}
       wait={<Text>{formatWaiting(row.since, now)}</Text>}
       ctx={<Text>{fmtCtx(o?.ctx)}</Text>}
-      cost={<Text>{fmtCost(o?.cost)}</Text>}
     />,
     ...notes.map((n, i) => (
       <Box key={`${row.sid}-n${i}`} paddingLeft={2}>
@@ -840,7 +829,6 @@ function ListView({ width, maxLines }: { width: number; maxLines: number }) {
   if (!S.rows.length) return <Text>No sessions need attention. Press n to start one.</Text>;
   const g = groups();
   const rowsAll = S.rows;
-  const hasCost = rowsAll.some((r) => otelFor(r.sid)?.cost != null);
   const cols: Cols = {
     tier: Math.max(6, ...rowsAll.map((r) => tierLabel(r).length)),
     wait: 7,
@@ -849,10 +837,9 @@ function ListView({ width, maxLines }: { width: number; maxLines: number }) {
       Math.max(12, Math.floor(width * 0.35)),
     ),
     ctx: 5,
-    cost: hasCost ? 7 : 0,
     where: 0,
   };
-  const whereRoom = width - 2 - (cols.name + 2) - (cols.tier + 2) - cols.ctx - (cols.cost ? cols.cost + 2 : 0) - 2 - cols.wait;
+  const whereRoom = width - 2 - (cols.name + 2) - (cols.tier + 2) - cols.ctx - 2 - cols.wait;
   cols.where = Math.max(5, Math.min(whereRoom, Math.max(5, ...rowsAll.map(whereLen))));
   const showUpNext = g.last.length > 0 || g.hold.length > 0;
   const rowToLines = (r: Row): Line[] => rowLines(r, cols, now).map((node, i) => ({ key: `${r.sid}-${i}`, node, sid: i === 0 ? r.sid : undefined }));

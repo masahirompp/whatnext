@@ -6,7 +6,6 @@ type SessionStats = {
   lastEventAt?: number; // event time of the last log (ms), excluding Notification hooks
   receivedAt?: number; // wall-clock time we last received anything for it
   ctx?: number;
-  costByKey: Map<string, number>;
 };
 
 const stats = new Map<string, SessionStats>();
@@ -14,7 +13,7 @@ let listening = false;
 
 function get(sid: string) {
   let s = stats.get(sid);
-  if (!s) stats.set(sid, (s = { costByKey: new Map() }));
+  if (!s) stats.set(sid, (s = {}));
   return s;
 }
 
@@ -58,33 +57,10 @@ export function ingestLogs(body: any) {
   }
 }
 
-export function ingestMetrics(body: any) {
-  for (const rm of body.resourceMetrics ?? []) {
-    const res = attrs(rm.resource?.attributes);
-    for (const sm of rm.scopeMetrics ?? []) {
-      for (const m of sm.metrics ?? []) {
-        if (!String(m.name).endsWith('cost.usage')) continue;
-        for (const dp of m.sum?.dataPoints ?? []) {
-          const a = { ...res, ...attrs(dp.attributes) };
-          const sid = a['session.id'] as string | undefined;
-          if (!sid) continue;
-          const s = get(sid);
-          s.receivedAt = Date.now();
-          const key = JSON.stringify(Object.entries(a).filter(([k]) => k !== 'session.id').sort());
-          const v = Number(dp.asDouble ?? dp.asInt ?? 0);
-          if (m.sum?.aggregationTemporality === 1) s.costByKey.set(key, (s.costByKey.get(key) ?? 0) + v);
-          else s.costByKey.set(key, v);
-        }
-      }
-    }
-  }
-}
-
 export function otelFor(sid: string) {
   const s = stats.get(sid);
   if (!s) return undefined;
-  const cost = s.costByKey.size ? [...s.costByKey.values()].reduce((a, b) => a + b, 0) : undefined;
-  return { ctx: s.ctx, cost, lastEventAt: s.lastEventAt, receivedAt: s.receivedAt };
+  return { ctx: s.ctx, lastEventAt: s.lastEventAt, receivedAt: s.receivedAt };
 }
 
 export function otelListening() {
@@ -101,7 +77,6 @@ export function startOtel(): Promise<boolean> {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           if (req.url?.startsWith('/v1/logs')) ingestLogs(body);
-          else if (req.url?.startsWith('/v1/metrics')) ingestMetrics(body);
         } catch {
           // ignore malformed payloads
         }
@@ -123,12 +98,9 @@ export function otelSettingsJson() {
   return JSON.stringify({
     env: {
       CLAUDE_CODE_ENABLE_TELEMETRY: '1',
-      OTEL_METRICS_EXPORTER: 'otlp',
       OTEL_LOGS_EXPORTER: 'otlp',
       OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
       OTEL_EXPORTER_OTLP_ENDPOINT: e,
-      OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: 'cumulative',
-      OTEL_METRIC_EXPORT_INTERVAL: '10000',
       OTEL_LOGS_EXPORT_INTERVAL: '2000',
     },
   });
