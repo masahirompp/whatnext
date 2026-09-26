@@ -261,7 +261,14 @@ export function formatWaiting(since: number | null, now: number) {
 
 // ---- grouping ----
 
-export type Row = Session & { tier: Tier; since: number | null; depth?: number };
+export type Row = Session & {
+  tier: Tier;
+  since: number | null;
+  depth?: number;
+  prefix?: string; // tree connectors for nested rows, e.g. "│ └ "
+  noteRail?: string; // rails to draw on note lines under the row
+  groupPos?: 'first' | 'mid' | 'last'; // position inside a tree of 2+ rows
+};
 /** Rows flattened in display order; each tree is a waiter with its targets nested below. */
 export type Groups = { last: Row[]; ladder: Row[]; hold: Row[]; ladderTop?: string };
 
@@ -295,11 +302,16 @@ export function group(rows: Row[], lastAttached: string | undefined, holds: Map<
     .filter((r) => !parent.has(r.sid))
     .map((root) => {
       const flat: Row[] = [];
-      const walk = (r: Row, depth: number) => {
-        flat.push({ ...r, depth });
-        for (const c of children.get(r.sid) ?? []) walk(c, depth + 1);
+      const walk = (r: Row, depth: number, rails: boolean[], last: boolean) => {
+        const railStr = rails.map((more) => (more ? '│ ' : '  ')).join('');
+        const prefix = depth === 0 ? '' : railStr + (last ? '└ ' : '├ ');
+        const cs = children.get(r.sid) ?? [];
+        const noteRail = (depth === 0 ? '' : railStr + (last ? '  ' : '│ ')) + (cs.length ? '│ ' : '  ');
+        flat.push({ ...r, depth, prefix, noteRail });
+        cs.forEach((c, i) => walk(c, depth + 1, depth === 0 ? [] : [...rails, !last], i === cs.length - 1));
       };
-      walk(root, 0);
+      walk(root, 0, [], true);
+      if (flat.length > 1) flat.forEach((r, i) => (r.groupPos = i === 0 ? 'first' : i === flat.length - 1 ? 'last' : 'mid'));
       const counted = flat.filter((r) => r.depth === 0 || !holds.has(r.sid));
       return { root, flat, best: sortSessions(counted)[0] };
     })

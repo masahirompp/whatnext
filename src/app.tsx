@@ -131,6 +131,15 @@ async function refresh(opts: { manual?: boolean } = {}) {
   const now = Date.now();
   if (raw) {
     const { visible, all } = toSessions(raw);
+    if (process.env.WHATNEXT_DEMO && !S.loaded) {
+      const { demoWaits } = await import('./demo.js');
+      const sidOf = (name: string) => raw.find((r) => r.name === name)?.sessionId;
+      for (const [w, t] of demoWaits) {
+        const ws = sidOf(w);
+        const ts = sidOf(t);
+        if (ws && ts) S.waits.set(ws, new Set([...(S.waits.get(ws) ?? []), ts]));
+      }
+    }
     rememberIds(raw);
     S.rawSessions = visible;
     S.allSids = all;
@@ -689,6 +698,12 @@ function UsageLine() {
   );
 }
 
+function whereLen(row: Row) {
+  const w = S.where.get(row.cwd);
+  if (!w) return path.basename(row.cwd).length;
+  return (w.repo + (w.branch ? ` ${w.branch}` : '') + (w.worktree ? ' (wt)' : '') + (w.pr ? ` #${w.pr.number} (${w.pr.state})` : '')).length;
+}
+
 function WhereCell({ row }: { row: Row }) {
   const w = S.where.get(row.cwd);
   if (!w) return <Text wrap="truncate">{path.basename(row.cwd)}</Text>;
@@ -708,10 +723,62 @@ function WhereCell({ row }: { row: Row }) {
   );
 }
 
-type Cols = { tier: number; wait: number; name: number; ctx: number; cost: number };
+type Cols = { tier: number; wait: number; name: number; ctx: number; cost: number; where: number };
 
 function indent(row: Row) {
-  return row.depth ? `${'  '.repeat(row.depth - 1)}└ ` : '';
+  return row.prefix ?? '';
+}
+
+function nameWidth(r: Row) {
+  return indent(r).length + r.name.length + (r.kind === 'interactive' ? 6 : 0) + (r.depth && S.holds.has(r.sid) ? 10 : 0);
+}
+
+/** One line of the table: SESSION / STATUS / WHERE / WAITING / CTX / COST. Shared by the header and rows. */
+function Columns(p: {
+  cols: Cols;
+  mark: React.ReactNode;
+  name: React.ReactNode;
+  status: React.ReactNode;
+  where: React.ReactNode;
+  wait: React.ReactNode;
+  ctx: React.ReactNode;
+  cost: React.ReactNode;
+}) {
+  const { cols } = p;
+  return (
+    <Box>
+      <Box width={2} flexShrink={0}>
+        {p.mark}
+      </Box>
+      <Box width={cols.name} marginRight={2} flexShrink={0}>
+        {p.name}
+      </Box>
+      <Box width={cols.tier} marginRight={2} flexShrink={0}>
+        {p.status}
+      </Box>
+      <Box width={cols.where} flexShrink={1} minWidth={5} marginRight={2}>
+        {p.where}
+      </Box>
+      <Box width={cols.wait} flexShrink={0} justifyContent="flex-end">
+        {p.wait}
+      </Box>
+      {cols.ctx > 0 && (
+        <Box width={cols.ctx} marginLeft={2} flexShrink={0} justifyContent="flex-end">
+          {p.ctx}
+        </Box>
+      )}
+      {cols.cost > 0 && (
+        <Box width={cols.cost} marginLeft={2} flexShrink={0} justifyContent="flex-end">
+          {p.cost}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function HeaderRow({ cols }: { cols: Cols }) {
+  const h = (t: string) => <Text dimColor>{t}</Text>;
+  return <Columns cols={cols} mark={h('')} name={h('SESSION')} status={h('STATUS')} where={h('WHERE')} wait={h('WAITING')} ctx={h('CTX')} cost={h('COST')} />;
 }
 
 function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
@@ -723,45 +790,37 @@ function rowLines(row: Row, cols: Cols, now: number): React.ReactNode[] {
   const reason = S.holds.get(row.sid);
   if (reason) notes.push(`↳ ${reason}`);
   return [
-    <Box key={row.sid}>
-      <Box width={2} flexShrink={0}>
+    <Columns
+      key={row.sid}
+      cols={cols}
+      mark={
         <Text color={sel ? 'cyan' : undefined} bold={sel}>
           {sel ? '> ' : '  '}
         </Text>
-      </Box>
-      <Box width={cols.tier} marginRight={1} flexShrink={0}>
-        <Text color={TIER_COLOR[row.tier]} wrap="truncate">
-          {tierLabel(row)}
-        </Text>
-      </Box>
-      <Box width={cols.wait} marginRight={2} flexShrink={0} justifyContent="flex-end">
-        <Text>{formatWaiting(row.since, now)}</Text>
-      </Box>
-      <Box width={cols.name} marginRight={2} flexShrink={0}>
+      }
+      name={
         <Text bold={sel} wrap="truncate">
-          {indent(row)}
+          <Text dimColor>{indent(row)}</Text>
           {row.name}
           {row.kind === 'interactive' ? ' (tty)' : ''}
           {row.depth && S.holds.has(row.sid) ? <Text dimColor> (on hold)</Text> : ''}
         </Text>
-      </Box>
-      {cols.ctx > 0 && (
-        <Box width={cols.ctx} marginRight={2} flexShrink={0} justifyContent="flex-end">
-          <Text>{fmtCtx(o?.ctx)}</Text>
-        </Box>
-      )}
-      {cols.cost > 0 && (
-        <Box width={cols.cost} marginRight={2} flexShrink={0} justifyContent="flex-end">
-          <Text>{fmtCost(o?.cost)}</Text>
-        </Box>
-      )}
-      <Box flexGrow={1} flexShrink={1} flexBasis={0} minWidth={0}>
-        <WhereCell row={row} />
-      </Box>
-    </Box>,
+      }
+      status={
+        <Text color={TIER_COLOR[row.tier]} wrap="truncate">
+          {tierLabel(row)}
+        </Text>
+      }
+      where={<WhereCell row={row} />}
+      wait={<Text>{formatWaiting(row.since, now)}</Text>}
+      ctx={<Text>{fmtCtx(o?.ctx)}</Text>}
+      cost={<Text>{fmtCost(o?.cost)}</Text>}
+    />,
     ...notes.map((n, i) => (
-      <Box key={`${row.sid}-n${i}`} paddingLeft={4 + cols.tier + cols.wait + 2}>
+      <Box key={`${row.sid}-n${i}`} paddingLeft={2}>
         <Text dimColor wrap="truncate">
+          {row.noteRail ?? ''}
+          {'  '}
           {n}
         </Text>
       </Box>
@@ -795,15 +854,18 @@ function ListView({ width, maxLines }: { width: number; maxLines: number }) {
   const hasCtx = rowsAll.some((r) => otelFor(r.sid)?.ctx != null);
   const hasCost = rowsAll.some((r) => otelFor(r.sid)?.cost != null);
   const cols: Cols = {
-    tier: Math.max(4, ...rowsAll.map((r) => tierLabel(r).length)),
+    tier: Math.max(6, ...rowsAll.map((r) => tierLabel(r).length)),
     wait: 7,
     name: Math.min(
-      Math.max(7, ...flatOrder(g).map((r) => indent(r).length + r.name.length + (r.kind === 'interactive' ? 6 : 0) + (r.depth && S.holds.has(r.sid) ? 10 : 0))),
+      Math.max(7, ...flatOrder(g).map(nameWidth)),
       Math.max(12, Math.floor(width * 0.35)),
     ),
     ctx: hasCtx ? 5 : 0,
     cost: hasCost ? 7 : 0,
+    where: 0,
   };
+  const whereRoom = width - 2 - (cols.name + 2) - (cols.tier + 2) - 2 - cols.wait - (cols.ctx ? cols.ctx + 2 : 0) - (cols.cost ? cols.cost + 2 : 0);
+  cols.where = Math.max(5, Math.min(whereRoom, Math.max(5, ...rowsAll.map(whereLen))));
   const showUpNext = g.last.length > 0 || g.hold.length > 0;
   const rowToLines = (r: Row): Line[] => rowLines(r, cols, now).map((node, i) => ({ key: `${r.sid}-${i}`, node, sid: i === 0 ? r.sid : undefined }));
   // Fixed: Last attached group and the Up next heading. Scrolls: ladder and hold.
@@ -830,18 +892,7 @@ function ListView({ width, maxLines }: { width: number; maxLines: number }) {
   }
   return (
     <Box flexDirection="column">
-      <Box>
-        <Text dimColor>
-          {'  '}
-          {'TIER'.padEnd(cols.tier + 1)}
-          {'WAITING'.padStart(cols.wait)}
-          {'  '}
-          {'SESSION'.padEnd(cols.name + 2)}
-          {cols.ctx ? 'CTX'.padStart(cols.ctx) + '  ' : ''}
-          {cols.cost ? 'COST'.padStart(cols.cost) + '  ' : ''}
-          WHERE
-        </Text>
-      </Box>
+      <HeaderRow cols={cols} />
       {[...fixed, ...shown].map((l) => (
         <React.Fragment key={l.key}>{l.node}</React.Fragment>
       ))}
