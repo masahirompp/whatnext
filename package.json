@@ -26,8 +26,10 @@
     "test": "vitest run --passWithNoTests --exclude '.claude/**'"
   },
   "dependencies": {
+    "cli-truncate": "^6.1.1",
     "ink": "^7.1.1",
-    "react": "^19.3.0"
+    "react": "^19.3.0",
+    "string-width": "^8.3.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
