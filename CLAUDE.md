@@ -24,11 +24,11 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 
 パスは init で確定した値。cycle-end の削除対象はこの定義を正とする。コードは雑に、ドキュメントは厳格に。
 
+**使い捨て層の削除は cycle-end の儀式の中でのみ行う**: issue 棚卸しの完了 → `git tag cycle-N` の作成 → 人間の明示的な承認、を必ずこの順で経ること。タグ前・承認前の削除は、学びと復元手段を同時に失う。
+
 ### 要件と設計の2ファイル
 
 `docs/PRODUCT.md` は要件(何を実現するか。観測できる振る舞い、受け入れシナリオ、Out of Scope)、`docs/DESIGN.md` は設計(どう実現するか。技術と依存、入力の出どころ、フック・OTel・会話記録の受け方、確かめ方)を書く(cycle 4 の cycle-end で分けた。#127)。境界は下の自律判断の層1と層2で引く。cycle-rewrite スキルは PRODUCT.md の単一ファイルを前提にしているので、スキルが PRODUCT.md を読む場面(cycle-start、cycle-audit、実装セッションのインプット)では、DESIGN.md も合わせて読む。2ファイルの間は見出しの名前で参照する。
-
-**使い捨て層の削除は cycle-end の儀式の中でのみ行う**: issue 棚卸しの完了 → `git tag cycle-N` の作成 → 人間の明示的な承認、を必ずこの順で経ること。タグ前・承認前の削除は、学びと復元手段を同時に失う。
 
 ### 昇格済みモジュール
 
