@@ -185,6 +185,16 @@ describe('rowStatus', () => {
 		expect(rowStatus('Working', undefined, tr).bang).toEqual([]);
 	});
 
+	it('failure from StopFailure shows the message, not the error code (same as the transcript)', () => {
+		const msg = "There's an issue with the selected model (x). It may not exist.";
+		const e = ev({prompt: {at: T0, text: 'hi'}, failure: {at: T0 + 1000, error: 'model_not_found', message: msg}});
+		expect(rowStatus('Failed', e, undefined).note).toBe(msg);
+		const f = summarize([user(0, 'hi'), asst(1, [{type: 'text', text: msg}], {isApiErrorMessage: true})]).info;
+		expect(rowStatus('Failed', undefined, f).note).toBe(msg);
+		const codeOnly = ev({failure: {at: T0 + 1000, error: 'model_not_found'}});
+		expect(rowStatus('Failed', codeOnly, undefined).note).toBe('model_not_found');
+	});
+
 	it('nothing at all → nothing', () => {
 		expect(rowStatus('Question', undefined, undefined)).toEqual({note: undefined, since: undefined, bang: []});
 	});

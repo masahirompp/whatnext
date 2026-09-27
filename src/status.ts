@@ -38,7 +38,7 @@ export function rowStatus(tier: Tier | null, e: SessionEvents | undefined, t: Tr
 	const prompt = inTurn(e?.prompt) ?? (tr?.prompt ? {at: tr.prompt.at, text: tr.prompt.text} : undefined);
 	const midTurn = tier === 'Working' || tier === 'Permission';
 	const stop = inTurn(e?.stop) ?? (tr?.answer && !midTurn ? {at: tr.answer.at, message: tr.answer.text} : undefined);
-	const failure = inTurn(e?.failure) ?? (tr?.error ? {at: tr.error.at, error: tr.error.text, message: undefined} : undefined);
+	const failure = inTurn(e?.failure) ?? (tr?.error ? {at: tr.error.at, error: undefined, message: tr.error.text} : undefined);
 	const pend = tr?.pendingTool;
 	const permission =
 		inTurn(e?.permission) ??
@@ -69,7 +69,10 @@ export function rowStatus(tier: Tier | null, e: SessionEvents | undefined, t: Tr
 			note = ask ? firstLine(ask.question) : headLine(stop?.message ?? tr?.lastText?.text);
 			break;
 		case 'Failed':
-			note = failure?.error ? firstLine(failure.error) : headLine(failure?.message ?? stop?.message);
+			// the human-readable message (StopFailure's last_assistant_message, or the transcript's
+			// API error row) rather than the error code (`model_not_found`), so both paths read the same
+			if (failure?.message) note = firstLine(failure.message);
+			else note = failure?.error ? firstLine(failure.error) : headLine(stop?.message);
 			break;
 		default:
 			if (tier) note = headLine(stop?.message);
