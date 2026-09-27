@@ -18,12 +18,17 @@ node .claude/skills/checking-claude-cli/check-agents-json.mjs
 - スクリプトは見本にない値やキーを検出するが、キーが欠けていることは検出しない（`not seen this time` とだけ出る）。常にあると記録しているキーが `not seen` なら、欠けた行がないかを目で確かめる。
 - 差分が出たら、その項目だけ調べて docs の表・見本・スクリプトの前提を直し、`claudeVersion` を上げる。`learning` の issue も起票する。
 
+## 会話記録の形を確かめる(同じとき)
+- whatnext が会話記録に頼る項目は `docs/claude-code-behavior.md` の「会話記録」節にある(ADR-0011 で範囲を限っている)。
+- 権限待ちの行を1つ作り(下の方法)、`~/.claude/projects/*/<sessionId>.jsonl` の末尾に、指示の `user` の行(`message.content` が文字列)と、結果のない `tool_use` の `assistant` の行があるかを見る。続けて `working` → `done` の行を作り、`assistant` の `text` とターンの終わりの `system` の行があるかを見る。
+- 違っていたら、節と ADR-0011 の「依存する範囲」を直し、`learning` の issue を起票する。
+
 ## 状態ごとの行を安く作る(2.1.281 で確認)
 リポジトリ本体(信頼済みのディレクトリ)で起動する。`claude --bg --help` はヘルプを出さずにセッションを起動するので使わない。
 - `blocked` + `idle`(プロンプトなし): `claude --bg --name probe-idle`。API を呼ばない。
 - `failed`: `claude --bg --name probe-failed --model no-such-model-x "hi"`。API を呼ばない。プロンプトがないと最初のターンが来ないので `failed` にならず `blocked` のまま。
 - `working` → `done`: `claude --bg --name probe-work --model haiku "Write a 300-word paragraph about tea. Do not use any tools."` を1秒おきに観測する。数秒で `done` になる。
-- 権限待ち(`waitingFor: "permission prompt"`): `claude --bg --name probe-perm --model haiku "Run this exact bash command and nothing else: curl -sI https://example.com"`。
+- 権限待ち(`waitingFor: "permission prompt"`): `claude --bg --name probe-perm --model haiku "Run this exact bash command and nothing else: curl -sI https://example.com"`。断られるときは、cwd の外へ書く Bash を頼む(`"Use the Bash tool to run exactly: date > /private/tmp/claude-501/probe-perm-xyz.txt . Then report the result."`。約3秒、2.1.283)。
 - 許可待ち(`waitingFor: "sandbox request"`): `--settings` に `{"sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}` を置いたファイルを渡し、`claude --bg --name probe-sbx --model haiku --settings sbx.json "Run the bash command 'curl -sI https://example.com' and tell me the result."`。数秒でこの状態になる(2.1.283)。
 - `stopped` / 止めたあとの行: 上のものを `claude stop <id>` して数秒待つ。
 - 片付け: `claude stop <id>` のあと `claude rm <id>`。

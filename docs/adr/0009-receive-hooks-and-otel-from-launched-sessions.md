@@ -28,7 +28,7 @@ whatnext は起動している間だけ受け口を開き、受けた値はメ�
 
 ## Consequences
 
-- whatnext の外で起動したセッションと対話セッションには、一言が出ず、CTX は `-` になり、待機時間は観測から推定する。User Story 12 の例外は、この3つだけである。
-- whatnext を閉じている間に発火したフックは失われる。開き直した直後は、止まっているセッションの一言と待機時間が分からない。
+- whatnext の外で起動したセッションと対話セッションには、フックと OTel が届かない。一言と待機時間は会話記録で補い（[ADR-0011](0011-fill-in-from-transcripts-when-hooks-are-missing.md)）、CTX は `-` になる。User Story 12 の例外は CTX の列だけである。
+- whatnext を閉じている間に発火したフックは失われる。開き直した直後の一言と待機時間は、会話記録で補う。
 - 受け口のポートは固定なので、whatnext は同時に1つだけ動かす。2つ目は、そのことを示して終了する。
 - フックのたびに `curl` のプロセスが1つ立つ。`curl` は [ADR-0008](0008-dependencies-and-contact-points-with-tmux.md) で基本コマンドとして扱う。

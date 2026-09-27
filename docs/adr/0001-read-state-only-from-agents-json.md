@@ -4,6 +4,8 @@ status: accepted
 
 # Claude Code の状態は `claude agents --json` からだけ読む
 
+> 段を決める状態は引き続き `--json` からだけ読む。表示の値（一言、待機時間など）をフックで取れないときに会話記録で補うことは、[ADR-0011](0011-fill-in-from-transcripts-when-hooks-are-missing.md) で決めた。
+
 whatnext はセッションの状態を `claude agents --json` の出力からだけ読む。
 `~/.claude/jobs/` 以下のファイルは公式に「安定したインターフェースではない」と明記されており、`--json` はスクリプトからの利用を公式に想定した口だからである。
 Agent View は research preview で画面やショートカットが変わりうるが、この口に限れば画面の変更に巻き込まれない。

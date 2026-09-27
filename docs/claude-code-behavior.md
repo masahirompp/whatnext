@@ -153,3 +153,32 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - `ctrl+` の既定の割り当てがあるのは `b` `c` `d` `e` `f` `g` `j` `l` `n` `o` `p` `r` `s` `t` `u` `v` `]` `_` `-` と、`ctrl+x` で始まる連続キーである（画面ごとに意味が違うものを含む）。`ctrl+q` には割り当てがない。作業台のキーの起点に `ctrl+q` を選んだ根拠（[ADR-0010](adr/0010-workbench-lives-inside-whatnext.md)）。
 - 空いている `ctrl+k`、`ctrl+w`、`ctrl+y`、`ctrl+a` は、入力欄とシェルの行編集で使う。
 - 版が変わったら、バイナリの文字列から `"ctrl+<キー>":"<動作>"` の形を抜き出して確かめ直す。
+
+## 会話記録（2.1.283）
+
+whatnext が依存してよい項目は [ADR-0011](adr/0011-fill-in-from-transcripts-when-hooks-are-missing.md) で限っている。公開された仕様ではないので、`claude` を更新したら見本と比べ直す。
+
+- 置き場所は `~/.claude/projects/<場所>/<sessionId>.jsonl`。`<sessionId>` は `--json` の `sessionId` と一致し、`~/.claude/projects/*/<sessionId>.jsonl` の glob で一意に見つかる（background 1つ、interactive 2つで確認）。worktree の中で動いたセッションの記録は、worktree のパスに対応するフォルダにある。
+- 1行が1つの JSON。大きいものは 5MB あった。
+- 行の `type`：`user`、`assistant`、`system`（`subtype` が `stop_hook_summary`、`turn_duration`、`away_summary`、`local_command`、`compact_boundary` など）のほか、`attachment`、`queue-operation`、`file-history-snapshot`、`last-prompt`、`custom-title`、`agent-name`、`mode`、`permission-mode` などが混ざる。
+- `user` の行：利用者の指示は `message.content` が文字列で、`timestamp` を持つ。ツールの結果も `type: "user"` で、`message.content` が配列（`tool_result` を含む）なので、文字列かどうかで見分ける。
+- `assistant` の行：`message.content` の配列に `thinking`、`text`、`tool_use`（`name`、`input`、`id`）が入る。同じ API 呼び出しの要素が別々の行に分かれて書かれ、それぞれ同じ `message.usage` を持つ。本文は Markdown のままで、`Stop` フックの `last_assistant_message` と同じものとして扱える。
+- `isSidechain: true` の行はサブエージェントのもの。
+- ターンの終わりには `system` の `turn_duration` と `stop_hook_summary` の行が付く。
+- **権限待ち**：`--json` が `blocked` + `waiting` + `permission prompt` の間、末尾に `assistant` の `tool_use`（例：`name: "Bash"`、`input.command`）があり、対応する `tool_result` はまだない。`tool_use` の `timestamp` は、権限を求めた時刻より PreToolUse のフックなどの分だけ早い（haiku の `--bg`、フックなしで確認）。
+- **質問**：`AskUserQuestion` の `tool_use` の `input.questions[0].question` に質問がある。
+- **失敗**：`isApiErrorMessage: true`、`message.model: "<synthetic>"` の `assistant` の行がある（手元で8件）。`StopFailure` の `error` と同じ文言かは未確認。
+- **recap**：`system` の `away_summary` の行は、attach しただけでも書かれうる（recap は attach のフォーカスで生成される。「recap（away summary）」の節）。
+- `message.usage` に `input_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens` がある。whatnext は CTX に使わない。
+- `continued-in` という `type` の行を1件見た。記録が途中で別のファイルに移る場合がありうる（未確認）。
+- 手元の記録 188 本を走査すると、モデルは `! <コマンド>` を実際に勧めていた（`npm login`、`npm publish --otp <6桁のコード>`、worktree からの `git merge --ff-only …`、`docker compose … run …` など）。コードブロックに `! ` の行を2〜3行並べ、行末に `# 注釈` を付ける形と、地の文の中のインラインコード（`` `! touch ~/x` ``）の形があった。理由は sandbox だけでなく、対話の認証や、worktree から main を操作できない制約も多い。
+
+### 試験用の権限待ちの行を作る
+
+haiku の `--bg` に、cwd の外へ書く Bash を頼むと、約3秒で `permission prompt` になった。信頼の確認を済ませたディレクトリで起動する。許可しなければファイルは作られない。
+
+```
+claude --bg --model haiku --name probe-perm -- "Use the Bash tool to run exactly: date > /private/tmp/claude-501/probe-perm-xyz.txt . Then report the result."
+```
+
+片付けは `claude stop <id>` と `claude rm <id>`。対話セッションで `curl` を頼む方法は、利用者の CLAUDE.md の下で haiku に断られることがある。
