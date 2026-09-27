@@ -1,5 +1,6 @@
 // Receives hooks and OTel logs from sessions launched by whatnext.
 import http from 'node:http';
+import {describeTool} from './status.js';
 
 // WHATNEXT_PORT is for testing next to a running whatnext; users never set it.
 export const PORT = Number(process.env.WHATNEXT_PORT) || 14318;
@@ -14,31 +15,22 @@ export type SessionEvents = {
 	permission?: Stamp<{tool: string; target: string}>;
 	ask?: Stamp<{question: string}>;
 	ctx?: number;
-	count: number; // number of hook/otel events, used to detect "worked"
+	count: number; // number of hook/otel events
+	prompts: number; // number of UserPromptSubmit hooks, used to detect "worked"
 };
 
 export const events = new Map<string, SessionEvents>();
 
+/** Handlers for `ctrl+q y` (the tmux menu of `!` commands), set by the app. */
+export const bangRoutes: {menu?: (body: string) => void; pick?: (body: string) => void} = {};
+
 function get(sid: string): SessionEvents {
 	let e = events.get(sid);
 	if (!e) {
-		e = {count: 0};
+		e = {count: 0, prompts: 0};
 		events.set(sid, e);
 	}
 	return e;
-}
-
-function describeTool(tool: string, input: any): string {
-	if (!input || typeof input !== 'object') return '';
-	if (typeof input.command === 'string') return input.command;
-	if (typeof input.file_path === 'string') return input.file_path;
-	if (typeof input.notebook_path === 'string') return input.notebook_path;
-	if (typeof input.url === 'string') return input.url;
-	if (typeof input.pattern === 'string') return input.pattern;
-	if (typeof input.path === 'string') return input.path;
-	if (typeof input.description === 'string') return input.description;
-	const s = JSON.stringify(input);
-	return s.length > 200 ? s.slice(0, 200) : s;
 }
 
 export function handleHook(body: any, now = Date.now()) {
@@ -49,6 +41,7 @@ export function handleHook(body: any, now = Date.now()) {
 	switch (body.hook_event_name) {
 		case 'UserPromptSubmit':
 			e.prompt = {at: now, text: String(body.prompt ?? '')};
+			e.prompts++;
 			break;
 		case 'Stop':
 			e.stop = {at: now, message: body.last_assistant_message};
@@ -64,7 +57,7 @@ export function handleHook(body: any, now = Date.now()) {
 			e.permission = {
 				at: now,
 				tool: String(body.tool_name ?? '?'),
-				target: describeTool(body.tool_name, body.tool_input),
+				target: describeTool(body.tool_input),
 			};
 			break;
 		case 'PreToolUse':
@@ -114,6 +107,15 @@ export async function startReceiver(): Promise<'ok' | 'other-whatnext' | 'busy'>
 		const chunks: Buffer[] = [];
 		req.on('data', c => chunks.push(c));
 		req.on('end', () => {
+			if (req.url === '/v1/bang/menu' || req.url === '/v1/bang/pick') {
+				const text = Buffer.concat(chunks).toString('utf8');
+				try {
+					(req.url === '/v1/bang/menu' ? bangRoutes.menu : bangRoutes.pick)?.(text);
+				} catch {}
+				res.writeHead(200);
+				res.end();
+				return;
+			}
 			let body: any;
 			try {
 				body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');

@@ -1,5 +1,6 @@
 // The dedicated tmux server: claude attach sessions `<id>` and workbenches `sh-<id>`.
 import {run} from './sys.js';
+import {PORT} from './receiver.js';
 
 export const SOCKET = process.env.WHATNEXT_TMUX_SOCKET || 'whatnext';
 const T = ['-L', SOCKET, '-f', '/dev/null'];
@@ -37,6 +38,10 @@ export async function setupServer() {
 	const popup =
 		`${tm} display-popup -c '#{client_tty}' -E -w 90% -h 85% -d '#{@wn_cwd}' ` +
 		`"env -u TMUX ${tm} new -A -s 'sh-#{session_name}' -c '#{@wn_cwd}' \\; set prefix C-q" >/dev/null 2>&1; true`;
+	// ctrl+q y: ask whatnext for the `!` commands menu of this session (claude screen or workbench)
+	const bang =
+		`echo '#{session_name} #{client_tty} #{pane_id}' | ` +
+		`curl -s -m 2 -o /dev/null --data-binary @- http://127.0.0.1:${PORT}/v1/bang/menu; true`;
 	const cmds: string[][] = [
 		['start-server'],
 		['set', '-g', 'exit-empty', 'off'],
@@ -56,7 +61,9 @@ export async function setupServer() {
 		['bind', '-n', 'C-q', 'switch-client', '-T', 'wnq'],
 		['bind', '-T', 'wnq', 'l', 'detach-client'],
 		['bind', '-T', 'wnq', 'C-q', 'run-shell', '-b', popup],
+		['bind', '-T', 'wnq', 'y', 'run-shell', '-b', bang],
 		['bind', '-T', 'prefix', 'C-q', 'detach-client'],
+		['bind', '-T', 'prefix', 'y', 'run-shell', '-b', bang],
 		['bind', '-T', 'prefix', 'l', 'run-shell', '-b', `${tm} detach-client -s '=#{s/^sh-//:session_name}' >/dev/null 2>&1; true`],
 		[
 			'set-hook',

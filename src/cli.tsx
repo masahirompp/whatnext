@@ -19,6 +19,7 @@ Keys in the list:
   w            wait for another session (nest it under this one)
   h            put on hold / take off hold
   e            show the session in another app (PR, VS Code)
+  c            copy a \`! <command>\` the session suggested in its last response
   ctrl+x       stop; press again within 2s to delete
   r            refresh
   q            quit
@@ -26,6 +27,7 @@ Keys in the list:
 While attached:
   ctrl+q ctrl+q   show / hide the workbench (a shell in the session's directory)
   ctrl+q l        back to the list
+  ctrl+q y        copy a suggested \`! <command>\` (in the workbench, also paste it)
   ctrl+z, or <- on an empty prompt, also return to the list.
 
 Requires claude, git and tmux.`;

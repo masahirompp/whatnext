@@ -12,7 +12,6 @@ import {
 	filterCandidates,
 	formatDuration,
 	formatTokens,
-	headLine,
 	toSessions,
 	updateTracks,
 	type Node,
@@ -22,7 +21,10 @@ import {
 	type Track,
 	type Waits,
 } from './model.js';
-import {events, launchSettings} from './receiver.js';
+import {bangRoutes, events, launchSettings} from './receiver.js';
+import {rowStatus} from './status.js';
+import {readTranscript} from './transcript.js';
+import {copyText, openMenu, pickFromMenu} from './bang.js';
 import {
 	ghqList,
 	gitWhere,
@@ -48,6 +50,7 @@ import {
 type Panel =
 	| {kind: 'hold'; sid: string; text: string}
 	| {kind: 'external'; sid: string; sel: number}
+	| {kind: 'copy'; sid: string; sel: number}
 	| {kind: 'wait'; sid: string; query: string; sel: number}
 	| {kind: 'dir'; waiter?: string; query: string; sel: number; cands: string[]}
 	| {kind: 'dirOther'; waiter?: string; text: string; error?: string}
@@ -67,10 +70,13 @@ type State = {
 	lastRefreshAt: number | null;
 	hookSince: Map<string, number>;
 	notes: Map<string, string>;
+	bang: Map<string, string[]>;
 	ctx: Map<string, number>;
 	running: Map<string, string[]>;
 	where: Map<string, Where>;
 	usage: UsageItem[] | null;
+	usageStartedAt: number | null;
+	usageInFlight: boolean;
 	holds: Map<string, string>;
 	waits: Waits;
 	lastAttached: string | null;
@@ -95,8 +101,6 @@ const TIER_COLOR: Record<Tier, string> = {
 };
 const PR_COLOR = {open: 'green', draft: 'gray', merged: 'magenta', closed: 'red'} as const;
 
-const firstLine = (s: string) => s.split('\n').map(x => x.trim()).find(Boolean) ?? '';
-
 function pad(s: string, w: number): string {
 	const t = stringWidth(s) > w ? cliTruncate(s, w) : s;
 	return t + ' '.repeat(Math.max(0, w - stringWidth(t)));
@@ -118,10 +122,13 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 		lastRefreshAt: null,
 		hookSince: new Map(),
 		notes: new Map(),
+		bang: new Map(),
 		ctx: new Map(),
 		running: new Map(),
 		where: new Map(),
 		usage: null,
+		usageStartedAt: null,
+		usageInFlight: false,
 		holds: new Map(),
 		waits: new Map(),
 		lastAttached: null,
@@ -187,41 +194,31 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 		st.hookSince = new Map();
 		st.notes = new Map();
 		st.ctx = new Map();
+		st.bang = new Map();
 		for (const s of st.sessions) {
+			if (!s.tier) continue;
 			const e = events.get(s.sessionId);
-			if (!e) continue;
-			if (e.ctx != null) st.ctx.set(s.sessionId, e.ctx);
-			const pAt = e.prompt?.at ?? 0;
-			const after = <T extends {at: number}>(x: T | undefined) => (x && x.at >= pAt ? x : undefined);
-			const stop = after(e.stop);
-			const fail = after(e.failure);
-			const perm = after(e.permission);
-			const ask = after(e.ask);
-			if (s.tier === 'Working') {
-				if (e.prompt) st.hookSince.set(s.sessionId, e.prompt.at);
-			} else if (s.tier) {
-				const ts = [stop, fail, perm, ask].filter(Boolean).map(x => x!.at);
-				if (ts.length) st.hookSince.set(s.sessionId, Math.max(...ts));
-			}
-			let note: string | undefined;
-			switch (s.tier) {
-				case 'Working':
-					if (e.prompt) note = `→ ${firstLine(e.prompt.text)}`;
-					break;
-				case 'Permission':
-					if (perm) note = `${perm.tool}: ${firstLine(perm.target)}`;
-					break;
-				case 'Question':
-					note = ask ? firstLine(ask.question) : headLine(stop?.message);
-					break;
-				case 'Failed':
-					note = fail?.error ? firstLine(fail.error) : headLine(fail?.message ?? stop?.message);
-					break;
-				default:
-					note = headLine(stop?.message);
-			}
-			if (note) st.notes.set(s.sessionId, note);
+			if (e?.ctx != null) st.ctx.set(s.sessionId, e.ctx);
+			const r = rowStatus(s.tier, e, readTranscript(s.sessionId));
+			if (r.since != null) st.hookSince.set(s.sessionId, r.since);
+			if (r.note) st.notes.set(s.sessionId, r.note);
+			if (r.bang.length) st.bang.set(s.sessionId, r.bang);
 		}
+	};
+
+	/** `!` commands of a session as of now (for `ctrl+q y` while attached). */
+	const commandsNow = async (id: string): Promise<string[]> => {
+		let s = st.sessions.find(x => x.id === id);
+		try {
+			s = toSessions(await readAgents()).find(x => x.id === id) ?? s;
+		} catch {}
+		if (!s) return [];
+		return rowStatus(s.tier, events.get(s.sessionId), readTranscript(s.sessionId)).bang;
+	};
+
+	const copyCommand = async (cmd: string) => {
+		await copyText(cmd);
+		say(`Copied: ${cmd}`, 4000);
 	};
 
 	const fetchWhere = (sessions: Session[]) => {
@@ -239,8 +236,15 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 		}
 	};
 
-	const refreshUsage = () => {
+	// Initial fetch always runs; after attach / refresh key, skip while one is in flight
+	// or within 60s of the previous fetch's start.
+	const refreshUsage = (force = false) => {
+		const now = Date.now();
+		if (!force && (st.usageInFlight || (st.usageStartedAt && now - st.usageStartedAt < 60000))) return;
+		st.usageInFlight = true;
+		st.usageStartedAt = now;
 		void readUsage().then(u => {
+			st.usageInFlight = false;
 			if (u) st.usage = u;
 			bump();
 		});
@@ -297,11 +301,14 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 	// ---- attach -----------------------------------------------------------
 	const attachTo = async (target: {id: string; cwd: string; sessionId: string}) => {
 		const before = st.rows.find(r => r.sessionId === target.sessionId);
+		// "worked" = the --json state changed, a UserPromptSubmit hook came, or the
+		// transcript gained user / assistant rows (OTel events do not count)
 		const pre = {
 			state: before?.state,
 			status: before?.status,
 			waitingFor: before?.waitingFor,
-			count: events.get(target.sessionId)?.count ?? 0,
+			prompts: events.get(target.sessionId)?.prompts ?? 0,
+			lastKey: readTranscript(target.sessionId)?.lastKey,
 		};
 		st.attached = true;
 		st.message = null;
@@ -349,7 +356,8 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 				after.state !== pre.state ||
 				after.status !== pre.status ||
 				after.waitingFor !== pre.waitingFor ||
-				(events.get(target.sessionId)?.count ?? 0) > pre.count;
+				(events.get(target.sessionId)?.prompts ?? 0) > pre.prompts ||
+				readTranscript(target.sessionId)?.lastKey !== pre.lastKey;
 			if (worked) st.holds.delete(target.sessionId);
 		}
 		const {order, view} = derive();
@@ -581,11 +589,13 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 
 	// ---- lifecycle ---------------------------------------------------------
 	useEffect(() => {
+		bangRoutes.menu = body => void openMenu(body, commandsNow);
+		bangRoutes.pick = body => void pickFromMenu(body);
 		void refresh('initial').then(() => {
 			ensureCursor();
 			bump();
 		});
-		refreshUsage();
+		refreshUsage(true);
 		const iv = setInterval(() => {
 			if (st.attached || st.refreshing || st.busy || st.deleteArm) return;
 			if (st.lastRefreshAt && Date.now() - st.lastRefreshAt >= 60000) {
@@ -663,6 +673,27 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 				p.text = t;
 				bump();
 			}
+			return;
+		}
+		if (p?.kind === 'copy') {
+			const cmds = st.bang.get(p.sid) ?? [];
+			if (key.escape || !cmds.length) {
+				st.panel = null;
+				bump();
+				return;
+			}
+			if (key.upArrow) p.sel = Math.max(0, p.sel - 1);
+			else if (key.downArrow) p.sel = Math.min(cmds.length - 1, p.sel + 1);
+			else if (/^[1-9]$/.test(input) && Number(input) <= cmds.length) {
+				p.sel = Number(input) - 1;
+				key = {...key, return: true};
+			}
+			if (key.return) {
+				const cmd = cmds[p.sel];
+				st.panel = null;
+				if (cmd != null) void copyCommand(cmd);
+			}
+			bump();
 			return;
 		}
 		if (p?.kind === 'external') {
@@ -878,6 +909,15 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 			bump();
 			return;
 		}
+		if (input === 'c') {
+			const cmds = st.bang.get(cur) ?? [];
+			if (cmds.length === 1) void copyCommand(cmds[0]!);
+			else if (cmds.length > 1) {
+				st.panel = {kind: 'copy', sid: cur, sel: 0};
+				bump();
+			}
+			return;
+		}
 		if (input === 'e') {
 			st.panel = {kind: 'external', sid: cur, sel: 0};
 			bump();
@@ -1019,6 +1059,8 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 			});
 		const note = st.notes.get(n.sid);
 		if (note) noteLine('n', note);
+		const bang = st.bang.get(n.sid);
+		if (bang?.length) noteLine('b', `! ${bang.join(' · ')}`, 'cyan');
 		const s = bySid(n.sid)!;
 		const running = s.id ? st.running.get(s.id) : undefined;
 		if (running?.length) noteLine('g', `⚙ ${running.join(' · ')}`, 'yellow');
@@ -1109,10 +1151,16 @@ export function App({launchDir, onQuit}: {launchDir: string; onQuit: () => void}
 			};
 		});
 	};
-	let help = '↑↓ move · enter attach · n new · w wait for · h hold · e external · ^X stop/delete · r refresh · q quit · ^Q^Q workbench · ^Q l back';
+	const curHasBang = !!(st.cursor && st.bang.get(st.cursor)?.length);
+	let help = `↑↓ move · enter attach · ${curHasBang ? 'c copy ! commands · ' : ''}n new · w wait for · h hold · e external · ^X stop/delete · r refresh · q quit · ^Q^Q workbench · ^Q l back · ^Q y ! commands`;
 	if (p?.kind === 'hold') {
 		bottom.push({key: 'hold', el: <Text wrap="truncate-end">Put {nameOf(p.sid)} on hold. Reason (optional): {p.text}<Text inverse> </Text></Text>});
 		help = 'enter confirm · esc cancel';
+	} else if (p?.kind === 'copy') {
+		const cmds = st.bang.get(p.sid) ?? [];
+		bottom.push({key: 'cp', el: <Text bold>Copy ! commands from {nameOf(p.sid)}:</Text>});
+		bottom.push(...menu(cmds.map((c, i) => ({label: `${i + 1} ${c}`})), p.sel, 9));
+		help = '↑↓ select · enter/1-9 copy · esc close';
 	} else if (p?.kind === 'external') {
 		const items = externalItems(p.sid);
 		bottom.push({key: 'ext', el: <Text bold>Show {nameOf(p.sid)} in:</Text>});

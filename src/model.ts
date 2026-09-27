@@ -415,3 +415,46 @@ export function displayNames(paths: string[]): Map<string, string> {
 	}
 	return new Map(paths.map(p => [p, name(p)]));
 }
+
+// --- `!` commands ------------------------------------------------------
+
+// C0, DEL and C1 control characters
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+/** `cmd   # note` → `cmd` (two or more spaces before `# `; a single space is kept, e.g. URLs) */
+export function stripComment(cmd: string): string {
+	return cmd.replace(/\s{2,}#(\s.*)?$/, '').trim();
+}
+
+/**
+ * `! <command>` suggestions in an assistant message: lines starting with `! ` inside
+ * fenced code blocks, and inline code spans `` `! <command>` `` elsewhere. Plain-text
+ * `!` and anything containing control characters are ignored. Returns the commands
+ * without `!` and without trailing comments, in order of appearance, deduplicated.
+ */
+export function bangCommands(text: string | undefined): string[] {
+	if (!text) return [];
+	const out: string[] = [];
+	const add = (raw: string) => {
+		if (CONTROL.test(raw)) return;
+		const cmd = stripComment(raw);
+		if (cmd && !out.includes(cmd)) out.push(cmd);
+	};
+	let fence: string | null = null;
+	for (const line of text.split('\n')) {
+		const t = line.replace(/\r$/, '');
+		const m = t.match(/^\s*(`{3,}|~{3,})/);
+		if (m) {
+			if (!fence) fence = m[1]!;
+			else if (m[1]![0] === fence[0] && m[1]!.length >= fence.length) fence = null;
+			continue;
+		}
+		if (fence) {
+			const b = t.match(/^\s*! (.*)$/);
+			if (b) add(b[1]!);
+			continue;
+		}
+		for (const im of t.matchAll(/(?<!`)`! ([^`]+)`(?!`)/g)) add(im[1]!);
+	}
+	return out;
+}
