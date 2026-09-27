@@ -35,11 +35,13 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - `--name` の値は `name` に出る。`--name` なしのときは、最初はプロンプトの先頭で、最初のターンを終えると内容を要約した名前に付け直される。プロンプトなしで起動したときは、最初は `id` と同じ値になる（2.1.281）。名前は変わるので、行の特定には `id` を使う。
 - PR の情報はない（公式ドキュメント agent-view のフィールド表による）。Agent View の PR ラベルは画面だけの表示で、Claude Code が `gh`（`gh pr view` など）で結び付けたもの。whatnext が PR を出すには自分で `gh` を呼ぶしかない。
 - 実行時間は約 135 ms（6〜8 行の時点）。
+- ターンを終えて `done` になったはずのセッションが、`blocked` + `idle` + `pid` ありになっていたことが2回ある。1つは sandbox で書き込みを拒まれて終わったターン（「モデルへの指示」の節の `!` を勧めさせる手順）。もう1つは、外で起動したセッションを、whatnext を閉じて（残していた `claude attach` と作業台を畳んで）から見たとき（会話記録の末尾はふつうのターンの終わりで、同じ条件の別のセッションは `done` のままだった）。条件と原因は確かめていない。whatnext では「どの規則にも当たらない行」として、質問待ちの段に `Question (blocked)` と出る（2.1.283）。
 
 ### 起動（`--bg`）
 
 - プロンプトなしで起動すると、終了コード 0 で `backgrounded · <id> · <name> (idle — send a prompt to start)` を返す。`--json` では `state: "blocked"`、`status: "idle"`、`pid` あり、`waitingFor` なしになる（2.1.281）。
 - バックグラウンドのサービスが止まっている状態で、プロンプト付きの `claude --bg` を実行すると、`Starting background service…` に続いて `backgrounded · <id> · <name>` が出た。そのセッションは1分以上 `blocked` + `idle` + `pid` ありのままで、最初のターンが始まらなかった。直後に続けて起動した3つは正常だった。1回だけの観測で、原因は確かめていない（サービスの起動と重なった最初の1つだけで起きた可能性）（2.1.282）。whatnext の `n` はプロンプトなしで起動するので直接の影響はないが、プロンプト付きで起動する外部 watcher には影響しうる。
+- 起動の出力は、端末でない出力先（`execFile` のパイプ）でも ANSI の色のエスケープを含む。`id` を読むときは、エスケープを除いてから照合する（2.1.283）。
 - 起動の出力（`backgrounded · <id> …`）には `id`（`sessionId` の先頭 8 文字）だけがあり、`sessionId` はない。起動したセッションを `sessionId` で扱うには、次に `--json` を読んで `id` から引く。
 - 存在しないモデル名でも、終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る。
 - `--model` の別名（`fable` / `opus` / `sonnet` など）は、そのファミリーの最新モデルを指す（`claude --help` の説明）。フルネームも受け付ける。モデルの一覧を取る公式の口はない。
@@ -61,6 +63,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - `pid` のない `blocked` の行に attach すると、2.1.281 では `Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らなかった（やり直すコマンドとして `claude respawn <id>` がある）。2.1.282 では、会話の記録があるセッションも、記録のない（プロンプトなしで起動してプロセスを `kill -9` で落とした）セッションも、attach で起き直り、離脱後は `blocked` + `idle` + `pid` ありになった。`Couldn't wake` は再現できなかった。
 - `--bg` のセッションの権限要求に外部から答える口はない。`--permission-prompts` は `--print` 専用。
 - `claude logs` の出力は解析できない。画面の再描画の制御コードそのもの。
+- 指定したセッションの最後の応答を、画面の解析なしで取る公式の口は、Stop フックの `last_assistant_message`（フックを付けて起動したセッションだけ）しかない。`claude logs <id>` は上のとおり描画の制御コード。`claude -p --resume <sessionId> --fork-session --no-session-persistence --output-format json "/copy"` は、API を呼ばずに `/copy isn't available in this environment.` を返し、`/export` も同じ（`/usage` と違い `-p` では使えない。元のセッションにも会話ファイルにも影響はなかった）。フックのないセッションでは会話記録から取る（「会話記録」の節。[ADR-0011](adr/0011-fill-in-from-transcripts-when-hooks-are-missing.md)）（2.1.283）。
 
 ### recap（away summary）（2.1.283）
 
@@ -81,6 +84,16 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
   - `--discard-unpushed <commit>@<worktree-id>` は、未 push のコミットと未コミットの変更を捨てて消す。値は未 push のコミットがあるときにだけ、直前の `claude rm` が示す。
   - `--force-remove-worktree <worktree-id>` は、hook や git が worktree を消せなかったときに消す。追跡ファイルに未コミットの変更がないことが条件。
   - 未コミットの変更だけがあるときに使える強制系のオプションはない。プロセスが終わっていないことによるロックを外すオプションもない。
+- 未コミットの変更だけがある worktree のセッションでは、`claude rm` は終了コード 1 で、stdout に次を出して断る（2.1.283）。
+
+  ```
+  kept <id> — its worktree is still at “<repo>/.claude/worktrees/<name>”
+    The worktree has uncommitted changes. Deleting it would lose them.
+    commit or stash them and run 'claude rm <id>' again, or delete the session from 'claude agents' (ctrl+x twice) to discard them
+  ```
+
+  1行目はロック（`stop` の直後）の断りと同じ書き出しで、理由は2行目にしか出ない。1行目でロックかどうかを判定すると、未コミットの変更の断りでも待ち直してしまう。断りは stderr ではなく stdout に出る。
+- 未 push のコミットがあるときは、`--discard-unpushed (\S+)` と `(\d+) unpushed commit` を断りの文言から読み、その値を渡すと worktree とブランチごと消えた（2.1.283）。
 
 ### Usage（2.1.282）
 
@@ -145,6 +158,8 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 人にシェルのコマンドを動かしてもらう必要があるときは、プロンプトに `! <command>` と打つよう勧めよ、という指示がある（一部の構成では付かない）。
 - sandbox の構成で `dangerouslyDisableSandbox` が無効なときは、「タスクに必要なコマンドが sandbox の制限で失敗したら、どの制限に当たったかを人に伝えよ。sandbox の設定を変えるのは人の判断」という指示がある。条件によって、「`/sandbox exclude <pattern>` で除外するか、`!` を付けて自分で動かすこと」が続く。
 - SDK の説明には「ローカルの TUI の `!cmd` の経路は sandbox なし」とある。ただし、sandbox の設定で credential のファイルを読めなくしている環境では、`!` で打ったコマンドも読めずに失敗する（利用者の環境で繰り返し確認）。
+- `/copy` の説明は「Copy Claude's last response to clipboard (or /copy N for the Nth-latest)」。応答にコードブロックがあると、応答全体、コードブロックごと、以後は常に応答全体（`always copy full response`）の選択肢が出る。選べるのはフェンスで囲んだコードブロックだけで、インラインコードは選択肢にならない。
+- **`!` を勧めさせる手順**：`sbx.json` に `{"sandbox":{"enabled":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false}}` を置き、信頼済みのディレクトリで `claude --bg --name probe-bang --settings sbx.json -- "Run the bash command 'touch ~/whatnext-sandbox-probe.txt' and tell me the result."` を実行する。ホームへの書き込みが `Operation not permitted` で失敗し、約10秒で応答が終わる。ネットワークへのアクセスは許可待ち（`sandbox request`）になって失敗しないので、書き込みの拒否を使う。既定のモデル（Opus 5.5）は「プロンプトで `! touch ~/whatnext-sandbox-probe.txt` と打つと sandbox の外で実行される」と、地の文の中のインラインコードで勧めた。`/copy` の選択肢には、応答全体とコードブロック（エラーの出力）だけが出て、`!` のコマンドは出なかった。haiku は勧めなかった。ターンのあとの `--json` の値は「`--json` の中身」の節にある。
 - 公式ドキュメントに載っていないキー操作 `app:toggleTerminal`（既定のキーなし）がある。中身は確かめていない。
 - どれも公開された仕様ではなく、版によって変わりうる。
 
@@ -167,8 +182,10 @@ whatnext が依存してよい項目は [ADR-0011](adr/0011-fill-in-from-transcr
 - ターンの終わりには `system` の `turn_duration` と `stop_hook_summary` の行が付く。
 - **権限待ち**：`--json` が `blocked` + `waiting` + `permission prompt` の間、末尾に `assistant` の `tool_use`（例：`name: "Bash"`、`input.command`）があり、対応する `tool_result` はまだない。`tool_use` の `timestamp` は、権限を求めた時刻より PreToolUse のフックなどの分だけ早い（haiku の `--bg`、フックなしで確認）。
 - **質問**：`AskUserQuestion` の `tool_use` の `input.questions[0].question` に質問がある。
-- **失敗**：`isApiErrorMessage: true`、`message.model: "<synthetic>"` の `assistant` の行がある（手元で8件）。`StopFailure` の `error` と同じ文言かは未確認。
+- **中断したターン**：権限待ちの `tool_use` のあとで権限の確認に `No` を選ぶと、末尾に次の3行が付く。(1) `user` の行で、`message.content` が配列の `tool_result`（`The user doesn't want to proceed with this tool use. …`）。(2) `user` の行で、`message.content` が配列の `{type: "text", text: "[Request interrupted by user for tool use]"}`。(3) `system` の `turn_duration`。(2) は配列なので、「`message.content` が文字列の `user` の行を指示とみなす」規則では指示に数えられない（手元の 190 本の `[Request interrupted by user]` 12件は、すべて配列だった）。`--json` は、このあとも `working` + `idle` のまま（haiku の `--bg`、フックなしで確認）。
+- **失敗**：`isApiErrorMessage: true`、`message.model: "<synthetic>"` の `assistant` の行がある（手元で8件）。本文（`message.content` の text）は人向けの文言で、`StopFailure` の `last_assistant_message` と同じ。`StopFailure` の `error` は `model_not_found` のような符号で、同じ行の `error` の項目にも符号がある（`server_error`、`invalid_request` など。whatnext は依存しない）（存在しないモデル名の `--bg` で確認）。
 - **recap**：`system` の `away_summary` の行は、attach しただけでも書かれうる（recap は attach のフォーカスで生成される。「recap（away summary）」の節）。
+- **書かれる時機**：あるターンの末尾の行の `timestamp` は、最後の応答（assistant の text）が 12:27:00.262、`stop_hook_summary` が 12:27:02.157、`turn_duration` が 12:27:02.159 で、最後の応答は Stop の約2秒前だった。`away_summary`（recap）は、attach した時点（指示を送る前）に書かれた。
 - `message.usage` に `input_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens` がある。whatnext は CTX に使わない。
 - `continued-in` という `type` の行を1件見た。記録が途中で別のファイルに移る場合がありうる（未確認）。
 - 手元の記録 188 本を走査すると、モデルは `! <コマンド>` を実際に勧めていた（`npm login`、`npm publish --otp <6桁のコード>`、worktree からの `git merge --ff-only …`、`docker compose … run …` など）。コードブロックに `! ` の行を2〜3行並べ、行末に `# 注釈` を付ける形と、地の文の中のインラインコード（`` `! touch ~/x` ``）の形があった。理由は sandbox だけでなく、対話の認証や、worktree から main を操作できない制約も多い。

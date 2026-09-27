@@ -31,4 +31,5 @@ whatnext は起動している間だけ受け口を開き、受けた値はメ�
 - whatnext の外で起動したセッションと対話セッションには、フックと OTel が届かない。一言と待機時間は会話記録で補い（[ADR-0011](0011-fill-in-from-transcripts-when-hooks-are-missing.md)）、CTX は `-` になる。User Story 12 の例外は CTX の列だけである。
 - whatnext を閉じている間に発火したフックは失われる。開き直した直後の一言と待機時間は、会話記録で補う。
 - 受け口のポートは固定なので、whatnext は同時に1つだけ動かす。2つ目は、そのことを示して終了する。
+- 受け口を開けなかったとき（別のプログラムがポートを使っている）は、起動するセッションにフックと OTel を付けない（PRODUCT.md「OTel の受信」）。付けると、指示と応答の全文を知らないプログラムに送り続ける。
 - フックのたびに `curl` のプロセスが1つ立つ。`curl` は [ADR-0008](0008-dependencies-and-contact-points-with-tmux.md) で基本コマンドとして扱う。

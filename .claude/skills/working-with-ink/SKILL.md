@@ -14,6 +14,7 @@ description: Ink(React の端末 UI)で whatnext の画面・キー入力・子�
 
   Node の内部 API（`_handle`、`_readableState`）に触るので、Node の更新で壊れうる。
 - 子が raw のまま異常終了すると、`setRawMode(false)` では端末が戻らない。libuv は cooked → raw に移るたびにその時点の termios を「元の状態」として保存し直し、raw → cooked で書き戻す。モードが既に cooked なら `setRawMode(false)` は何もしないので、子の終了後にトグルしても壊れた termios を書き戻すだけになる。子を起動する前（端末が正常なうち）に設定を保存し、終了後に書き戻す。`stty -g` で保存して `stty <保存値>` で戻す方法と、子の前に `setRawMode(true)` で libuv に正常な termios を保存させる方法の両方が、偽の claude（代替画面・マウス追跡・カーソル非表示・`stty raw` を残して exit 1）で効いた。
+- `alternateScreen: true` のとき、suspendTerminal のコールバックで tmux のクライアント(自分でも代替画面に出入りする)を動かして戻ると、Ink は代替画面に入り直したときのカーソル位置(主画面で保存された位置)から描くので、一覧の上に空行が並んで下にずれる。コールバックの最後で `\x1b[H` を書いてカーソルを左上に戻す(Ink 7.1.1)。
 - 子が代替画面の中でメッセージを出して異常終了すると、端末を戻して代替画面を抜けた瞬間にメッセージが消える。0 以外の終了では、代替画面以外（マウス追跡、フォーカスイベント、ブラケットペースト、カーソル表示、kitty キーボード、modifyOtherKeys）を先に戻し、キーが押されてから代替画面を抜ける。実物の `claude attach` の `Couldn't wake` が代替画面の中に出るかは未確認。
 
 ## React の state 更新

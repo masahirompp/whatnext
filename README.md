@@ -8,7 +8,7 @@ When several sessions are waiting at once, whatnext ranks them by how much it co
 
 ## Principles
 
-- **Reads session state only from `claude agents --json`.** No private files, no screen scraping. Account usage comes from `claude`'s own `/usage`, which calls no model.
+- **Ranks sessions from `claude agents --json` alone.** No screen scraping. To show what each session is doing and how long it has waited, whatnext also reads hook events from sessions it started and, for other sessions, Claude Code's own conversation transcripts (`~/.claude/projects`) — read-only. Account usage comes from `claude`'s own `/usage`, which calls no model.
 - **Sessions whatnext starts send their context size (OpenTelemetry) and hook events to whatnext on 127.0.0.1:14318, only while whatnext is open.** Nothing leaves your machine and nothing is stored. Rows are still ranked from `claude agents --json` alone.
 - **Writes nothing and keeps no state.** Sessions keep running after you close whatnext, and sessions started elsewhere show up too. Your settings are never modified.
 - **Never answers for you.** No input injection or auto-approval — you attach and act yourself.

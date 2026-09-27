@@ -55,7 +55,7 @@ _Avoid_: 親
 _Avoid_: ブロック、保留
 
 **会話記録**:
-Claude Code がセッションごとに残す会話のファイル（`~/.claude/projects/*/<sessionId>.jsonl`）。whatnext は、フックで取れない一言や待機時間を補うためにだけ読み、段の判定には使わない。
+Claude Code がセッションごとに残す会話のファイル（`~/.claude/projects/*/<sessionId>.jsonl`）。whatnext は、フックで取れない一言、待機時間、保留を解く判定、`!` のコマンドを補うためにだけ読み、段の判定には使わない。
 _Avoid_: transcript、JSONL、履歴
 
 ### 操作

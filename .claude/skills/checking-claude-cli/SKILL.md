@@ -31,6 +31,8 @@ node .claude/skills/checking-claude-cli/check-agents-json.mjs
 - 権限待ち(`waitingFor: "permission prompt"`): `claude --bg --name probe-perm --model haiku "Run this exact bash command and nothing else: curl -sI https://example.com"`。断られるときは、cwd の外へ書く Bash を頼む(`"Use the Bash tool to run exactly: date > /private/tmp/claude-501/probe-perm-xyz.txt . Then report the result."`。約3秒、2.1.283)。
 - 許可待ち(`waitingFor: "sandbox request"`): `--settings` に `{"sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}` を置いたファイルを渡し、`claude --bg --name probe-sbx --model haiku --settings sbx.json "Run the bash command 'curl -sI https://example.com' and tell me the result."`。数秒でこの状態になる(2.1.283)。
 - `stopped` / 止めたあとの行: 上のものを `claude stop <id>` して数秒待つ。
+- 対話セッション(`interactive`)の行: `claude --model haiku` を開き、長い文章を書かせて busy にするのが確実。権限待ちを作る指示は、対話セッションでは利用者の CLAUDE.md の下で断られることがある(同じ指示でも `--bg` では通った。2.1.283)。
+- `--allowedTools` などの複数の値を取るオプションは、後ろに置いたプロンプトまで値として飲み込み、プロンプトなしで起動する。プロンプトは `--` の後ろに置く(`claude --bg --allowedTools Bash -- "<指示>"`)。
 - 片付け: `claude stop <id>` のあと `claude rm <id>`。
 
 ## 見本を足すとき
