@@ -18,11 +18,15 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 
 ### 層の定義
 
-- 永続層: `docs/`(PRODUCT.md、adr/)、`README.md`、`LICENSE`、`CONTEXT.md`、`.claude/skills/`、CLAUDE.md、昇格済みモジュール: `lib/` — 厳格に維持する
+- 永続層: `docs/`(PRODUCT.md、DESIGN.md、adr/)、`README.md`、`LICENSE`、`CONTEXT.md`、`.claude/skills/`、CLAUDE.md、昇格済みモジュール: `lib/` — 厳格に維持する
 - 使い捨て層: `src/` とテストコード — サイクル末に全削除する。品質は「動けばOK」
 - ルートのビルド・パッケージ設定(`package.json`、`package-lock.json`、`tsconfig.json`、`.gitignore`)は削除対象外として残るが、次サイクルの足場であり自由に書き直してよい。ビルド出力 `dist/` は使い捨て層
 
 パスは init で確定した値。cycle-end の削除対象はこの定義を正とする。コードは雑に、ドキュメントは厳格に。
+
+### 要件と設計の2ファイル
+
+`docs/PRODUCT.md` は要件(何を実現するか。観測できる振る舞い、受け入れシナリオ、Out of Scope)、`docs/DESIGN.md` は設計(どう実現するか。技術と依存、入力の出どころ、フック・OTel・会話記録の受け方、確かめ方)を書く(cycle 4 の cycle-end で分けた。#127)。境界は下の自律判断の層1と層2で引く。cycle-rewrite スキルは PRODUCT.md の単一ファイルを前提にしているので、スキルが PRODUCT.md を読む場面(cycle-start、cycle-audit、実装セッションのインプット)では、DESIGN.md も合わせて読む。2ファイルの間は見出しの名前で参照する。
 
 **使い捨て層の削除は cycle-end の儀式の中でのみ行う**: issue 棚卸しの完了 → `git tag cycle-N` の作成 → 人間の明示的な承認、を必ずこの順で経ること。タグ前・承認前の削除は、学びと復元手段を同時に失う。
 

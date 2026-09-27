@@ -30,6 +30,7 @@ npx @masahirompp/whatnext
 Design documents are written in Japanese.
 
 - [docs/PRODUCT.md](docs/PRODUCT.md) — spec: ranking rules, display, key operations
+- [docs/DESIGN.md](docs/DESIGN.md) — how it works: dependencies, hooks, OpenTelemetry and transcripts
 - [docs/adr/](docs/adr/) — decisions that hold across rewrites
 - [docs/claude-code-behavior.md](docs/claude-code-behavior.md) — observed behavior of `claude` that whatnext relies on
 - [CONTEXT.md](CONTEXT.md) — glossary
