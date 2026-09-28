@@ -257,7 +257,7 @@ export function App({store}: {store: Store}) {
 			key: 'k1',
 			el: <Text dimColor wrap="truncate-end">{`↑↓ select  Enter attach  n new  h hold  w wait for  e external  ${c}^X stop/delete  r refresh  q quit`}</Text>,
 		});
-		footer.push({key: 'k2', el: <Text dimColor wrap="truncate-end">^Q^Q workbench · ^Q l back · ^Q y ! commands</Text>});
+		footer.push({key: 'k2', el: <Text dimColor wrap="truncate-end">^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external</Text>});
 	}
 	if (m.k !== 'list') footer.unshift(...statusLines('st2'));
 

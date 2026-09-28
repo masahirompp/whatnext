@@ -44,13 +44,15 @@ export async function configureServer(pid: number): Promise<void> {
 		// claude の画面: ctrl+q は専用のキー表に入る。ほかの ctrl+q の組み合わせは何もしない
 		`bind -n C-q if -F '#{@wn_claude}' 'switch-client -T wnq' 'send-keys C-q'`,
 		`bind -T wnq C-q ${key('popup', "'#{session_name}'", "'#{client_tty}'")}`,
-		// ctrl を押したままの ^Q^L / ^Q^Y も同じ動作にする(^Q^Q で ctrl を押したままの手癖が付くため)
+		// ctrl を押したままの ^Q^L / ^Q^Y / ^Q^E も同じ動作にする(^Q^Q で ctrl を押したままの手癖が付くため)
 		...['l', 'C-l'].map(k => `bind -T wnq ${k} ${key('back', "'#{session_name}'", "'#{client_tty}'")}`),
 		...['y', 'C-y'].map(k => `bind -T wnq ${k} ${key('req', 'menu', "'#{session_name}'", "'#{client_tty}'", "'#{pane_id}'")}`),
+		...['e', 'C-e'].map(k => `bind -T wnq ${k} ${key('req', 'ext', "'#{session_name}'", "'#{client_tty}'")}`),
 		// 作業台(popup の中のクライアント): ctrl+q が prefix
 		'bind C-q detach-client',
 		...['l', 'C-l'].map(k => `bind ${k} ${key('back', "'#{session_name}'", "'#{client_tty}'")}`),
 		...['y', 'C-y'].map(k => `bind ${k} ${key('req', 'menu', "'#{session_name}'", "'#{client_tty}'", "'#{pane_id}'")}`),
+		...['e', 'C-e'].map(k => `bind ${k} ${key('req', 'ext', "'#{session_name}'", "'#{client_tty}'")}`),
 		// 一覧に知らせる。一覧は tmux に問い合わせて、何が起きたかを自分で判断する
 		`set-hook -g client-session-changed ${q(key('notify'))}`,
 		`set-hook -g client-attached ${q(key('notify'))}`,
@@ -108,9 +110,9 @@ async function setClaudeStatus(id: string) {
 		['window-status-format', ''],
 		['window-status-current-format', ''],
 		['window-status-separator', ''],
-		['status-right-length', '60'],
+		['status-right-length', '80'],
 		['status-left', `#(sh ${q(KEY_SH)} ${q(SOCKET)} wb ${id})`],
-		['status-right', '^Q^Q workbench · ^Q l back · ^Q y ! commands'],
+		['status-right', '^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external'],
 	];
 	for (const [k, v] of opts) await tmux('set', '-t', `=${id}:`, k, v);
 }

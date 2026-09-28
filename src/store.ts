@@ -85,6 +85,7 @@ export class Store {
 	private usageInFlight = false;
 	private deletePending?: {sid: string; at: number; stopping?: Promise<void>};
 	private menuPick?: {token: string; cmds: string[]; tty: string; pane?: string};
+	private extPick?: {token: string; targets: ExternalTarget[]; tty: string};
 	startDir = process.cwd();
 	receiverOpen = false;
 
@@ -376,6 +377,35 @@ export class Store {
 				await tmux('paste-buffer', '-p', '-d', '-b', 'wnpick', '-t', p.pane);
 			}
 			flash(p.tty, `Copied: ${cmd}`);
+		} else if (kind === 'ext') {
+			// ctrl+q e: e と同じ開く先を tmux のメニューに出す
+			const [sn = '', tty = ''] = args;
+			const id = sn.startsWith('sh-') ? sn.slice(3) : sn;
+			const row = this.rows.find(r => r.id === id);
+			if (!row) return;
+			// 一覧に出ていないセッション(指示を送る前の新しいセッションなど)にも attach できるので、そのときは行から組み立てる
+			const s = this.sessions.get(row.sessionId);
+			const name = s?.name ?? displayName(row);
+			const where = s?.where ?? (await gitWhere(row.cwd));
+			const targets = externalTargets(where, row.cwd);
+			const token = Math.random().toString(36).slice(2, 10);
+			this.extPick = {token, targets, tty};
+			const items = targets.flatMap((t, i) => [
+				` ${t.label.replaceAll('#', '##')}`,
+				i < 9 ? String(i + 1) : '',
+				`run-shell -b "sh '${KEY_SH}' '${SOCKET}' req extpick ${token} ${i} >/dev/null 2>&1; true"`,
+			]);
+			// 先頭が - の項目は選べない行として出る
+			if (!where.pr) items.push('- No pull request for this session.', '', '');
+			tmuxDetached('display-menu', '-c', tty, '-T', `Show ${name.replaceAll('#', '##')} in:`, ...items);
+		} else if (kind === 'extpick') {
+			const [token, i] = args;
+			const p = this.extPick;
+			if (!p || p.token !== token) return;
+			const t = p.targets[Number(i)];
+			if (!t) return;
+			const r = await run('open', [t.target]);
+			flash(p.tty, r.code === 0 ? `Opened ${t.what}.` : `open failed: ${r.out}`);
 		}
 	}
 
@@ -670,18 +700,14 @@ export class Store {
 	// ---- 外のアプリ ----
 
 	private externalMenu(s: Session) {
-		const w = s.where;
-		const items: MenuItem[] = [];
-		const open = async (target: string, what: string) => {
-			const r = await run('open', [target]);
-			this.say(r.code === 0 ? `Opened ${what}.` : `open failed: ${r.out}`);
-		};
-		if (w?.pr) items.push({label: `Pull request #${w.pr.number} on GitHub`, run: () => open(w.pr!.url, `pull request #${w.pr!.number} on GitHub`)});
-		const dir = w?.checkoutRoot ?? s.row.cwd;
-		items.push({label: `VS Code: ${dir.replace(homedir(), '~')}`, run: () => open(`vscode://file${dir}/`, `${dir.replace(homedir(), '~')} in VS Code`)});
-		const gh = w?.pr && /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(w.pr.url);
-		if (gh) items.push({label: `Pull request #${gh[3]} on vscode.dev`, run: () => open(`https://vscode.dev/github/${gh[1]}/${gh[2]}/pull/${gh[3]}`, `pull request #${gh[3]} on vscode.dev`)});
-		this.mode = {k: 'menu', title: `Show ${s.name} in:`, items, sel: 0, note: w?.pr ? undefined : 'No pull request for this session.'};
+		const items: MenuItem[] = externalTargets(s.where, s.row.cwd).map(t => ({
+			label: t.label,
+			run: async () => {
+				const r = await run('open', [t.target]);
+				this.say(r.code === 0 ? `Opened ${t.what}.` : `open failed: ${r.out}`);
+			},
+		}));
+		this.mode = {k: 'menu', title: `Show ${s.name} in:`, items, sel: 0, note: s.where?.pr ? undefined : 'No pull request for this session.'};
 		this.emit();
 	}
 
@@ -922,6 +948,20 @@ export class Store {
 
 // attach した画面に短い知らせを出す。status off のサーバでは、claude の画面が描き直すと
 // display-message の行が約0.2秒で上書きされるので、2秒の間出し直す
+type ExternalTarget = {label: string; target: string; what: string};
+
+// e と ctrl+q e の開く先(よく使う順)
+function externalTargets(w: Where | undefined, cwd: string): ExternalTarget[] {
+	const out: ExternalTarget[] = [];
+	if (w?.pr) out.push({label: `Pull request #${w.pr.number} on GitHub`, target: w.pr.url, what: `pull request #${w.pr.number} on GitHub`});
+	const dir = w?.checkoutRoot ?? cwd;
+	const short = dir.replace(homedir(), '~');
+	out.push({label: `VS Code: ${short}`, target: `vscode://file${dir}/`, what: `${short} in VS Code`});
+	const gh = w?.pr && /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(w.pr.url);
+	if (gh) out.push({label: `Pull request #${gh[3]} on vscode.dev`, target: `https://vscode.dev/github/${gh[1]}/${gh[2]}/pull/${gh[3]}`, what: `pull request #${gh[3]} on vscode.dev`});
+	return out;
+}
+
 function flash(tty: string, text: string, ms = 2000) {
 	const until = Date.now() + ms;
 	const once = async () => {
