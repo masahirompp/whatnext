@@ -20,7 +20,7 @@
     "tui"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc && cp src/key.sh dist/key.sh && chmod +x dist/cli.js",
+    "build": "rm -rf dist && tsc && chmod +x dist/cli.js",
     "prepack": "npm run build",
     "start": "node dist/cli.js",
     "test": "vitest run --passWithNoTests --exclude '.claude/**'"
