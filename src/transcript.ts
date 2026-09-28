@@ -73,6 +73,13 @@ function isInstruction(l: Line): string | undefined {
 	if (l.type !== 'user' || l.isSidechain || l.isMeta) return undefined;
 	const c = l.message?.content;
 	if (typeof c !== 'string') return undefined;
+	// ターンを始めるスラッシュコマンド(スキルなど)は <command-message> で始まる。`/review 12` の形にする。
+	// <command-name> で始まるもの(/model、/clear など)は手元で完結し、ターンを始めない
+	if (/^\s*<command-message>/.test(c)) {
+		const name = /<command-name>([^<]*)<\/command-name>/.exec(c)?.[1]?.trim();
+		const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(c)?.[1]?.trim();
+		return name ? [name, args].filter(Boolean).join(' ') : undefined;
+	}
 	if (/^\s*<(local-command|command-|system-reminder|bash-)/.test(c)) return undefined;
 	return c;
 }

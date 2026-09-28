@@ -1,8 +1,12 @@
+import {mkdirSync, mkdtempSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {classify, dedupe, type AgentRow} from './agents.js';
 import {filterCands, labelsFor} from './candidates.js';
 import {canWaitFor, deriveTiers, layout, type Ranked} from './model.js';
 import {bangCommands, headOf} from './text.js';
+import {readTranscript} from './transcript.js';
 import {parseUsage} from './usage.js';
 
 const bg = (o: Partial<AgentRow>): AgentRow => ({kind: 'background', sessionId: o.id ?? 'x', cwd: '/r', ...o});
@@ -115,5 +119,32 @@ describe('Usage', () => {
 			{label: 'session', percent: 42, resets: '2:09pm'},
 			{label: 'week (all models)', percent: 25, resets: 'Sep 29 9:59am'},
 		]);
+	});
+});
+
+describe('会話記録の指示(シナリオ 33)', () => {
+	it('ターンを始めるスラッシュコマンドは指示として `/名前 引数` にし、手元で完結するコマンドは数えない', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'wn-'));
+		mkdirSync(join(dir, 'projects', 'p'), {recursive: true});
+		const line = (type: string, ts: string, content: unknown) => JSON.stringify({type, timestamp: ts, message: {role: type, content}});
+		writeFileSync(
+			join(dir, 'projects', 'p', 'slash.jsonl'),
+			[
+				line('user', '2026-09-28T01:00:00Z', 'fix the login bug'),
+				line('assistant', '2026-09-28T01:01:00Z', [{type: 'text', text: 'Fixed.'}]),
+				line('user', '2026-09-28T02:00:00Z', '<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>12</command-args>'),
+				line('user', '2026-09-28T02:05:00Z', '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>'),
+				line('user', '2026-09-28T02:05:01Z', '<local-command-stdout>Set model</local-command-stdout>'),
+			].join('\n') + '\n',
+		);
+		const prev = process.env.CLAUDE_CONFIG_DIR;
+		process.env.CLAUDE_CONFIG_DIR = dir;
+		try {
+			const info = await readTranscript('slash');
+			expect(info?.instruction).toEqual({text: '/review 12', ts: Date.parse('2026-09-28T02:00:00Z')});
+		} finally {
+			if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+			else process.env.CLAUDE_CONFIG_DIR = prev;
+		}
 	});
 });
