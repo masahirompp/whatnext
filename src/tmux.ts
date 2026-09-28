@@ -33,7 +33,9 @@ export async function configureServer(pid: number): Promise<void> {
 		'set -g extended-keys-format csi-u',
 		'set -g set-clipboard on',
 		'set -g allow-passthrough on',
-		'set -g detach-on-destroy off',
+		// on にしないと、作業台の最後のシェルを抜けたとき popup の中のクライアントが別のセッションに移り、popup が入れ子になる。
+		// claude の画面は、畳む前にクライアントを一覧へ切り替える(key.sh)
+		'set -g detach-on-destroy on',
 		'set -g exit-empty on',
 		// 作業台(sh-<id>)だけで prefix が効く。一覧と claude の画面ではセッションごとに None にする
 		'set -g prefix C-q',
@@ -56,7 +58,6 @@ export async function configureServer(pid: number): Promise<void> {
 		// 空のプロンプトの ← で Agent View に入った(端末のタイトルが claude agents に変わる)
 		`set-hook -g pane-title-changed ${q(`if -F '#{&&:#{@wn_claude},#{m:*claude agents*,#{pane_title}}}' ${q(key('left', "'#{session_name}'"))}`)}`,
 		'set -t =list: prefix None',
-		'set -t =list: detach-on-destroy on',
 	];
 	const err = await sourceLines(lines);
 	if (err) process.env.WHATNEXT_DEBUG && console.error(err);
@@ -96,7 +97,10 @@ export async function hasSession(name: string): Promise<boolean> {
 
 // claude の画面のセッション <id> を作る(なければ)。中で claude attach <id> が動く。
 export async function ensureClaudeSession(id: string, cwd: string, name: string): Promise<boolean> {
-	if (await hasSession(id)) return true;
+	if (await hasSession(id)) {
+		await tmux('set', '-t', `=${id}:`, '@wn_name', name);
+		return true;
+	}
 	const r = await tmux(
 		'new-session', '-d', '-s', id, '-c', cwd,
 		'sh', KEY_SH, SOCKET, 'attach', id,

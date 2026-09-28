@@ -55,5 +55,10 @@ export async function launch(): Promise<number> {
 	for (const c of clients) run(['detach-client', '-t', c]);
 
 	const r = spawnSync('tmux', ['-L', SOCKET, 'attach-session', '-t', '=list'], {env: envWithoutTmux(), stdio: 'inherit'});
+	// 終了の操作でサーバごと閉じたときは、tmux が残す `[server exited]` の行を消して正常に終わる
+	if (run(['has-session', '-t', '=list']).status !== 0) {
+		process.stdout.write('\x1b[1A\x1b[2K');
+		return 0;
+	}
 	return r.status ?? 0;
 }
