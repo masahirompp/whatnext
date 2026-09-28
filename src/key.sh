@@ -31,6 +31,13 @@ attach)
 	T set -g @wn_ev "exit $id $rc"
 	notify
 	;;
+trust)
+	# <session>: 対話モードの claude で信頼の確認を出す。承認を見届けたら一覧がこのセッションを畳む
+	sn="$1"
+	claude
+	for c in $(clients_on "$sn"); do to_list "$c"; done
+	notify
+	;;
 left)
 	# <session>: 空のプロンプトの ← で Agent View に入った
 	sn="$1"

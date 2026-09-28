@@ -11,7 +11,8 @@ import {KEY_SH, SOCKET} from './env.js';
 import {canWaitFor, compareRank, deriveTiers, descendants, layout, parentOf, rankKey, type Layout, type Node, type Waits} from './model.js';
 import {ctx, hooks, launchSettings, type HookState} from './receiver.js';
 import {bangCommands, headOf, oneLine, toolTarget} from './text.js';
-import {ensureClaudeSession, listClients, listSessions, takeRequest, tmux, tmuxDetached} from './tmux.js';
+import {ensureClaudeSession, hasSession, listClients, listSessions, openTrustSession, takeRequest, tmux, tmuxDetached} from './tmux.js';
+import {isNotTrustedOutput, isTrusted} from './trust.js';
 import {readTranscript, type TranscriptInfo} from './transcript.js';
 import {fetchUsage, type UsageItem} from './usage.js';
 import {closeFor, runningInWorkbenches} from './workbench.js';
@@ -318,6 +319,7 @@ export class Store {
 			}
 		} else {
 			const on = clients[0]!.session;
+			if (on.startsWith('trust-')) return; // 信頼の確認の画面(askTrust が面倒を見る)
 			if (this.attached?.id !== on) this.attached = {id: on, prompts: 0};
 		}
 	}
@@ -597,7 +599,7 @@ export class Store {
 		return [...filterCands(m.cands, m.filter), {label: 'Other...'}];
 	}
 
-	private async launch(dir: string, model: string | undefined, waitParent?: string) {
+	private async launch(dir: string, model: string | undefined, waitParent?: string, trustAsked = false) {
 		const startedAt = Date.now();
 		this.mode = {k: 'launching', dir, model, startedAt};
 		this.emit();
@@ -609,6 +611,7 @@ export class Store {
 		const r = await run('claude', args, {cwd: dir, timeout: 120000});
 		clearInterval(tick);
 		const m = /backgrounded\s*·\s*([0-9a-f]{8})/.exec(r.out);
+		if (!m && !trustAsked && isNotTrustedOutput(r.out)) return void this.askTrust(dir, model, waitParent);
 		if (!m) {
 			this.mode = {k: 'launchFailed', output: r.out || `claude --bg exited with code ${r.code}`};
 			this.emit();
@@ -619,6 +622,33 @@ export class Store {
 		this.mode = {k: 'list'};
 		this.emit();
 		await this.attachId(id, dir, id);
+	}
+
+	// claude --bg は信頼していないディレクトリで断る。対話モードの claude で本物の信頼の確認を出し、承認されたら起動し直す
+	private async askTrust(dir: string, model: string | undefined, waitParent?: string) {
+		const name = `trust-${Math.random().toString(36).slice(2, 10)}`;
+		const me = (await listClients()).find(c => c.session === 'list');
+		if (!me || !(await openTrustSession(name, dir))) {
+			this.mode = {k: 'launchFailed', output: `Workspace not trusted, and could not open claude in ${dir} to ask.`};
+			this.emit();
+			return;
+		}
+		await tmux('switch-client', '-c', me.tty, '-t', `=${name}`);
+		for (;;) {
+			await new Promise(r => setTimeout(r, 500));
+			if (isTrusted(dir)) {
+				await tmux('switch-client', '-c', me.tty, '-t', '=list');
+				await tmux('kill-session', '-t', `=${name}`);
+				return void this.launch(dir, model, waitParent, true);
+			}
+			// 断った(claude が終わった)。クライアントは key.sh が一覧へ戻している
+			if (!(await hasSession(name))) {
+				this.mode = {k: 'list'};
+				this.say(`Not trusted: ${dir.replace(homedir(), '~')}`, 8000);
+				this.emit();
+				return;
+			}
+		}
 	}
 
 	// ---- 停止と削除 ----

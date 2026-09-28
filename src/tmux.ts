@@ -136,6 +136,14 @@ export async function ensureClaudeSession(id: string, cwd: string, name: string)
 	return true;
 }
 
+// 信頼の確認を出すための、対話モードの claude の画面 <name>。claude が終わるとクライアントを一覧へ戻す(key.sh)
+export async function openTrustSession(name: string, cwd: string): Promise<boolean> {
+	const r = await tmux('new-session', '-d', '-s', name, '-c', cwd, 'sh', KEY_SH, SOCKET, 'trust', name);
+	if (!r.ok) return false;
+	await tmux('set', '-t', `=${name}:`, 'prefix', 'None');
+	return true;
+}
+
 export async function takeRequest(): Promise<string | undefined> {
 	const r = await tmux('show', '-gv', '@wn_req');
 	const v = r.ok ? r.out.trim() : '';

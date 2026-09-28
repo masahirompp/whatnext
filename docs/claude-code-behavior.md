@@ -46,6 +46,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 存在しないモデル名でも、終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る。
 - `--model` の別名（`fable` / `opus` / `sonnet` など）は、そのファミリーの最新モデルを指す（`claude --help` の説明）。フルネームも受け付ける。モデルの一覧を取る公式の口はない。
 - 信頼されていないディレクトリでは、終了コード 1 で「Workspace not trusted. Run claude in &lt;dir&gt; once and accept the trust prompt, then retry.」と出して断る。一度起動できたディレクトリでも、`git worktree add` のあとに断られたことがある（理由は未確認）。
+- 信頼の確認を飛ばして `--bg` を起動するオプションはない。確認を飛ばすのは `-p` と、stdout が TTY でないときだけ（`claude --help` の `--print` の説明）。信頼は `~/.claude.json` の `projects["<絶対パス>"].hasTrustDialogAccepted` に記録される。対話モードの `claude` の信頼の確認は、既定の選択が `No, exit` である。`Yes, I trust this folder` を選ぶとすぐ `hasTrustDialogAccepted: true` が書かれ、同じディレクトリの `--bg` が通るようになる。`No, exit` を選ぶと `claude` が終わる（2.1.283）。
 - `claude --bg --help` はヘルプを出さず、プロンプトなしの `--bg` セッションを起動する。`--bg` のオプションは `claude --help` で調べる（2.1.281）。
 - `claude -r <sessionId> --bg` は、`claude stop` のあとなら同じ `id` で続く。稼働中（`done` で待機中を含む）ならコピーが作られ、コピーには `--name` が引き継がれない。
 
