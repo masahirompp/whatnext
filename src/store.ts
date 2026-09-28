@@ -386,7 +386,11 @@ export class Store {
 			// 一覧に出ていないセッション(指示を送る前の新しいセッションなど)にも attach できるので、そのときは行から組み立てる
 			const s = this.sessions.get(row.sessionId);
 			const name = s?.name ?? displayName(row);
-			const where = s?.where ?? (await gitWhere(row.cwd));
+			let where = s?.where;
+			if (!where) {
+				where = await gitWhere(row.cwd);
+				if (where.branch) where = {...where, pr: await fetchPr(row.cwd, where.branch)};
+			}
 			const targets = externalTargets(where, row.cwd);
 			const token = Math.random().toString(36).slice(2, 10);
 			this.extPick = {token, targets, tty};
