@@ -108,6 +108,7 @@ describe('一言(シナリオ 39)と `!` のコマンド(36)', () => {
 		expect(bangCommands(text)).toEqual(['npm version minor', 'npm publish', 'git push --follow-tags']);
 		expect(bangCommands('```\n! curl https://x#frag # one space\n```')).toEqual(['curl https://x#frag # one space']);
 		expect(bangCommands('`! echo \u0007bell`')).toEqual([]);
+		expect(bangCommands('```\n! echo\ta\n! ok\n```\n`! b\tc`')).toEqual(['ok']);
 	});
 });
 

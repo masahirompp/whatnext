@@ -41,9 +41,9 @@ export function headOf(text: string | undefined): string | undefined {
 
 export const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 
-// 制御文字(タブ以外)を含むものは拾わない
+// 制御文字(タブを含む)を含むものは拾わない
 // eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 // 空白2つ以上のあとの `# ` 以下を外す
 export function stripComment(cmd: string): string {
