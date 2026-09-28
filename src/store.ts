@@ -1,6 +1,6 @@
 // 一覧の状態と操作。React は描くだけで、キー入力もここで処理する。
 import {execFile} from 'node:child_process';
-import {existsSync, statSync} from 'node:fs';
+import {appendFileSync, existsSync, statSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {resolve as resolvePath} from 'node:path';
 import type {Key} from 'ink';
@@ -706,6 +706,7 @@ export class Store {
 
 	key(input: string, key: Key) {
 		const m = this.mode;
+		debug(`key ${JSON.stringify(input)} ctrl=${key.ctrl} mode=${m.k} pending=${this.deletePending?.sid.slice(0, 8) ?? '-'} cursor=${this.cursor?.slice(0, 8)}`);
 		switch (m.k) {
 			case 'list':
 				return this.listKey(input, key);
@@ -916,6 +917,12 @@ export class Store {
 		}
 		this.emit();
 	}
+}
+
+// 開発用。WHATNEXT_DEBUG にファイルのパスを渡したときだけ書く(利用者向けではない)
+export function debug(line: string) {
+	const path = process.env.WHATNEXT_DEBUG;
+	if (path) appendFileSync(path, `${new Date().toISOString()} ${line}\n`);
 }
 
 const snapshot = (r: AgentRow) => `${r.state ?? ''}|${r.status ?? ''}|${r.waitingFor ?? ''}`;

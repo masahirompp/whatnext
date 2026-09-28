@@ -104,7 +104,7 @@ export function App({store}: {store: Store}) {
 		const pr = wh?.pr ? `#${wh.pr.number} (${wh.pr.state})` : '';
 		return {base, pr, text: pr ? `${base} ${pr}` : base};
 	};
-	const nameW = Math.min(32, Math.max(7, ...all.map(n => stringWidth(nameText(n)))));
+	const nameW = Math.min(40,Math.max(7, ...all.map(n => stringWidth(nameText(n)))));
 	const statusW = Math.max(6, ...all.map(n => stringWidth(statusText(n.s))));
 	const fixedW = 2 + nameW + 2 + statusW + 2 + 2 + 5 + 2 + 7;
 	const whereW = Math.max(5, Math.min(Math.max(5, ...all.map(n => stringWidth(whereParts(n.s).text))), w - fixedW));
@@ -204,6 +204,15 @@ export function App({store}: {store: Store}) {
 	// ---- 下の欄 ----
 	const footer: Line[] = [];
 	const status = [store.refreshing ? 'refreshing...' : '', store.message ?? ''].filter(Boolean).join('  ');
+	// メッセージ(claude rm の断りの文言など)は折り返して全文を出す。占める行数を数えてスクロールの窓から差し引く
+	const statusLines = (key: string): Line[] => {
+		const rows = status
+			? status.split('\n').reduce((a, l) => a + Math.max(1, Math.ceil(stringWidth(l) / Math.max(1, w))), 0)
+			: 1;
+		const out: Line[] = [{key, el: <Text dimColor={!store.message} wrap="wrap">{status || ' '}</Text>}];
+		for (let i = 1; i < rows; i++) out.push({key: `${key}${i}`, el: null});
+		return out;
+	};
 	if (m.k === 'input') {
 		footer.push({key: 'in', el: <Text wrap="truncate-start">{m.prompt} {m.value}<Text inverse> </Text></Text>});
 		if (m.error) footer.push({key: 'inerr', el: <Text color="red">{m.error}</Text>});
@@ -243,7 +252,7 @@ export function App({store}: {store: Store}) {
 		});
 		footer.push({key: 'wh', el: <Text dimColor>type to filter  ↑↓ select  Enter link/unlink  Esc close</Text>});
 	} else {
-		footer.push({key: 'st', el: <Text dimColor wrap="truncate-end">{status || ' '}</Text>});
+		footer.push(...statusLines('st'));
 		const c = sel?.bangs.length ? 'c copy ! commands  ' : '';
 		footer.push({
 			key: 'k1',
@@ -251,7 +260,7 @@ export function App({store}: {store: Store}) {
 		});
 		footer.push({key: 'k2', el: <Text dimColor wrap="truncate-end">^Q^Q workbench · ^Q l back · ^Q y ! commands</Text>});
 	}
-	if (m.k !== 'list') footer.unshift({key: 'st2', el: <Text dimColor wrap="truncate-end">{status || ' '}</Text>});
+	if (m.k !== 'list') footer.unshift(...statusLines('st2'));
 
 	// ---- スクロール ----
 	const avail = Math.max(1, h - fixed.length - footer.length - 1);

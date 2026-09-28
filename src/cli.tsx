@@ -7,7 +7,7 @@ async function main(): Promise<number> {
 		return runList();
 	}
 	for (const arg of process.argv.slice(2)) {
-		if (arg === '--help' || arg === '-h') {
+		if (arg === '--help') {
 			process.stdout.write(USAGE + '\n');
 			return 0;
 		}
