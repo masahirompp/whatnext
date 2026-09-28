@@ -178,7 +178,7 @@ export function frame(store: Store, {cols: w, rows: h}: Screen): string[] {
 		footer.push(dim('type to filter  ↑↓ select  Enter link/unlink  Esc close'));
 	} else {
 		footer.push(...statusRows);
-		const c = sel?.bangs.length ? 'c copy ! commands  ' : '';
+		const c = sel?.bangs.length ? 'y copy ! commands  ' : '';
 		footer.push(dim(`↑↓ select  Enter attach  n new  h hold  w wait for  e external  ${c}^X stop/delete  r refresh  q quit`));
 		footer.push(dim('^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external'));
 	}

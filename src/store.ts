@@ -905,7 +905,7 @@ export class Store {
 				return this.emit();
 			case 'e':
 				return target && this.externalMenu(target);
-			case 'c':
+			case 'y':
 				return s && this.copyMenu(s);
 		}
 	}
