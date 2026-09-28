@@ -6,12 +6,11 @@ import {resolve as resolvePath} from 'node:path';
 import {classify, dedupe, displayName, fetchAgents, type AgentRow, type Tier} from './agents.js';
 import {filterCands, ghqList, labelsFor, type Cand} from './candidates.js';
 import {copy} from './clipboard.js';
-import {SOCKET} from './env.js';
 import {bestOf, canWaitFor, deriveTiers, descendants, layout, parentOf, type Layout, type Node, type Waits} from './model.js';
 import {ctx, hooks, launchSettings, type HookState} from './receiver.js';
 import type {Key} from './term.js';
 import {bangCommands, headOf, oneLine, toolTarget} from './text.js';
-import {ensureClaudeSession, hasSession, listClients, listSessions, openTrustSession, q, takeOption, tmux, tmuxDetached} from './tmux.js';
+import {ensureClaudeSession, hasSession, keyCmd, listClients, listSessions, openTrustSession, takeOption, tmux, tmuxDetached} from './tmux.js';
 import {isNotTrustedOutput, isTrusted} from './trust.js';
 import {readTranscript, type TranscriptInfo} from './transcript.js';
 import {fetchUsage, type UsageItem} from './usage.js';
@@ -373,7 +372,7 @@ export class Store {
 	private async handleRequest(req: string) {
 		debug(`request ${req}`);
 		const [kind, ...args] = req.split(' ');
-		const pickCmd = (what: string, token: string, i: number) => `run-shell -b ${q(`sh -c "$WN_SH" wn ${q(SOCKET)} req ${what} ${token} ${i} >/dev/null 2>&1; true`)}`;
+		const pickCmd = (what: string, token: string, i: number) => keyCmd('req', what, token, String(i));
 		if (kind === 'menu') {
 			const [sn = '', tty = '', pane = ''] = args;
 			const fromWorkbench = sn.startsWith('sh-');

@@ -20,16 +20,19 @@ export function tmuxDetached(...args: string[]): void {
 
 export const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 
-// キーとフックから呼ぶ sh(本文は WN_SH)。出力と 0 以外の終了は tmux が view mode で被せるので抑える
-export const keyCmd = (action: string, ...args: string[]) =>
-	`run-shell -b ${q(`sh -c "$WN_SH" wn ${q(SOCKET)} ${action} ${args.join(' ')} >/dev/null 2>&1; true`)}`;
+// KEY_SH を呼ぶシェルのコマンド。本文はサーバのオプション @wn_sh から取る(どのペインの環境にも置かない)
+export const shCall = (action: string, ...args: string[]) =>
+	`sh -c "$(tmux -L ${q(SOCKET)} show -gv @wn_sh)" wn ${q(SOCKET)} ${action} ${args.join(' ')}`;
+
+// キーとフックから呼ぶ sh。出力と 0 以外の終了は tmux が view mode で被せるので抑える
+export const keyCmd = (action: string, ...args: string[]) => `run-shell -b ${q(`${shCall(action, ...args)} >/dev/null 2>&1; true`)}`;
 
 // ペインのコマンドとして KEY_SH を動かす argv(tmux は複数の引数をシェルを通さずに実行する)
 const keyArgv = (action: string, ...args: string[]) => ['sh', '-c', KEY_SH, 'wn', SOCKET, action, ...args];
 
 // 一覧のプロセスが起動するたびに、サーバ全体の設定を入れ直す(異常終了のあとも同じ)。
 export async function configureServer(pid: number): Promise<string> {
-	await tmux('set-environment', '-g', 'WN_SH', KEY_SH);
+	await tmux('set', '-g', '@wn_sh', KEY_SH);
 	const lines = [
 		`set -g @wn_pid ${pid}`,
 		`set -g @wn_version ${q(VERSION)}`,
@@ -126,7 +129,7 @@ const claudeStatus = (id: string): Array<[string, string]> => [
 	['window-status-current-format', ''],
 	['window-status-separator', ''],
 	['status-right-length', '80'],
-	['status-left', `#(sh -c "$WN_SH" wn ${q(SOCKET)} wb ${id})`],
+	['status-left', `#(${shCall('wb', id)})`],
 	['status-right', '^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external'],
 ];
 

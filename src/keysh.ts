@@ -1,5 +1,5 @@
 // tmux のキー、フック、ペインのコマンドから呼ぶ小さな sh。引数: <socket> <action> [args...]
-// 本文は一覧のプロセスが tmux のグローバル環境 WN_SH に置き、`sh -c "$WN_SH" wn <socket> ...` で呼ぶ。
+// 本文は一覧のプロセスがサーバのオプション @wn_sh に置き、`sh -c "$(tmux show -gv @wn_sh)" wn <socket> ...` で呼ぶ。
 // ファイルから読まないので、動いている一覧と同じ版の処理が走る(同じ場所に入れ直す更新でも混ざらない)。
 // 一覧への知らせは、@wn_pid に SIGUSR2 を送るだけにする。
 export const KEY_SH = String.raw`S="$1"; A="$2"; shift 2
@@ -52,7 +52,7 @@ popup)
 	[ -n "$id" ] || exit 0
 	[ -d "$cwd" ] || cwd="$HOME"
 	T display-popup -c "$ct" -E -w 90% -h 85% -d "$cwd" -T " workbench: $name " \
-		env -u TMUX -u WN_SH tmux -L "$S" new-session -A -s "sh-$id" -c "$cwd" -e WN_SH=
+		env -u TMUX tmux -L "$S" new-session -A -s "sh-$id" -c "$cwd"
 	notify
 	;;
 back)
