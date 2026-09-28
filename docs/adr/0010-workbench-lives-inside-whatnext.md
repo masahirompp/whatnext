@@ -6,6 +6,8 @@ status: accepted
 
 [ADR-0007](0007-workbench-in-a-dedicated-tmux-server.md) の改訂版。サイクル4の開始時に、作業台と `claude attach` の寿命と、作業台のキーを決め直した。
 
+`Enter` で端末を子に明け渡す仕組みと、端末のウィンドウを閉じたときの扱いは、[ADR-0012](0012-list-runs-inside-the-dedicated-tmux-server.md) で置き換えた（サイクル5）。以下の該当箇所は、ADR-0012 の構成が破綻したときの戻り先として残す。
+
 利用者は仕事用の PC で Claude Code を sandbox の中で動かし、credential を読めないように設定している。
 そのため docker、gcloud、terraform などは sandbox の中では動かせず（`!` で打っても同じ）、人が sandbox の外で手で動かす。
 手で動かすときに「どのセッションのための端末か」「その端末がどこに行ったか」で迷う。これが Problem Statement の「ウィンドウが散らばる」の具体例である。

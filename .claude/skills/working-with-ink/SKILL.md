@@ -5,6 +5,7 @@ description: Ink(React の端末 UI)で whatnext の画面・キー入力・子�
 # Ink で実装するときの罠
 
 ## 端末を子プロセスに明け渡す(attach)
+- サイクル5からは、一覧を専用の tmux サーバの中で動かし、attach をクライアントの切り替えにする（ADR-0012）。この節は、その構成が破綻して ADR-0010 の構成（明け渡し）に戻すときにだけ使う。
 - Ink 7 の `useApp().suspendTerminal(callback)` を使う。代替画面を出て、raw モードとブラケットペーストを戻し、入力の listener を外し、callback のあとで全体を描き直す。この中で `spawn(..., {stdio: 'inherit'})` を動かせば、キー入力の二重配送も端末設定の残骸も起きなかった(Ink 7.1.1、tmux 上で実測)。
 - 子が raw モードに入る前に届くシグナルに備え、明け渡している間だけ SIGINT / SIGTSTP / SIGQUIT を無視する。
 - Ink 7.1.1 の `pauseInput` は raw モードを解除して `unref` するだけで、`readable` の listener を外さない。Node は tty の読み取りを続け、子に届くはずの最初の入力の塊を横取りする（attach の最初の Ctrl+Z が効かない、子への端末の応答が whatnext に届く）。さらに attach は Ink の `readable` ハンドラの中から同期的に始まるので、その場で `readStop()` してもハンドラの `stdin.read()` のループが読み取りを再開する。次の3点を揃えると止まる（10回連続で確認）。
