@@ -26,3 +26,5 @@ tmux kill-session -t wn                  # 片付け
 - 利用者の whatnext が動いている横で確かめるときは、受け口のポートと専用の tmux サーバのソケット名を環境変数で変えられるようにしておく。どちらも固定の既定値なので、同じ値では2つ目として終了するか、利用者の作業台に触れてしまう。利用者向けのオプションではないので `--help` には載せない(cycle 4 の名前は `WHATNEXT_PORT` と `WHATNEXT_TMUX_SOCKET`)。
 - 実物の `claude` では起こせない状態は、PATH の前に偽の `claude` を置いて確かめる。`attach` だけ失敗させる(代替画面・マウス追跡・`stty raw` を残して exit 1)、`agents` だけ空配列・壊れた JSON・0 以外の終了を返す、など。ほかのサブコマンドは本物に `exec` で渡す。
 - 実物のセッションに attach して文字を送ると、そのセッションの入力欄に残る(Enter を送らなければ送信はされない)。利用者のセッションに attach して確かめるときは、送った文字を消してから離脱する。
+- whatnext の中で動いているセッション(作業台を含む)のシェルには、`WHATNEXT_ROLE=list` と、利用者の既定値のままの `WHATNEXT_TMUX_SOCKET` と `WHATNEXT_PORT` が引き継がれている。そのまま `node dist/cli.js` を実行すると、専用の tmux サーバを作らずに一覧の役として直接動き、attach もクライアントの切り替えもできない(`--help` も効かず、Ink の raw mode のエラーで終わった)。確かめるときは3つとも付け替える(外側の tmux のセッションなら `-e WHATNEXT_ROLE=` などで作る)。
+- 終わったつもりで動き続けている一覧に `send-keys -l` で文字列を送ると、その文字がキーとして効く(`n` や `Enter` で起動や attach が走る)。送る前に capture で画面を確かめる。

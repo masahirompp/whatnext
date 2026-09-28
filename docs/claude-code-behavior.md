@@ -62,6 +62,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - whatnext の子として動かした `claude attach` で Ctrl+Z を押すと、子が自分で終了する（終了コード 0、signal なし）。親は止まらず、端末のジョブ制御は働かない。attach から戻ったことは子の終了で分かる。
 - attach して何も入力せずに離脱しても、`--json` の `state`、`status`、`waitingFor` は変わらない（`blocked` + `idle` で確認。2.1.282）。`done` や `waitingFor` のある状態で同じかと、OTel を送るセッションで attach しただけでイベントが飛ぶかは未確認。
 - `pid` のない `blocked` の行に attach すると、2.1.281 では `Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らなかった（やり直すコマンドとして `claude respawn <id>` がある）。2.1.282 では、会話の記録があるセッションも、記録のない（プロンプトなしで起動してプロセスを `kill -9` で落とした）セッションも、attach で起き直り、離脱後は `blocked` + `idle` + `pid` ありになった。`Couldn't wake` は再現できなかった。
+- attach の中で `/exit` を送ると（入力欄に `exit` とだけ打った場合も）、`claude attach` が終わる。セッション本体は `done` + `idle` のまま動き続ける（2.1.283、whatnext の専用 tmux サーバの中で確認。← と同じく Agent View を経て終わったのかは切り分けていない）。
 - `--bg` のセッションの権限要求に外部から答える口はない。`--permission-prompts` は `--print` 専用。
 - `claude logs` の出力は解析できない。画面の再描画の制御コードそのもの。
 - 指定したセッションの最後の応答を、画面の解析なしで取る公式の口は、Stop フックの `last_assistant_message`（フックを付けて起動したセッションだけ）しかない。`claude logs <id>` は上のとおり描画の制御コード。`claude -p --resume <sessionId> --fork-session --no-session-persistence --output-format json "/copy"` は、API を呼ばずに `/copy isn't available in this environment.` を返し、`/export` も同じ（`/usage` と違い `-p` では使えない。元のセッションにも会話ファイルにも影響はなかった）。フックのないセッションでは会話記録から取る（「会話記録」の節。[ADR-0011](adr/0011-fill-in-from-transcripts-when-hooks-are-missing.md)）（2.1.283）。
@@ -94,6 +95,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
   ```
 
   1行目はロック（`stop` の直後）の断りと同じ書き出しで、理由は2行目にしか出ない。1行目でロックかどうかを判定すると、未コミットの変更の断りでも待ち直してしまう。断りは stderr ではなく stdout に出る。
+- プロンプトなしで起動し、指示を送っていないセッションを `claude stop` すると、3秒ほどで `--json` から行が消えた（2.1.283、haiku、観測1回）。会話のあるセッションは止めても残る（`done` と `failed` はそのまま、`blocked` は `stopped`）。
 - 未 push のコミットがあるときは、`--discard-unpushed (\S+)` と `(\d+) unpushed commit` を断りの文言から読み、その値を渡すと worktree とブランチごと消えた（2.1.283）。
 
 ### Usage（2.1.282）
@@ -182,6 +184,7 @@ whatnext が依存してよい項目は [ADR-0011](adr/0011-fill-in-from-transcr
 - `isSidechain: true` の行はサブエージェントのもの。
 - ターンの終わりには `system` の `turn_duration` と `stop_hook_summary` の行が付く。
 - **権限待ち**：`--json` が `blocked` + `waiting` + `permission prompt` の間、末尾に `assistant` の `tool_use`（例：`name: "Bash"`、`input.command`）があり、対応する `tool_result` はまだない。`tool_use` の `timestamp` は、権限を求めた時刻より PreToolUse のフックなどの分だけ早い（haiku の `--bg`、フックなしで確認）。
+- **スラッシュコマンド**：ターンを始めるコマンド（スキルの呼び出しなど）の指示の `user` の行は、`message.content` が `<command-message>` で始まる文字列で、`<command-name>/<名前></command-name>` と `<command-args>…</command-args>` を含む（スキルを呼んだターンの実物で確認）。手元で完結するコマンド（`/model`、`/clear` など）の行は `<command-name>` で始まる。フックのあるセッションで、スラッシュコマンドのときも `UserPromptSubmit` が届くかは確かめていない。
 - **質問**：`AskUserQuestion` の `tool_use` の `input.questions[0].question` に質問がある。
 - **中断したターン**：権限待ちの `tool_use` のあとで権限の確認に `No` を選ぶと、末尾に次の3行が付く。(1) `user` の行で、`message.content` が配列の `tool_result`（`The user doesn't want to proceed with this tool use. …`）。(2) `user` の行で、`message.content` が配列の `{type: "text", text: "[Request interrupted by user for tool use]"}`。(3) `system` の `turn_duration`。(2) は配列なので、「`message.content` が文字列の `user` の行を指示とみなす」規則では指示に数えられない（手元の 190 本の `[Request interrupted by user]` 12件は、すべて配列だった）。`--json` は、このあとも `working` + `idle` のまま（haiku の `--bg`、フックなしで確認）。
 - **失敗**：`isApiErrorMessage: true`、`message.model: "<synthetic>"` の `assistant` の行がある（手元で8件）。本文（`message.content` の text）は人向けの文言で、`StopFailure` の `last_assistant_message` と同じ。`StopFailure` の `error` は `model_not_found` のような符号で、同じ行の `error` の項目にも符号がある（`server_error`、`invalid_request` など。whatnext は依存しない）（存在しないモデル名の `--bg` で確認）。

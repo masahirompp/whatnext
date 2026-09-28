@@ -9,6 +9,7 @@ description: whatnext の作業台(専用の tmux サーバ、popup、キーの�
 - `new -A -s <id> -c <cwd> "<コマンド>" \; set ...` のように続けるときは、シェルのコマンドを `\;` より前に置く。後ろに置くと別のコマンドの引数になり、サーバに届かない。
 - ペインの中で tmux を呼ぶときも `-L <名前>` を明示する(`claude attach <id>; tmux -L <名前> detach-client`)。
 - ペインが1つだけのセッションでは、コマンドが終わるとセッションが閉じ、クライアントも `[exited]` で終わる。どちらでも whatnext から見れば子の終了になる。
+- 全体の `detach-on-destroy` を `off` にすると、作業台の最後のシェルを抜けたとき、popup の中のクライアントが claude の画面のセッションに移り、popup が入れ子になった。`on` にし、クライアントが見ているセッションを畳む前に、クライアントを別のセッションに切り替えておく(先に畳むと、クライアントごと離れて端末がシェルに戻る)。
 - 子として動かす `tmux attach` は、終わるときに主画面へ `[detached (from session <id>)]` か `[exited]` を1行書く。whatnext は代替画面で動くので見えないが、whatnext を終了すると主画面にこの行が並んで残る。子の終了後に `\x1b[1A\x1b[2K` でその行を消してから描き直すと残らない。
 
 ## キーの割り当てと書式
@@ -17,12 +18,15 @@ description: whatnext の作業台(専用の tmux サーバ、popup、キーの�
 - popup を開いている間のキーは、popup の中のクライアントが受ける(`#{session_name}` は `sh-<id>`)。横のペインに同じクライアントを置いた場合は、外側のクライアントが受ける(`#{session_name}` は `<id>`、どのペインかは `#{pane_id}`)。キーの処理は、どちらの受け手でも正しく分岐させる。
 - popup の中から一覧まで戻るには、`detach-client -s <id>` で外側のクライアントを detach する。popup も一緒に閉じる。
 - Claude Code は `ctrl+b`(`task:background`)、`ctrl+]`、`ctrl+g` などを使う。ルートのキー表に割り当てたキーは claude にもシェルにも届かなくなる。
-- `new-session -d -s <id> ... \; set -t =<id> @opt v` のように、同じコマンド列の中で作ったばかりのセッションを `-t =<id>` で指すと `no such session: =<id>` で失敗し、オプションが入らない(作業台の popup が `@wn_cwd` を読めず `~` で開いた)。`-t` を付けない `set @opt v` なら、作ったばかりのセッションが現在のセッションなので入る。
+- `set`(`set-option`)の `-t` は target-pane なので、セッションを名前で指すときは末尾にコロンを付けて `-t =<名前>:` とする。`-t =<名前>` は、セッションがあっても `no such session: =<名前>` で失敗する(終了コード 1)。同じコマンド列の中で作った直後でも、コロンを付ければ通る。`has-session` と `kill-session` の `-t` は target-session なので、コロンなしで通る。
+- 失敗しても、`source-file` の中や `execFile` の戻りを見ていなければ気づかない。サイクル5では、claude の画面のセッションに `prefix None` と `@wn_claude` が入らず、← の検知が発火しなかった(`ctrl+q l` は、全体の prefix が claude の画面でも効いたせいで偶然動いていた)。サイクル4では、作業台の popup が `@wn_cwd` を読めず `~` で開いた。
 - キーに割り当てた `run-shell -b "<コマンド>"` が 0 以外で終わるか何かを出力すると、tmux はその結果を、その時点のアクティブなペインに view mode(`[0/0]`)で被せて出す(popup の中から `ctrl+q l` で外側のクライアントを detach すると `display-popup` が 0 以外で終わり、作業台のペインに残った)。キーのコマンドの末尾を `>/dev/null 2>&1; true` にして抑える。
 
 ## メニューと貼り付け
 - `tmux display-menu -c <client> …` をコマンド行から呼ぶと、メニューが閉じるまで戻らない。whatnext から呼ぶときは終わりを待たない(`spawn` して `unref`)。`execFile` のタイムアウトで待つと、メニューを開いたまま考えている間に殺される。
 - `status off` のサーバでも、`display-message -c <client> -d 2000 '<文言>'` はクライアントの最下行に重ねて出る(claude の画面では入力欄の下の行、popup では popup の最下行)。文言は書式として解釈されるので `#` を `##` にする。
+- ただし claude の画面では、`display-message` は `-d` の値にかかわらず約0.2秒で消えた(100ms おきに取ると12回中1〜3回しか見えない。作業台と一覧では2秒見えた)。status の行がないとき、メッセージはペインの最下行に重ねて描かれ、claude の再描画に上書きされると見ている(未確認)。150ms おきに `display-message -d 300` を出し直すと、2秒の間ほぼ見え続けた(20回中17回)。キーは claude に届いたまま。サイクル5の後半で claude の画面にステータス行を出したので、今も起きるかは確かめていない。
+- `display-menu` の項目の名前が `-` で始まると、選べない行として薄く出る(`-` は表示されない)。キーとコマンドは空文字でよい(`display-menu … '- No pull request for this session.' '' ''`)。キーに `1`〜`9` を渡すと、項目の右に `(1)` と出る。項目の名前の `#` は書式として解釈されるので `##` にする。
 - popup の中のクライアント(作業台)で押したキーでは、`#{session_name}` が `sh-<id>`、`#{client_tty}` が popup の中の端末になる。`display-menu -c` にその tty を渡すと、popup の中にメニューが出る。
 - メニューの項目のコマンドから `run-shell -b "curl … --data-binary '<token> <番号>' …"` で whatnext の受け口に戻せば、選んだ文字列(コマンドなど)を tmux やシェルの引用に通さずに済む。
 - 貼り付けは `set-buffer -b <名前> -- <文字列>` のあと `paste-buffer -p -d -b <名前> -t <pane_id>`。`-p` で bracketed paste になり、zsh の入力欄に入って実行されなかった。
