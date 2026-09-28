@@ -84,6 +84,8 @@ export class Store {
 	private usageStartedAt = 0;
 	private usageInFlight = false;
 	private deletePending?: {sid: string; at: number; stopping?: Promise<void>};
+	// 止めている・削除している最中の行(STATUS の欄に出す。削除中の行は薄くし、操作を受け付けない)
+	busy = new Map<string, 'stopping' | 'deleting'>();
 	private menuPick?: {token: string; cmds: string[]; tty: string; pane?: string};
 	private extPick?: {token: string; targets: ExternalTarget[]; tty: string};
 	startDir = process.cwd();
@@ -351,7 +353,7 @@ export class Store {
 			const [sn = '', tty = '', pane = ''] = args;
 			const fromWorkbench = sn.startsWith('sh-');
 			const id = fromWorkbench ? sn.slice(3) : sn;
-			const row = this.rows.find(r => r.id === id);
+			const row = await this.rowFor(id);
 			const cmds = row ? await this.freshBangs(row) : [];
 			if (cmds.length === 0) {
 				flash(tty, 'No ! commands in the last response.');
@@ -381,7 +383,7 @@ export class Store {
 			// ctrl+q e: e と同じ開く先を tmux のメニューに出す
 			const [sn = '', tty = ''] = args;
 			const id = sn.startsWith('sh-') ? sn.slice(3) : sn;
-			const row = this.rows.find(r => r.id === id);
+			const row = await this.rowFor(id);
 			if (!row) return;
 			// 一覧に出ていないセッション(指示を送る前の新しいセッションなど)にも attach できるので、そのときは行から組み立てる
 			const s = this.sessions.get(row.sessionId);
@@ -410,6 +412,17 @@ export class Store {
 			if (!t) return;
 			const r = await run('open', [t.target]);
 			flash(p.tty, r.code === 0 ? `Opened ${t.what}.` : `open failed: ${r.out}`);
+		}
+	}
+
+	// attach した直後に起動したセッションは、まだ読み直していない --json にないので、なければ読み直す
+	private async rowFor(id: string): Promise<AgentRow | undefined> {
+		const hit = this.rows.find(r => r.id === id);
+		if (hit) return hit;
+		try {
+			return dedupe(await fetchAgents()).find(r => r.id === id);
+		} catch {
+			return undefined;
 		}
 	}
 
@@ -616,6 +629,10 @@ export class Store {
 		const p = this.deletePending;
 		if (p && p.sid === s.sid && (Date.now() - p.at <= 2000 || p.stopping)) {
 			this.deletePending = undefined;
+			// 止め終わるのを待つ間も、2回目を受けた時点から削除中として出す
+			this.busy.set(s.sid, 'deleting');
+			this.say(undefined);
+			this.emit();
 			await p.stopping;
 			await this.deleteFlow(s);
 			return;
@@ -623,8 +640,11 @@ export class Store {
 		const pending: {sid: string; at: number; stopping?: Promise<void>} = {sid: s.sid, at: Date.now()};
 		this.deletePending = pending;
 		this.say(`Stopping ${s.name}...`, 0);
+		this.busy.set(s.sid, 'stopping');
+		this.emit();
 		pending.stopping = (async () => {
 			const r = await run('claude', ['stop', id]);
+			if (this.busy.get(s.sid) === 'stopping') this.busy.delete(s.sid);
 			if (r.code === 0) {
 				await tmux('kill-session', '-t', `=${id}`);
 				if (this.deletePending === pending) this.say(`Stopped ${s.name}. Press Ctrl+X again within 2s to delete.`, 2500);
@@ -644,27 +664,41 @@ export class Store {
 
 	private async deleteFlow(s: Session) {
 		let targets = [s.sid];
+		this.busy.set(s.sid, 'deleting');
+		// 「もう一度 Ctrl+X で削除」の案内は、削除を始めたら役目を終える
+		this.say(undefined);
+		this.emit();
 		const desc = descendants(this.waits, s.sid).filter(x => this.rows.some(r => r.sessionId === x));
 		if (desc.length) {
 			const names = desc.map(x => this.names.get(x) ?? x).join(', ');
 			const yes = await this.confirm(`Also delete ${desc.length} session${desc.length > 1 ? 's' : ''} this one was waiting for? (${names}) [y/N]`);
 			if (yes) targets = [s.sid, ...desc];
 		}
-		for (const sid of targets) await this.deleteOne(sid, sid !== s.sid);
+		for (const sid of targets) this.busy.set(sid, 'deleting');
+		this.emit();
+		for (const sid of targets) {
+			// 削除しなかった行は、すぐに元の表示に戻す。削除した行は、一覧から消えるまで削除中のまま出す
+			if (!(await this.deleteOne(sid, sid !== s.sid))) {
+				this.busy.delete(sid);
+				this.emit();
+			}
+		}
 		await this.refresh();
+		for (const sid of targets) this.busy.delete(sid);
+		this.emit();
 	}
 
-	private async deleteOne(sid: string, cascade: boolean) {
+	private async deleteOne(sid: string, cascade: boolean): Promise<boolean> {
 		const row = this.rows.find(r => r.sessionId === sid);
 		const id = row?.id;
-		if (!row || !id) return;
+		if (!row || !id) return false;
 		const name = displayName(row);
 		const running = (await runningInWorkbenches()).get(id);
 		if (running?.length) {
 			const yes = await this.confirm(`Delete ${name} and stop the commands running in its workbench? ${running.join(', ')} [y/N]`);
 			if (!yes) {
 				this.say(`Kept ${name}.`);
-				return;
+				return false;
 			}
 		}
 		if (cascade && row.pid !== undefined) await run('claude', ['stop', id]);
@@ -677,7 +711,7 @@ export class Store {
 				this.waits.delete(sid);
 				for (const cs of this.waits.values()) cs.delete(sid);
 				this.say(`Deleted ${name}.`);
-				return;
+				return true;
 			}
 			const discard = /--discard-unpushed\s+(\S+)/.exec(r.out);
 			if (discard && extra.length === 0) {
@@ -685,7 +719,7 @@ export class Store {
 				const yes = await this.confirm(`Discard ${n} unpushed commit${n > 1 ? 's' : ''} and delete session ${id}? [y/N]`);
 				if (!yes) {
 					this.say(`Kept ${name}.`);
-					return;
+					return false;
 				}
 				extra = ['--discard-unpushed', discard[1]!.replace(/[.,'"”]+$/, '')];
 				continue;
@@ -696,9 +730,10 @@ export class Store {
 				continue;
 			}
 			this.say(r.out || `claude rm exited with code ${r.code}`, 15000);
-			return;
+			return false;
 		}
 		this.say(`Could not delete ${name}: the session is still stopping.`);
+		return false;
 	}
 
 	// ---- 外のアプリ ----
@@ -790,8 +825,10 @@ export class Store {
 		if (key.downArrow) return this.move(1);
 		if (key.pageUp) return this.move(-10);
 		if (key.pageDown) return this.move(10);
-		if (key.return) return s && void this.attach(s);
-		if (isCtrlX) return s && void this.ctrlX(s);
+		// 削除している最中の行では、行に対する操作を受け付けない(カーソルの移動、更新、終了などは効く)
+		const target = s && this.busy.get(s.sid) !== 'deleting' ? s : undefined;
+		if (key.return) return target && void this.attach(target);
+		if (isCtrlX) return target && void this.ctrlX(target);
 		if (key.ctrl || key.meta) return;
 		switch (input) {
 			case 'r':
@@ -802,14 +839,14 @@ export class Store {
 			case 'n':
 				return void this.openDir();
 			case 'h':
-				if (!s) return;
-				return this.holds.has(s.sid) ? this.unhold(s) : this.hold(s);
+				if (!target) return;
+				return this.holds.has(target.sid) ? this.unhold(target) : this.hold(target);
 			case 'w':
-				if (!s) return;
-				this.mode = {k: 'wait', sid: s.sid, filter: '', sel: 0};
+				if (!target) return;
+				this.mode = {k: 'wait', sid: target.sid, filter: '', sel: 0};
 				return this.emit();
 			case 'e':
-				return s && this.externalMenu(s);
+				return target && this.externalMenu(target);
 			case 'c':
 				return s && this.copyMenu(s);
 		}

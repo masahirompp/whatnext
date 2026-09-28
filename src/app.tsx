@@ -94,6 +94,8 @@ export function App({store}: {store: Store}) {
 		return t;
 	};
 	const statusText = (s: Session) => {
+		const b = store.busy.get(s.sid);
+		if (b) return b === 'deleting' ? 'Deleting...' : 'Stopping...';
 		const t = tiers.get(s.sid) ?? s.own;
 		return TIER_LABEL[t] + (s.reason && t === s.own ? ` (${s.reason})` : '');
 	};
@@ -124,6 +126,7 @@ export function App({store}: {store: Store}) {
 		const wp = whereParts(s);
 		const baseW = wp.pr ? Math.max(1, whereW - stringWidth(wp.pr) - 1) : whereW;
 		const since = s.since === null ? null : Math.max(0, store.lastRefresh - s.since);
+		const deleting = store.busy.get(s.sid) === 'deleting';
 		const out: Line[] = [
 			{
 				key: s.sid,
@@ -131,18 +134,28 @@ export function App({store}: {store: Store}) {
 				el: (
 					<Text wrap="truncate-end" inverse={false}>
 						<Text color="cyan" bold>{isSel ? '> ' : '  '}</Text>
-						<Text bold={isSel}>{pad(cut(nameText(n), nameW), nameW)}</Text>
-						{'  '}
-						<Text color={TIER_COLOR[t]}>{pad(statusText(s), statusW)}</Text>
-						{'  '}
-						{cut(wp.base, baseW)}
-						{wp.pr ? ' ' : ''}
-						{wp.pr ? <Text color={PR_COLOR[s.where!.pr!.state]}>{cut(wp.pr, whereW)}</Text> : null}
-						{' '.repeat(Math.max(0, whereW - stringWidth(cut(wp.text, whereW))))}
-						{'  '}
-						{padL(formatCtx(store.ctxBySid.get(s.sid)), 5)}
-						{'  '}
-						{padL(formatWait(since), 7)}
+						{deleting ? (
+							// 削除中の行は1つの薄い塊で描く(太字の解除 22m は薄字も解除するので、太字や色を混ぜない)
+							<Text dimColor>
+								{pad(cut(nameText(n), nameW), nameW) + '  ' + pad(statusText(s), statusW) + '  ' + pad(cut(wp.text, whereW), whereW) +
+									'  ' + padL(formatCtx(store.ctxBySid.get(s.sid)), 5) + '  ' + padL(formatWait(since), 7)}
+							</Text>
+						) : (
+							<>
+								<Text bold={isSel}>{pad(cut(nameText(n), nameW), nameW)}</Text>
+								{'  '}
+								<Text color={TIER_COLOR[t]}>{pad(statusText(s), statusW)}</Text>
+								{'  '}
+								{cut(wp.base, baseW)}
+								{wp.pr ? ' ' : ''}
+								{wp.pr ? <Text color={PR_COLOR[s.where!.pr!.state]}>{cut(wp.pr, whereW)}</Text> : null}
+								{' '.repeat(Math.max(0, whereW - stringWidth(cut(wp.text, whereW))))}
+								{'  '}
+								{padL(formatCtx(store.ctxBySid.get(s.sid)), 5)}
+								{'  '}
+								{padL(formatWait(since), 7)}
+							</>
+						)}
 					</Text>
 				),
 			},
@@ -155,7 +168,7 @@ export function App({store}: {store: Store}) {
 					<Text wrap="truncate-end">
 						{'  '}
 						<Text dimColor>{n.notePrefix}</Text>
-						<Text color={color} dimColor={!color}>
+						<Text color={deleting ? undefined : color} dimColor={deleting || !color}>
 							{text}
 						</Text>
 					</Text>
