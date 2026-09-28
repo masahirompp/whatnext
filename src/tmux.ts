@@ -97,9 +97,28 @@ export async function hasSession(name: string): Promise<boolean> {
 }
 
 // claude の画面のセッション <id> を作る(なければ)。中で claude attach <id> が動く。
+// claude の画面の最下行: 左に作業台で動いているもの、右にキーの説明(一覧と作業台には出さない)
+async function setClaudeStatus(id: string) {
+	const opts: Array<[string, string]> = [
+		['status', 'on'],
+		['status-position', 'bottom'],
+		['status-interval', '2'],
+		['status-style', 'fg=colour245,bg=default'],
+		['status-left-length', '80'],
+		['window-status-format', ''],
+		['window-status-current-format', ''],
+		['window-status-separator', ''],
+		['status-right-length', '60'],
+		['status-left', `#(sh ${q(KEY_SH)} ${q(SOCKET)} wb ${id})`],
+		['status-right', '^Q^Q workbench · ^Q l back · ^Q y ! commands'],
+	];
+	for (const [k, v] of opts) await tmux('set', '-t', `=${id}:`, k, v);
+}
+
 export async function ensureClaudeSession(id: string, cwd: string, name: string): Promise<boolean> {
 	if (await hasSession(id)) {
 		await tmux('set', '-t', `=${id}:`, '@wn_name', name);
+		await setClaudeStatus(id);
 		return true;
 	}
 	const r = await tmux(
@@ -111,6 +130,7 @@ export async function ensureClaudeSession(id: string, cwd: string, name: string)
 	for (const [k, v] of [['prefix', 'None'], ['@wn_claude', '1'], ['@wn_id', id], ['@wn_cwd', cwd], ['@wn_name', name]] as const) {
 		await tmux('set', '-t', `=${id}:`, k, v);
 	}
+	await setClaudeStatus(id);
 	return true;
 }
 

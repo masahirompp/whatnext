@@ -70,6 +70,19 @@ req)
 	T set -g @wn_req "$*"
 	notify
 	;;
+wb)
+	# <id>: claude の画面の status 行の左側。作業台で動いているコマンド、シェルだけなら (shell)、なければ空
+	id="$1"
+	pids=$(T list-panes -s -t "=sh-$id" -F '#{pane_pid}' 2>/dev/null) || exit 0
+	[ -n "$pids" ] || exit 0
+	# シェルの子をプロセスグループごとにまとめ、パイプは " | " でつなぐ
+	cmds=$(ps -A -o ppid=,pgid=,args= | awk -v p=" $(echo $pids) " '
+		{ pp = $1; g = $2; sub(/^ *[0-9]+ +[0-9]+ +/, "");
+		  if (!index(p, " " pp " ")) next
+		  if (!(g in grp)) { order[++n] = g; grp[g] = $0 } else grp[g] = grp[g] " | " $0 }
+		END { for (i = 1; i <= n; i++) out = out (i > 1 ? " · " : "") grp[order[i]]; print out }')
+	if [ -n "$cmds" ]; then printf '⚙ %s' "$cmds"; else printf '⌂ workbench (shell)'; fi
+	;;
 notify)
 	notify
 	;;

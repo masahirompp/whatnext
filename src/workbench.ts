@@ -4,7 +4,7 @@ import {tmux} from './tmux.js';
 
 const ps = () =>
 	new Promise<string>(resolve => {
-		execFile('ps', ['-A', '-o', 'pid=,ppid=,args='], {maxBuffer: 16 << 20}, (_e, out) => resolve(String(out ?? '')));
+		execFile('ps', ['-A', '-o', 'pid=,ppid=,pgid=,args='], {maxBuffer: 16 << 20}, (_e, out) => resolve(String(out ?? '')));
 	});
 
 // id → 動いているコマンド行(ペインの順)
@@ -18,14 +18,16 @@ export async function runningInWorkbenches(): Promise<Map<string, string[]>> {
 		.map(l => l.split('\t'))
 		.filter(([s, , dead]) => s?.startsWith('sh-') && dead !== '1');
 	if (panes.length === 0) return out;
-	const children = new Map<string, string[]>();
+	// シェルの子をプロセスグループごとにまとめ、パイプは " | " でつなぐ(ps の並びは pid の順)
+	const groups = new Map<string, Map<string, string[]>>();
 	for (const line of (await ps()).split('\n')) {
-		const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+		const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
 		if (!m) continue;
-		const list = children.get(m[2]!) ?? [];
-		list.push(m[3]!.trim());
-		children.set(m[2]!, list);
+		const byGroup = groups.get(m[2]!) ?? new Map<string, string[]>();
+		byGroup.set(m[3]!, [...(byGroup.get(m[3]!) ?? []), m[4]!.trim()]);
+		groups.set(m[2]!, byGroup);
 	}
+	const children = new Map([...groups].map(([pp, g]) => [pp, [...g.values()].map(cmds => cmds.join(' | '))]));
 	for (const [session, pid] of panes) {
 		const id = session!.slice(3);
 		const cmds = children.get(pid!) ?? [];
