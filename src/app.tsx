@@ -53,7 +53,6 @@ export function App({store}: {store: Store}) {
 			store.emit();
 		}
 	});
-	const now = Date.now();
 	const m = store.mode;
 
 	if (m.k === 'dir' || m.k === 'model' || m.k === 'launching' || m.k === 'launchFailed' || (m.k === 'input' && m.full)) {
@@ -263,13 +262,16 @@ export function App({store}: {store: Store}) {
 	if (m.k !== 'list') footer.unshift(...statusLines('st2'));
 
 	// ---- スクロール ----
-	const avail = Math.max(1, h - fixed.length - footer.length - 1);
+	const avail = Math.max(1, h - fixed.length - footer.length);
 	let visible = scroll;
 	let position: Line | undefined;
 	if (scroll.length > avail) {
+		// 選んだ行とその注記をひとまとまりとして窓の中央に置く
 		const selIdx = scroll.findIndex(x => x.sid === sel?.sid && !x.key.includes(':'));
+		let selEnd = selIdx + 1;
+		while (selIdx >= 0 && selEnd < scroll.length && scroll[selEnd]!.key.startsWith(`${sel?.sid}:`)) selEnd++;
 		const win = Math.max(1, avail - 1);
-		let top = selIdx < 0 ? 0 : selIdx - Math.floor(win / 2);
+		let top = selIdx < 0 ? 0 : selIdx - Math.max(0, Math.floor((win - (selEnd - selIdx)) / 2));
 		top = Math.max(0, Math.min(top, scroll.length - win));
 		visible = scroll.slice(top, top + win);
 		const order = all.map(n => n.s.sid);
@@ -291,7 +293,6 @@ export function App({store}: {store: Store}) {
 			))}
 		</Box>
 	);
-	void now;
 }
 
 function NewSession({store, w, h}: {store: Store; w: number; h: number}) {

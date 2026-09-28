@@ -344,6 +344,7 @@ export class Store {
 	// ---- tmux からの頼みごと(ctrl+q y) ----
 
 	private async handleRequest(req: string) {
+		debug(`request ${req}`);
 		const [kind, ...args] = req.split(' ');
 		if (kind === 'menu') {
 			const [sn = '', tty = '', pane = ''] = args;
@@ -352,7 +353,7 @@ export class Store {
 			const row = this.rows.find(r => r.id === id);
 			const cmds = row ? await this.freshBangs(row) : [];
 			if (cmds.length === 0) {
-				await tmux('display-message', '-c', tty, '-d', '2000', 'No ! commands in the last response.');
+				flash(tty, 'No ! commands in the last response.');
 				return;
 			}
 			const token = Math.random().toString(36).slice(2, 10);
@@ -374,7 +375,7 @@ export class Store {
 				await tmux('set-buffer', '-b', 'wnpick', '--', cmd);
 				await tmux('paste-buffer', '-p', '-d', '-b', 'wnpick', '-t', p.pane);
 			}
-			await tmux('display-message', '-c', p.tty, '-d', '2000', `Copied: ${cmd.replaceAll('#', '##')}`);
+			flash(p.tty, `Copied: ${cmd}`);
 		}
 	}
 
@@ -917,6 +918,18 @@ export class Store {
 		}
 		this.emit();
 	}
+}
+
+// attach した画面に短い知らせを出す。status off のサーバでは、claude の画面が描き直すと
+// display-message の行が約0.2秒で上書きされるので、2秒の間出し直す
+function flash(tty: string, text: string, ms = 2000) {
+	const until = Date.now() + ms;
+	const once = async () => {
+		if (Date.now() >= until) return;
+		await tmux('display-message', '-c', tty, '-d', '300', text.replaceAll('#', '##'));
+		setTimeout(() => void once(), 150);
+	};
+	void once();
 }
 
 // 開発用。WHATNEXT_DEBUG にファイルのパスを渡したときだけ書く(利用者向けではない)
