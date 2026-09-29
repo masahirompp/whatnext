@@ -51,8 +51,13 @@ popup)
 	name=$(T show -t "=$sn:" -v @wn_name 2>/dev/null)
 	[ -n "$id" ] || exit 0
 	[ -d "$cwd" ] || cwd="$HOME"
-	T display-popup -c "$ct" -E -w 90% -h 85% -d "$cwd" -T " workbench: $name " \
-		env -u TMUX tmux -L "$S" new-session -A -s "sh-$id" -c "$cwd"
+	# 幅いっぱい・枠なしで上半分に出す。端末で複数行を選んでも、claude の画面の文字が混ざらない。
+	# 枠がないので、作業台の名前とウィンドウの一覧は作業台のステータス行(下端)に出し、claude の画面との境にする
+	T has-session -t "=sh-$id" 2>/dev/null || T new-session -d -s "sh-$id" -c "$cwd"
+	T set -t "=sh-$id:" status on \; set -t "=sh-$id:" status-left " workbench: $name " \; set -t "=sh-$id:" status-left-length 60 \
+		\; set -t "=sh-$id:" status-right '^Q^Q hide ' \; set -t "=sh-$id:" status-style 'reverse'
+	T display-popup -c "$ct" -E -B -w 100% -h 50% -x 0 -y 0 -d "$cwd" \
+		env -u TMUX tmux -L "$S" attach-session -t "=sh-$id"
 	notify
 	;;
 back)
