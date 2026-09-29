@@ -323,7 +323,7 @@ export class Store {
 	private async handleNotify() {
 		const req = await takeOption('@wn_req');
 		// hold と stop は一覧に戻ってから行う(戻ったときの処理が入力欄を閉じないように、後に回す)
-		const after = req && /^(hold|stop) /.test(req) ? req : undefined;
+		const after = req && /^(hold|stop|new) /.test(req) ? req : undefined;
 		if (req && !after) await this.handleRequest(req);
 		const notice = await takeOption('@wn_notice');
 		if (notice !== undefined) {
@@ -346,10 +346,12 @@ export class Store {
 		if (after) this.afterBack(after);
 	}
 
-	// ctrl+q h と ctrl+q ctrl+x: 一覧に戻ったあと、その行で h と Ctrl+X を押したのと同じにする
+	// ctrl+q h・ctrl+q ctrl+x・ctrl+q ctrl+n: 一覧に戻ったあと、その行で h・Ctrl+X・n を押したのと同じにする
 	private afterBack(req: string) {
 		const [kind, id] = req.split(' ');
 		const row = this.rows.find(r => r.id === id);
+		// n はいたセッションのリポジトリを候補の先頭に置く(待ち先の関係は結ばない)
+		if (kind === 'new') return void this.openDir(undefined, row?.cwd);
 		const s = row && this.sessions.get(row.sessionId);
 		if (!s || this.busy.get(s.sid) === 'deleting') return;
 		this.cursor = s.sid;
@@ -622,8 +624,9 @@ export class Store {
 
 	// ---- 新しいセッション ----
 
-	private async openDir(waitParent?: string) {
-		const first = waitParent ? await mainRepoOf(this.sessions.get(waitParent)?.row.cwd ?? this.startDir) : undefined;
+	private async openDir(waitParent?: string, near?: string) {
+		const nearDir = waitParent ? (this.sessions.get(waitParent)?.row.cwd ?? this.startDir) : near;
+		const first = nearDir ? await mainRepoOf(nearDir) : undefined;
 		const base = [first, this.startDir, ...(await Promise.all(this.rows.map(r => mainRepoOf(r.cwd))))].filter((p): p is string => !!p);
 		const mk = (paths: string[]) => labelsFor([...new Set(paths)]);
 		this.mode = {k: 'dir', filter: '', sel: 0, cands: mk(base), waitParent};
