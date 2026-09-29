@@ -47,6 +47,9 @@ export async function launch(): Promise<number> {
 			'-e', `WHATNEXT_TMUX_SOCKET=${SOCKET}`,
 			'-e', `WHATNEXT_PORT=${PORT}`,
 			process.execPath, CLI,
+			// クライアントの端末の機能は attach した時点の値で決まり、あとで変えても効かない。一覧が設定を入れるより先に attach するので、ここで入れる。
+			// hyperlinks がないと、ペインの中の OSC 8 のリンクを外側の端末へ送らない。OSC 8 を知らない端末で崩れないよう、xterm 系と Ghostty に限る
+			';', 'set', '-as', 'terminal-features', ',xterm*:RGB:hyperlinks,ghostty*:RGB:hyperlinks,*-256color:RGB',
 		]);
 		if (r.status !== 0) {
 			process.stderr.write(`whatnext: could not start tmux: ${r.stderr.trim()}\n`);

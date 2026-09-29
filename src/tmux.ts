@@ -39,7 +39,7 @@ export async function configureServer(pid: number): Promise<string> {
 		'set -g status off',
 		'set -g escape-time 10',
 		'set -g default-terminal tmux-256color',
-		'set -as terminal-features ",xterm*:RGB,ghostty*:RGB,*-256color:RGB"',
+		// terminal-features はクライアントが attach する前に要るので、サーバを作るときに入れる(launcher.ts)
 		'set -g extended-keys on',
 		'set -g extended-keys-format csi-u',
 		'set -g set-clipboard on',
