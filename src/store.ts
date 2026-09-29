@@ -402,16 +402,16 @@ export class Store {
 		} else if (kind === 'ext') {
 			const [sn = '', tty = ''] = args;
 			const id = sn.startsWith('sh-') ? sn.slice(3) : sn;
-			const row = await this.rowFor(id);
+			// 押した時点の cwd で開く。attach している間に claude が worktree に入る(出る)と、一覧が読み直すまでの行は古い
+			const row = (await this.freshRow(id)) ?? (await this.rowFor(id));
 			if (!row) return;
-			// 一覧に出ていないセッション(指示を送る前の新しいセッションなど)にも attach できるので、そのときは行から組み立てる
 			const s = this.sessions.get(row.sessionId);
 			const name = s?.name ?? displayName(row);
-			let where = s?.where;
-			if (!where) {
-				where = await gitWhere(row.cwd);
-				if (where.branch) where = {...where, pr: await fetchPr(row.cwd, where.branch)};
-			}
+			let where = await gitWhere(row.cwd, true);
+			// PR はチェックアウトとブランチが同じなら一覧が取ったものを使う(gh を待たない)
+			const old = s?.where;
+			if (old && old.checkoutRoot === where.checkoutRoot && old.rawBranch === where.rawBranch) where = {...where, pr: old.pr};
+			else if (where.branch) where = {...where, pr: await fetchPr(row.cwd, where.branch)};
 			const targets = externalTargets(where, row.cwd);
 			const token = Math.random().toString(36).slice(2, 10);
 			this.extPick = {token, targets, tty};
@@ -427,6 +427,14 @@ export class Store {
 			if (!t) return;
 			const r = await run('open', [t.target]);
 			flash(p.tty, r.code === 0 ? `Opened ${t.what}.` : `open failed: ${r.out}`);
+		}
+	}
+
+	private async freshRow(id: string): Promise<AgentRow | undefined> {
+		try {
+			return dedupe(await fetchAgents()).find(r => r.id === id);
+		} catch {
+			return undefined;
 		}
 	}
 
