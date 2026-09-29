@@ -184,3 +184,48 @@ export async function readTranscript(sid: string): Promise<TranscriptInfo | unde
 		return undefined;
 	}
 }
+
+// 最初の依頼の1行目(attach した画面の概要の行)。一度見つけたら変わらないので覚えておく。
+// 見つからないうちは、ファイルが伸びたときだけ先頭から読み直す
+const firsts = new Map<string, {text?: string; size: number}>();
+
+export async function readFirstPrompt(sid: string): Promise<string | undefined> {
+	const path = findPath(sid);
+	if (!path) return undefined;
+	const memo = firsts.get(sid);
+	if (memo?.text !== undefined) return memo.text;
+	try {
+		const {size} = await stat(path);
+		if (memo && memo.size === size) return undefined;
+		const fh = await open(path, 'r');
+		let text: string | undefined;
+		try {
+			const buf = Buffer.alloc(Math.min(size, 2 << 20));
+			await fh.read(buf, 0, buf.length, 0);
+			const raw = buf.toString('utf8').split('\n');
+			if (buf.length < size) raw.pop();
+			for (const s of raw) {
+				if (!s.trim()) continue;
+				let l: Line;
+				try {
+					l = JSON.parse(s) as Line;
+				} catch {
+					continue;
+				}
+				const first = isInstruction(l)
+					?.split(/\r?\n/)
+					.find(x => x.trim());
+				if (first) {
+					text = first.replace(/\s+/g, ' ').trim();
+					break;
+				}
+			}
+		} finally {
+			await fh.close();
+		}
+		firsts.set(sid, {text, size});
+		return text;
+	} catch {
+		return undefined;
+	}
+}

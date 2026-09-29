@@ -10,9 +10,9 @@ import {bestOf, canWaitFor, deriveTiers, descendants, layout, parentOf, type Lay
 import {ctx, hooks, launchSettings, type HookState} from './receiver.js';
 import type {Key} from './term.js';
 import {bangCommands, headOf, oneLine, toolTarget} from './text.js';
-import {ensureClaudeSession, hasSession, keyCmd, listClients, listSessions, openTrustSession, takeOption, tmux, tmuxDetached} from './tmux.js';
+import {ensureClaudeSession, hasSession, keyCmd, listClients, listSessions, openTrustSession, setSummary, takeOption, tmux, tmuxDetached} from './tmux.js';
 import {isNotTrustedOutput, isTrusted} from './trust.js';
-import {readTranscript, type TranscriptInfo} from './transcript.js';
+import {readFirstPrompt, readTranscript, type TranscriptInfo} from './transcript.js';
 import {fetchUsage, type UsageItem} from './usage.js';
 import {closeFor, runningInWorkbenches} from './workbench.js';
 import {fetchPr, gitWhere, mainRepoOf, type Where} from './where.js';
@@ -228,6 +228,25 @@ export class Store {
 			this.ctrlXGuard = {name: beforeName, until: Date.now() + 2000};
 		}
 		void this.fetchPrs();
+		void this.syncSummaries();
+	}
+
+	// claude の画面の概要の行(名前 · 最初の依頼)。名前が付いたり最初の依頼が来たりするので、更新のたびに置き直す
+	private summaries = new Map<string, string>();
+	private async syncSummaries(only?: AgentRow) {
+		const open = new Set(await listSessions());
+		const rows = only ? [only] : this.rows;
+		await Promise.all(
+			rows.map(async r => {
+				if (!r.id || !open.has(r.id)) return;
+				const title = displayName(r);
+				const first = await readFirstPrompt(r.sessionId);
+				const key = `${title}\n${first ?? ''}`;
+				if (this.summaries.get(r.id) === key) return;
+				this.summaries.set(r.id, key);
+				await setSummary(r.id, title, first);
+			}),
+		);
 	}
 
 	private async fetchPrs() {
@@ -280,6 +299,21 @@ export class Store {
 		)?.sid;
 	}
 
+	// cur を Last attached に置いたときの Up next の先頭(組の位置を決めた行)。attach できない行と削除中の行は飛ばす
+	private nextUp(cur: string | undefined): Session | undefined {
+		const holds = new Set(this.holds.keys());
+		const tiers = this.tiers();
+		const l = layout(this.sessions, tiers, this.waits, holds, cur);
+		for (const root of new Set(l.ladder.map(n => n.root))) {
+			const group = l.ladder.filter(
+				n => n.root === root && n.s.sid !== cur && n.s.row.kind === 'background' && n.s.row.id && this.busy.get(n.s.sid) !== 'deleting',
+			);
+			const s = group.length ? bestOf(group, tiers, holds) : undefined;
+			if (s) return s;
+		}
+		return undefined;
+	}
+
 	private fixCursor() {
 		if (this.cursor && this.sessions.has(this.cursor)) return;
 		this.cursor = this.topPick(this.layout());
@@ -296,9 +330,15 @@ export class Store {
 		await this.attachId(r.id, r.cwd, s.name, s.sid);
 	}
 
-	private async attachId(id: string, cwd: string, name: string, sid?: string) {
+	// from: attach している画面から直接移るときの、その画面のクライアント(ctrl+q ctrl+j)
+	private async attachId(id: string, cwd: string, name: string, sid?: string, from?: string) {
 		const ok = await ensureClaudeSession(id, cwd, name);
-		const me = (await listClients()).find(c => c.session === 'list');
+		const me = (await listClients()).find(c => c.session === (from ?? 'list'));
+		if (ok) {
+			this.summaries.delete(id);
+			const row = this.rows.find(r => r.id === id);
+			if (row) await this.syncSummaries(row);
+		}
 		if (!ok || !me) {
 			this.say(`Could not open ${name}.`);
 			return;
@@ -420,6 +460,19 @@ export class Store {
 				await tmux('paste-buffer', '-p', '-d', '-b', 'wnpick', '-t', p.pane);
 			}
 			flash(p.tty, `Copied: ${cmd}`);
+		} else if (kind === 'next') {
+			// ctrl+q ctrl+j: 一覧に戻らずに、Up next の先頭へ移る(一覧に戻ったときに見える Up next と同じ並び)
+			const [sn = '', tty = ''] = args;
+			const id = sn.startsWith('sh-') ? sn.slice(3) : sn;
+			const cur = this.rows.find(r => r.id === id)?.sessionId;
+			const target = this.nextUp(cur);
+			const outer = (await listClients()).find(c => c.session === id);
+			if (!target || !outer) return flash(tty, 'No other session in Up next.');
+			if (sn.startsWith('sh-')) await tmux('display-popup', '-C', '-c', outer.tty);
+			const a = this.attached;
+			await this.attachId(target.row.id!, target.row.cwd, target.name, target.sid, id);
+			// 離れたセッションは、一覧に戻ったときと同じに扱う(Last attached、保留を解く判定)
+			if (a?.id === id) void this.onReturn(a);
 		} else if (kind === 'ext') {
 			const [sn = '', tty = ''] = args;
 			const id = sn.startsWith('sh-') ? sn.slice(3) : sn;
