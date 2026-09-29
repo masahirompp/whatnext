@@ -78,7 +78,7 @@ back)
 	notify
 	;;
 backreq)
-	# <what> <session> <client_tty>: ctrl+q ctrl+h、ctrl+q ctrl+x、ctrl+q ctrl+n。一覧に戻ってから、その行への操作を一覧に頼む
+	# <what> <session> <client_tty>: ctrl+q ctrl+h、ctrl+q ctrl+x、ctrl+q ctrl+n、ctrl+q ctrl+w。一覧に戻ってから、その行への操作を一覧に頼む
 	back_to_list "$2" "$3"
 	id=$(printf '%s' "$2" | sed 's/^sh-//')
 	T set -g @wn_req "$1 $id"

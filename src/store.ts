@@ -323,7 +323,7 @@ export class Store {
 	private async handleNotify() {
 		const req = await takeOption('@wn_req');
 		// hold と stop は一覧に戻ってから行う(戻ったときの処理が入力欄を閉じないように、後に回す)
-		const after = req && /^(hold|stop|new) /.test(req) ? req : undefined;
+		const after = req && /^(hold|stop|new|wait) /.test(req) ? req : undefined;
 		if (req && !after) await this.handleRequest(req);
 		const notice = await takeOption('@wn_notice');
 		if (notice !== undefined) {
@@ -346,7 +346,7 @@ export class Store {
 		if (after) this.afterBack(after);
 	}
 
-	// ctrl+q ctrl+h・ctrl+q ctrl+x・ctrl+q ctrl+n: 一覧に戻ったあと、その行で h・Ctrl+X・n を押したのと同じにする
+	// ctrl+q ctrl+h・ctrl+q ctrl+x・ctrl+q ctrl+n・ctrl+q ctrl+w: 一覧に戻ったあと、その行で h・Ctrl+X・n・w を押したのと同じにする
 	private afterBack(req: string) {
 		const [kind, id] = req.split(' ');
 		const row = this.rows.find(r => r.id === id);
@@ -358,6 +358,7 @@ export class Store {
 		this.mode = {k: 'list'};
 		this.ctrlXGuard = undefined;
 		if (kind === 'stop') this.ctrlX(s);
+		else if (kind === 'wait') this.mode = {k: 'wait', sid: s.sid, filter: '', sel: 0};
 		else if (this.holds.has(s.sid)) this.unhold(s);
 		else this.hold(s);
 		this.emit();

@@ -68,6 +68,8 @@ export async function configureServer(pid: number): Promise<string> {
 		`bind -T wnq C-x ${keyCmd('backreq', 'stop', "'#{session_name}'", "'#{client_tty}'")}`,
 		// 一覧の n。n は作業台で tmux の next-window なので、ctrl を押したままの形だけにする
 		`bind -T wnq C-n ${keyCmd('backreq', 'new', "'#{session_name}'", "'#{client_tty}'")}`,
+		// 一覧の w。w は作業台で tmux の choose-tree なので、ctrl を押したままの形だけにする
+		`bind -T wnq C-w ${keyCmd('backreq', 'wait', "'#{session_name}'", "'#{client_tty}'")}`,
 		// 作業台(popup の中のクライアント): ctrl+q が prefix
 		'bind C-q detach-client',
 		`bind C-l ${keyCmd('back', "'#{session_name}'", "'#{client_tty}'")}`,
@@ -79,6 +81,7 @@ export async function configureServer(pid: number): Promise<string> {
 		...['h', 'C-h'].map(k => `bind ${k} ${keyCmd('backreq', 'hold', "'#{session_name}'", "'#{client_tty}'")}`),
 		`bind C-x ${keyCmd('backreq', 'stop', "'#{session_name}'", "'#{client_tty}'")}`,
 		`bind C-n ${keyCmd('backreq', 'new', "'#{session_name}'", "'#{client_tty}'")}`,
+		`bind C-w ${keyCmd('backreq', 'wait', "'#{session_name}'", "'#{client_tty}'")}`,
 		// 一覧に知らせる。一覧は tmux に問い合わせて、何が起きたかを自分で判断する
 		`set-hook -g client-session-changed ${q(keyCmd('notify'))}`,
 		`set-hook -g client-attached ${q(keyCmd('notify'))}`,
@@ -143,7 +146,7 @@ const claudeStatus = (id: string): Array<[string, string]> => [
 	['window-status-separator', ''],
 	['status-right-length', '100'],
 	['status-left', `#(${shCall('wb', id)})`],
-	['status-right', '^Q^Q workbench · ^Q^L back · ^Q^Y ! commands · ^Q^E external · ^Q^H hold · ^Q^X stop · ^Q^N new'],
+	['status-right', '^Q^Q workbench · ^Q^L back · ^Q^Y ! commands · ^Q^E external · ^Q^H hold · ^Q^X stop · ^Q^N new · ^Q^W wait'],
 ];
 
 // claude の画面のセッション <id> を作る(なければ)。中で claude attach <id> が動く。
