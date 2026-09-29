@@ -219,20 +219,25 @@ sandbox の外で人が動かすコマンドを、どのセッションのため
   ctrl+q l        一覧に戻る(作業台を出していれば、それも閉じる)
   ctrl+q y        `!` のコマンドのメニューを出す(「`!` のコマンドのコピー」)
   ctrl+q e        外のアプリで見るメニューを出す(「操作」の `e`)
+  ctrl+q h        一覧に戻り、その行を保留にする(一覧の `h`。保留の理由の入力欄が開く)
+  ctrl+q ctrl+x   一覧に戻り、その行を止める(一覧の `Ctrl+X`)。続けてもう一度押すと削除する
   ```
 
-  作業台の中では、`ctrl+q` は tmux の prefix として働き、tmux の既定のキー（`c` でウィンドウ、`%` と `"` で分割など）が使える。claude の画面では、ほかの `ctrl+q` の組み合わせは何もしない。`ctrl+q` は、Claude Code、tmux の既定、Ghostty のどれも使っていないキーである。`y` と `e` も、tmux の prefix の既定の割り当てにない（tmux 3.7c で既定の割り当てがない小文字は `a b e g h j k u v y`）。
+  一覧と attach している間で、同じ操作を同じ文字で使えるようにする（一覧の `y`・`e`・`h`・`Ctrl+X` と、`ctrl+q` のあとの同じ文字）。`ctrl+q h` と `ctrl+q ctrl+x` は一覧に戻ってから一覧と同じ処理をするので、確認（push していないコミット、作業台で動いているもの、待ち先の巻き込み）も一覧と同じに出る。止めると `claude attach` も終わるので、止めたあとに attach したまま残る形はない。保留の理由の入力欄を `Esc` で閉じると、保留せずに一覧に残り、`Enter` ですぐ元の画面に戻れる。すでに保留の行で `ctrl+q h` を押すと、一覧の `h` と同じく保留を解く。
+  一覧では `ctrl+q` を無視する。attach している間の癖で押しても何も起きず、`Ctrl+X` の削除の待ち受けも取り消さない。そのため `ctrl+q ctrl+x` を2回続けて押すと、止めてから削除できる。
 
-  `l`・`y`・`e` は、ctrl を押したまま（`ctrl+q ctrl+l` など）押しても同じ動作にする。一番よく使う作業台の出し入れが ctrl を押したままの `ctrl+q ctrl+q` なので、続けて押すキーも ctrl を押したままになりやすい。割り当てのない組み合わせは tmux が黙って捨てるので、押し間違えても何も起きず、失敗にも気づけない。`ctrl+l` などは `ctrl+q` の直後にしか効かないので、claude とシェルでの本来の意味は変わらない。tmux の prefix の既定の割り当てにも `C-l`・`C-y`・`C-e` はない。キーの説明には、短く保つために ctrl を押したままの形を載せない。
+  作業台の中では、`ctrl+q` は tmux の prefix として働き、tmux の既定のキー（`c` でウィンドウ、`%` と `"` で分割など）が使える。claude の画面では、ほかの `ctrl+q` の組み合わせは何もしない。`ctrl+q` は、Claude Code、tmux の既定、Ghostty のどれも使っていないキーである。`y`・`e`・`h` も、tmux の prefix の既定の割り当てにない（tmux 3.7c で既定の割り当てがない小文字は `a b e g h j k u v y`）。止める操作を ctrl を押したままの `ctrl+q ctrl+x` だけにするのは、作業台の中で `ctrl+q x` が tmux の既定の「ペインを閉じる」だからである。一覧の `Ctrl+X` とも同じ形になる。
+
+  `l`・`y`・`e`・`h` は、ctrl を押したまま（`ctrl+q ctrl+l` など）押しても同じ動作にする。一番よく使う作業台の出し入れが ctrl を押したままの `ctrl+q ctrl+q` なので、続けて押すキーも ctrl を押したままになりやすい。割り当てのない組み合わせは tmux が黙って捨てるので、押し間違えても何も起きず、失敗にも気づけない。`ctrl+l` などは `ctrl+q` の直後にしか効かないので、claude とシェルでの本来の意味は変わらない。tmux の prefix の既定の割り当てにも `C-l`・`C-y`・`C-e`・`C-h`・`C-x` はない。キーの説明には、短く保つために ctrl を押したままの形を載せない。
 - **attach した claude の画面の最下行に、tmux のステータス行を1行出す。** 左に作業台の状態を、右にキーの説明を出す。キーの説明は、作業台の有無にかかわらず常に出す。作業台の欄は数秒ごとに描き直す。
 
   ```
   作業台でシェル以外が動いているとき(複数あれば ` · ` でつなぐ)
-  │ ⚙ npm run e2e              ^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external │
+  │ ⚙ npm run e2e              ^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external · ^Q h hold · ^Q^X stop │
   作業台はあるが、シェルが待っているだけのとき
-  │ ⌂ workbench (shell)        ^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external │
+  │ ⌂ workbench (shell)        ^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external · ^Q h hold · ^Q^X stop │
   作業台がないとき
-  │                            ^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external │
+  │                            ^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external · ^Q h hold · ^Q^X stop │
   ```
 
   - 作業台の欄には、動いているコマンドだけを出す。出力の最後の行は出さない。静かで、秘密が出る心配がない。
@@ -552,6 +557,8 @@ Claude Code は、人にシェルのコマンドを動かしてもらうとき�
 
 - **14.** `e` を押すと開く先のメニューが出て、手元の VS Code を選ぶと選んだ行の場所（worktree ならその worktree）が開く。PR が出ている行では、PR を vscode.dev で開く選択肢と GitHub で開く選択肢も出る。PR が出ていない行では、PR がないことが示される。
 - **48.** attach している間に `ctrl+q e` を押すと、`e` と同じ開く先が tmux のメニューで出る（claude の画面でも作業台の中でも）。手元の VS Code を選ぶと場所が開き、画面の最下行に何を開いたかが示される。PR が出ていない行では、PR がないことが選べない行で示される。`ctrl+q ctrl+e` でも同じ。
+- **52.** attach している間に `ctrl+q h`（または `ctrl+q ctrl+h`）を押すと、一覧に戻り、その行の保留の理由の入力欄が開く（claude の画面でも作業台の中でも。作業台の popup は閉じる）。`Enter` で保留になり、`Esc` なら保留せずに一覧に残る。保留の行で押すと保留が解ける。
+- **53.** attach している間に `ctrl+q ctrl+x` を押すと、一覧に戻り、その行が止まる（一覧の1回目の `Ctrl+X` と同じ）。続けて `ctrl+q ctrl+x`（または `Ctrl+X`）を押すと削除される。確認が要る場面では一覧と同じ確認が出る。作業台の中で `ctrl+q x` を押すと、tmux の既定どおりペインを閉じる確認が出る。
 
 #### 起動時と全体
 

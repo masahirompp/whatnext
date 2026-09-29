@@ -10,6 +10,18 @@ notify() {
 	return 0
 }
 to_list() { T switch-client -c "$1" -t '=list' 2>/dev/null; }
+back_to_list() {
+	case "$1" in
+	sh-*)
+		id=$(printf '%s' "$1" | cut -c4-)
+		for c in $(clients_on "$id"); do
+			T display-popup -C -c "$c" 2>/dev/null
+			to_list "$c"
+		done
+		;;
+	*) to_list "$2" ;;
+	esac
+}
 clients_on() { T list-clients -F '#{client_tty}	#{session_name}' 2>/dev/null | awk -F '	' -v s="$1" '$2==s{print $1}'; }
 
 case "$A" in
@@ -62,17 +74,14 @@ popup)
 	;;
 back)
 	# <session> <client_tty>: ctrl+q l。作業台の中なら popup も閉じる
-	sn="$1"; ct="$2"
-	case "$sn" in
-	sh-*)
-		id=$(printf '%s' "$sn" | cut -c4-)
-		for c in $(clients_on "$id"); do
-			T display-popup -C -c "$c" 2>/dev/null
-			to_list "$c"
-		done
-		;;
-	*) to_list "$ct" ;;
-	esac
+	back_to_list "$1" "$2"
+	notify
+	;;
+backreq)
+	# <what> <session> <client_tty>: ctrl+q h、ctrl+q ctrl+x。一覧に戻ってから、その行への操作を一覧に頼む
+	back_to_list "$2" "$3"
+	id=$(printf '%s' "$2" | sed 's/^sh-//')
+	T set -g @wn_req "$1 $id"
 	notify
 	;;
 req)

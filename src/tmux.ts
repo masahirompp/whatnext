@@ -61,11 +61,16 @@ export async function configureServer(pid: number): Promise<string> {
 		...['l', 'C-l'].map(k => `bind -T wnq ${k} ${keyCmd('back', "'#{session_name}'", "'#{client_tty}'")}`),
 		...['y', 'C-y'].map(k => `bind -T wnq ${k} ${keyCmd('req', 'menu', "'#{session_name}'", "'#{client_tty}'", "'#{pane_id}'")}`),
 		...['e', 'C-e'].map(k => `bind -T wnq ${k} ${keyCmd('req', 'ext', "'#{session_name}'", "'#{client_tty}'")}`),
+		// 一覧の h と Ctrl+X を attach の中に持ち込む。x は作業台で tmux の kill-pane なので、ctrl を押したままの形だけにする
+		...['h', 'C-h'].map(k => `bind -T wnq ${k} ${keyCmd('backreq', 'hold', "'#{session_name}'", "'#{client_tty}'")}`),
+		`bind -T wnq C-x ${keyCmd('backreq', 'stop', "'#{session_name}'", "'#{client_tty}'")}`,
 		// 作業台(popup の中のクライアント): ctrl+q が prefix
 		'bind C-q detach-client',
 		...['l', 'C-l'].map(k => `bind ${k} ${keyCmd('back', "'#{session_name}'", "'#{client_tty}'")}`),
 		...['y', 'C-y'].map(k => `bind ${k} ${keyCmd('req', 'menu', "'#{session_name}'", "'#{client_tty}'", "'#{pane_id}'")}`),
 		...['e', 'C-e'].map(k => `bind ${k} ${keyCmd('req', 'ext', "'#{session_name}'", "'#{client_tty}'")}`),
+		...['h', 'C-h'].map(k => `bind ${k} ${keyCmd('backreq', 'hold', "'#{session_name}'", "'#{client_tty}'")}`),
+		`bind C-x ${keyCmd('backreq', 'stop', "'#{session_name}'", "'#{client_tty}'")}`,
 		// 一覧に知らせる。一覧は tmux に問い合わせて、何が起きたかを自分で判断する
 		`set-hook -g client-session-changed ${q(keyCmd('notify'))}`,
 		`set-hook -g client-attached ${q(keyCmd('notify'))}`,
@@ -128,9 +133,9 @@ const claudeStatus = (id: string): Array<[string, string]> => [
 	['window-status-format', ''],
 	['window-status-current-format', ''],
 	['window-status-separator', ''],
-	['status-right-length', '80'],
+	['status-right-length', '100'],
 	['status-left', `#(${shCall('wb', id)})`],
-	['status-right', '^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external'],
+	['status-right', '^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external · ^Q h hold · ^Q^X stop'],
 ];
 
 // claude の画面のセッション <id> を作る(なければ)。中で claude attach <id> が動く。

@@ -322,7 +322,9 @@ export class Store {
 
 	private async handleNotify() {
 		const req = await takeOption('@wn_req');
-		if (req) await this.handleRequest(req);
+		// hold と stop は一覧に戻ってから行う(戻ったときの処理が入力欄を閉じないように、後に回す)
+		const after = req && /^(hold|stop) /.test(req) ? req : undefined;
+		if (req && !after) await this.handleRequest(req);
 		const notice = await takeOption('@wn_notice');
 		if (notice !== undefined) {
 			this.versionNotice = notice === '-' ? undefined : notice;
@@ -341,6 +343,22 @@ export class Store {
 			if (on.startsWith('trust-')) return; // 信頼の確認の画面(askTrust が面倒を見る)
 			if (this.attached?.id !== on) this.attached = {id: on, prompts: 0};
 		}
+		if (after) this.afterBack(after);
+	}
+
+	// ctrl+q h と ctrl+q ctrl+x: 一覧に戻ったあと、その行で h と Ctrl+X を押したのと同じにする
+	private afterBack(req: string) {
+		const [kind, id] = req.split(' ');
+		const row = this.rows.find(r => r.id === id);
+		const s = row && this.sessions.get(row.sessionId);
+		if (!s || this.busy.get(s.sid) === 'deleting') return;
+		this.cursor = s.sid;
+		this.mode = {k: 'list'};
+		this.ctrlXGuard = undefined;
+		if (kind === 'stop') this.ctrlX(s);
+		else if (this.holds.has(s.sid)) this.unhold(s);
+		else this.hold(s);
+		this.emit();
 	}
 
 	private async onReturn(a: Attached) {
@@ -876,6 +894,8 @@ export class Store {
 	}
 
 	private listKey(k: Key) {
+		// attach の中の癖で ctrl+q を押しても何もしない(ctrl+q ctrl+x を2回押して止めてから消せるように、削除の待ち受けも取り消さない)
+		if (k.ctrl && k.name === 'q') return;
 		const s = this.selected();
 		const isCtrlX = k.ctrl && k.name === 'x';
 		if (this.deletePending && !isCtrlX) {
