@@ -180,7 +180,7 @@ export function frame(store: Store, {cols: w, rows: h}: Screen): string[] {
 		footer.push(...statusRows);
 		const c = sel?.bangs.length ? 'y copy ! commands  ' : '';
 		footer.push(dim(`↑↓ select  Enter attach  n new  h hold  w wait for  e external  ${c}^X stop/delete  r refresh  q quit`));
-		footer.push(dim('^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external · ^Q h hold · ^Q^X stop · ^Q^N new'));
+		footer.push(dim('^Q^Q workbench · ^Q^L back · ^Q^Y ! commands · ^Q^E external · ^Q^H hold · ^Q^X stop · ^Q^N new'));
 	}
 
 	// ---- スクロール ----

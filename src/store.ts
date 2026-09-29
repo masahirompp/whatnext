@@ -346,7 +346,7 @@ export class Store {
 		if (after) this.afterBack(after);
 	}
 
-	// ctrl+q h・ctrl+q ctrl+x・ctrl+q ctrl+n: 一覧に戻ったあと、その行で h・Ctrl+X・n を押したのと同じにする
+	// ctrl+q ctrl+h・ctrl+q ctrl+x・ctrl+q ctrl+n: 一覧に戻ったあと、その行で h・Ctrl+X・n を押したのと同じにする
 	private afterBack(req: string) {
 		const [kind, id] = req.split(' ');
 		const row = this.rows.find(r => r.id === id);
@@ -387,7 +387,7 @@ export class Store {
 		this.emit();
 	}
 
-	// ---- tmux からの頼みごと(ctrl+q y、ctrl+q e) ----
+	// ---- tmux からの頼みごと(ctrl+q ctrl+y、ctrl+q ctrl+e) ----
 
 	private async handleRequest(req: string) {
 		debug(`request ${req}`);
@@ -1086,7 +1086,7 @@ const dropLast = (s: string) => {
 
 type ExternalTarget = {label: string; target: string; what: string};
 
-// e と ctrl+q e の開く先(よく使う順)
+// e と ctrl+q ctrl+e の開く先(よく使う順)
 function externalTargets(w: Where | undefined, cwd: string): ExternalTarget[] {
 	const out: ExternalTarget[] = [];
 	if (w?.pr) out.push({label: `Pull request #${w.pr.number} on GitHub`, target: w.pr.url, what: `pull request #${w.pr.number} on GitHub`});

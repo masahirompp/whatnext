@@ -19,8 +19,8 @@ whatnext は、セッションごとに**作業台**（そのセッションの�
 - whatnext は専用の tmux サーバ（`tmux -L <名前> -f <whatnext の設定>`）を使い、利用者の tmux サーバや設定には触れない。tmux は作業台のためだけに使うので、利用者から隠す（ステータス行も出さない）。
 - `Enter` で、whatnext の子として、専用のサーバのセッション `<id>` に入る。`<id>` の中で `claude attach <id>` を動かす。子が終わることが「attach から戻った」になり、端末を明け渡す仕組みは tmux を使わないときと同じである。
 - 作業台は同じサーバの別セッション `sh-<id>` に置き、キーで popup として claude の画面の上に出し入れする。popup の中では分割やウィンドウの追加ができ、それは `sh-<id>` に残る。
-- キーの起点は `ctrl+q` の1つだけにする。`ctrl+q ctrl+q` で作業台を出し入れし、`ctrl+q l` で一覧に戻る。作業台の中では `ctrl+q` が tmux の prefix として働く。`ctrl+q` は Claude Code（2.1.283 の既定の割り当て）、tmux の既定、Ghostty のどれも使っておらず、シェルでの意味（zsh の push-line など）も使う頻度が低い。
-- `ctrl+q l` で一覧に戻ったときは、tmux のクライアントだけを離し、`claude attach` は畳まずに残す。次の `Enter` では attach し直さず、すぐに元の画面に戻る。
+- キーの起点は `ctrl+q` の1つだけにする。`ctrl+q ctrl+q` で作業台を出し入れし、`ctrl+q ctrl+l` で一覧に戻る。作業台の中では `ctrl+q` が tmux の prefix として働く。`ctrl+q` は Claude Code（2.1.283 の既定の割り当て）、tmux の既定、Ghostty のどれも使っておらず、シェルでの意味（zsh の push-line など）も使う頻度が低い。
+- `ctrl+q ctrl+l` で一覧に戻ったときは、tmux のクライアントだけを離し、`claude attach` は畳まずに残す。次の `Enter` では attach し直さず、すぐに元の画面に戻る。
 - 空のプロンプトの ← で Agent View に入ったとき（端末のタイトルが `claude agents` に変わる。`pane-title-changed` のフックで拾う）は、`claude attach` を畳んで一覧に戻る。Ctrl+Z は `claude attach` が自分で終わるので、何もしなくても一覧に戻る。どちらも、次の `Enter` で attach し直す。
 - 残した `claude attach` は、そのセッションを止めたとき、削除したとき、whatnext を閉じたときに畳む。
 - 作業台は whatnext を閉じると閉じる。作業台でシェル以外のものが動いていれば、閉じる前に確認する。

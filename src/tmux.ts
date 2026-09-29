@@ -58,7 +58,9 @@ export async function configureServer(pid: number): Promise<string> {
 		`bind -n C-q if -F '#{@wn_claude}' 'switch-client -T wnq' 'send-keys C-q'`,
 		`bind -T wnq C-q ${keyCmd('popup', "'#{session_name}'", "'#{client_tty}'")}`,
 		// ctrl を押したままの ^Q^L / ^Q^Y / ^Q^E も同じ動作にする(^Q^Q で ctrl を押したままの手癖が付くため)
-		...['l', 'C-l'].map(k => `bind -T wnq ${k} ${keyCmd('back', "'#{session_name}'", "'#{client_tty}'")}`),
+		// whatnext の操作は ctrl を押したままの形(キーの説明もこの形)。l は作業台で tmux の last-window なので、文字だけの形は割り当てない。
+		// y・e・h は tmux の既定の割り当てがないので、文字だけでも同じ動作にする(説明には載せない)
+		`bind -T wnq C-l ${keyCmd('back', "'#{session_name}'", "'#{client_tty}'")}`,
 		...['y', 'C-y'].map(k => `bind -T wnq ${k} ${keyCmd('req', 'menu', "'#{session_name}'", "'#{client_tty}'", "'#{pane_id}'")}`),
 		...['e', 'C-e'].map(k => `bind -T wnq ${k} ${keyCmd('req', 'ext', "'#{session_name}'", "'#{client_tty}'")}`),
 		// 一覧の h と Ctrl+X を attach の中に持ち込む。x は作業台で tmux の kill-pane なので、ctrl を押したままの形だけにする
@@ -68,7 +70,10 @@ export async function configureServer(pid: number): Promise<string> {
 		`bind -T wnq C-n ${keyCmd('backreq', 'new', "'#{session_name}'", "'#{client_tty}'")}`,
 		// 作業台(popup の中のクライアント): ctrl+q が prefix
 		'bind C-q detach-client',
-		...['l', 'C-l'].map(k => `bind ${k} ${keyCmd('back', "'#{session_name}'", "'#{client_tty}'")}`),
+		`bind C-l ${keyCmd('back', "'#{session_name}'", "'#{client_tty}'")}`,
+		// サーバを作り直さずに設定を入れ直したときも、前の版の割り当てを残さない
+		'bind l last-window',
+		'unbind -q -T wnq l',
 		...['y', 'C-y'].map(k => `bind ${k} ${keyCmd('req', 'menu', "'#{session_name}'", "'#{client_tty}'", "'#{pane_id}'")}`),
 		...['e', 'C-e'].map(k => `bind ${k} ${keyCmd('req', 'ext', "'#{session_name}'", "'#{client_tty}'")}`),
 		...['h', 'C-h'].map(k => `bind ${k} ${keyCmd('backreq', 'hold', "'#{session_name}'", "'#{client_tty}'")}`),
@@ -138,7 +143,7 @@ const claudeStatus = (id: string): Array<[string, string]> => [
 	['window-status-separator', ''],
 	['status-right-length', '100'],
 	['status-left', `#(${shCall('wb', id)})`],
-	['status-right', '^Q^Q workbench · ^Q l back · ^Q y ! commands · ^Q e external · ^Q h hold · ^Q^X stop · ^Q^N new'],
+	['status-right', '^Q^Q workbench · ^Q^L back · ^Q^Y ! commands · ^Q^E external · ^Q^H hold · ^Q^X stop · ^Q^N new'],
 ];
 
 // claude の画面のセッション <id> を作る(なければ)。中で claude attach <id> が動く。

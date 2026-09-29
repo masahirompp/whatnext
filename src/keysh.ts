@@ -73,12 +73,12 @@ popup)
 	notify
 	;;
 back)
-	# <session> <client_tty>: ctrl+q l。作業台の中なら popup も閉じる
+	# <session> <client_tty>: ctrl+q ctrl+l。作業台の中なら popup も閉じる
 	back_to_list "$1" "$2"
 	notify
 	;;
 backreq)
-	# <what> <session> <client_tty>: ctrl+q h、ctrl+q ctrl+x。一覧に戻ってから、その行への操作を一覧に頼む
+	# <what> <session> <client_tty>: ctrl+q ctrl+h、ctrl+q ctrl+x、ctrl+q ctrl+n。一覧に戻ってから、その行への操作を一覧に頼む
 	back_to_list "$2" "$3"
 	id=$(printf '%s' "$2" | sed 's/^sh-//')
 	T set -g @wn_req "$1 $id"
