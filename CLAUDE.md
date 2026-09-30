@@ -61,3 +61,5 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 ### 旧サイクルコードの参照
 
 旧サイクルのコードを作業ツリーに置かない。参照が必要なら `git show cycle-N:src/...` か、作業ツリー外への `git worktree` を使う。
+
+前サイクルの cycle-audit で持ち越した項目（docs と旧コードが食い違うもの）は、次サイクルの完了条件に番号付きで書き出す。旧コードを参照して書き直すと、docs の文言にだけ反映した先送りの項目は旧コードの字面のまま写る（cycle 6 で、cycle 5 の監査で持ち越した2件がそのまま残った）。

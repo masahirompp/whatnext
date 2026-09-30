@@ -32,7 +32,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 対話セッションも出る。通常の `claude` で起動したものも ACP 経由のものも `kind: "interactive"` で、`id` と `state` がなく、`status`、`waitingFor`、`pid` を持つ。
 - 通常の `claude` の権限待ちも出る。確認ダイアログの表示中は `status: "waiting"`、`waitingFor: "permission prompt"` になる。
 - 対話セッションがターンを終えたあとは `status: "idle"` で、開いているだけのセッションと区別できない。
-- `--name` の値は `name` に出る。`--name` なしのときは、最初はプロンプトの先頭で、最初のターンを終えると内容を要約した名前に付け直される。プロンプトなしで起動したときは、最初は `id` と同じ値になる（2.1.281）。名前は変わるので、行の特定には `id` を使う。
+- `--name` の値は `name` に出る。`--name` なしのときは、最初はプロンプトの先頭で、最初のターンを終えると内容を要約した名前に付け直される。プロンプトなしで起動したときは、最初は `id` と同じ値になる（2.1.281）。名前は変わるので、行の特定には `id` を使う。要約の名前は、いつも付くわけではない。名前を付けずに依頼付きで起動したセッションの `name` が、日本語の依頼の英語の要約（`attach mode keyboard shortcuts`）になったことがある一方、whatnext から名前なしで起動し英語の短い依頼を送った haiku のセッション6つは、終わったあとも `name` が ID のままだった（2.1 系、サイクル6）。
 - PR の情報はない（公式ドキュメント agent-view のフィールド表による）。Agent View の PR ラベルは画面だけの表示で、Claude Code が `gh`（`gh pr view` など）で結び付けたもの。whatnext が PR を出すには自分で `gh` を呼ぶしかない。
 - 実行時間は約 135 ms（6〜8 行の時点）。
 - ターンを終えて `done` になったはずのセッションが、`blocked` + `idle` + `pid` ありになっていたことが2回ある。1つは sandbox で書き込みを拒まれて終わったターン（「モデルへの指示」の節の `!` を勧めさせる手順）。もう1つは、外で起動したセッションを、whatnext を閉じて（残していた `claude attach` と作業台を畳んで）から見たとき（会話記録の末尾はふつうのターンの終わりで、同じ条件の別のセッションは `done` のままだった）。条件と原因は確かめていない。whatnext では「どの規則にも当たらない行」として、質問待ちの段に `Question (blocked)` と出る（2.1.283）。
@@ -62,10 +62,14 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - whatnext の子として動かした `claude attach` で Ctrl+Z を押すと、子が自分で終了する（終了コード 0、signal なし）。親は止まらず、端末のジョブ制御は働かない。attach から戻ったことは子の終了で分かる。
 - attach して何も入力せずに離脱しても、`--json` の `state`、`status`、`waitingFor` は変わらない（`blocked` + `idle` で確認。2.1.282）。`done` や `waitingFor` のある状態で同じかと、OTel を送るセッションで attach しただけでイベントが飛ぶかは未確認。
 - `pid` のない `blocked` の行に attach すると、2.1.281 では `Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らなかった（やり直すコマンドとして `claude respawn <id>` がある）。2.1.282 では、会話の記録があるセッションも、記録のない（プロンプトなしで起動してプロセスを `kill -9` で落とした）セッションも、attach で起き直り、離脱後は `blocked` + `idle` + `pid` ありになった。`Couldn't wake` は再現できなかった。
+- `state: "stopped"` の行に attach すると起き直る（2.1.283、whatnext の専用 tmux サーバの中で確認）。
+  - 会話のない行（指示を送らずに止めたもの。`pid` なし）は、ふつうの起動画面が出て入力を待った。`claude attach` は 0 以外で終わらなかった。離脱後の `--json` は `pid` あり、`state: "working"`、`status: "idle"`。
+  - 権限待ち（`blocked` + `waiting` + `permission prompt`）のまま止めた行は、止める前の権限の確認は出ず、そのツールの呼び出しは中断として扱われた（`Interrupted · What should Claude do instead?`）。離脱後の `--json` は `pid` あり、`state: "working"`、`status: "idle"`。権限の確認で `No` を選んだときと違い、会話記録に「断った」印は残らない。
 - attach の中で `/exit` を送ると（入力欄に `exit` とだけ打った場合も）、`claude attach` が終わる。セッション本体は `done` + `idle` のまま動き続ける（2.1.283、whatnext の専用 tmux サーバの中で確認。← と同じく Agent View を経て終わったのかは切り分けていない）。
 - `--bg` のセッションの権限要求に外部から答える口はない。`--permission-prompts` は `--print` 専用。
 - `claude logs` の出力は解析できない。画面の再描画の制御コードそのもの。
 - 指定したセッションの最後の応答を、画面の解析なしで取る公式の口は、Stop フックの `last_assistant_message`（フックを付けて起動したセッションだけ）しかない。`claude logs <id>` は上のとおり描画の制御コード。`claude -p --resume <sessionId> --fork-session --no-session-persistence --output-format json "/copy"` は、API を呼ばずに `/copy isn't available in this environment.` を返し、`/export` も同じ（`/usage` と違い `-p` では使えない。元のセッションにも会話ファイルにも影響はなかった）。フックのないセッションでは会話記録から取る（「会話記録」の節。[ADR-0011](adr/0011-fill-in-from-transcripts-when-hooks-are-missing.md)）（2.1.283）。
+- tmux の中では、tmux が 3.4 以上ならリンク(OSC 8)を出す(2.1.284)。本体は `TERM_PROGRAM=tmux` のとき `TERM_PROGRAM_VERSION` の主と副の番号を見る(`3.7c` は 3.7)。`FORCE_HYPERLINK` は要らない。設定の `hyperlinks` があればそれが優先される。tmux 側で外側の端末に `hyperlinks` の機能がないと、出しても端末には届かない。
 
 ### recap（away summary）（2.1.283）
 
@@ -95,7 +99,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
   ```
 
   1行目はロック（`stop` の直後）の断りと同じ書き出しで、理由は2行目にしか出ない。1行目でロックかどうかを判定すると、未コミットの変更の断りでも待ち直してしまう。断りは stderr ではなく stdout に出る。
-- プロンプトなしで起動し、指示を送っていないセッションを `claude stop` すると、3秒ほどで `--json` から行が消えた（2.1.283、haiku、観測1回）。会話のあるセッションは止めても残る（`done` と `failed` はそのまま、`blocked` は `stopped`）。
+- プロンプトなしで起動し、指示を送っていないセッションを `claude stop` すると、3秒ほどで `--json` から行が消えた（2.1.283、haiku、観測1回）。一方、同じ 2.1.283 で、`claude --bg --name probe-idle`（会話記録なし）を止めると `state: "stopped"` のまま1分以上残った。whatnext の `n` で起動し、指示を送らずに止めたものも同じだった。消える条件（モデル、時間、版）は未確定。会話のあるセッションは止めても残る（`done` と `failed` はそのまま、`blocked` は `stopped`）。
 - 未 push のコミットがあるときは、`--discard-unpushed (\S+)` と `(\d+) unpushed commit` を断りの文言から読み、その値を渡すと worktree とブランチごと消えた（2.1.283）。
 
 ### Usage（2.1.282）
@@ -176,7 +180,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 
 whatnext が依存してよい項目は [ADR-0011](adr/0011-fill-in-from-transcripts-when-hooks-are-missing.md) で限っている。公開された仕様ではないので、`claude` を更新したら見本と比べ直す。
 
-- 置き場所は `~/.claude/projects/<場所>/<sessionId>.jsonl`。`<sessionId>` は `--json` の `sessionId` と一致し、`~/.claude/projects/*/<sessionId>.jsonl` の glob で一意に見つかる（background 1つ、interactive 2つで確認）。worktree の中で動いたセッションの記録は、worktree のパスに対応するフォルダにある。
+- 置き場所は `~/.claude/projects/<場所>/<sessionId>.jsonl`。`<sessionId>` は `--json` の `sessionId` と一致し、`~/.claude/projects/*/<sessionId>.jsonl` の glob で一意に見つかる（background 1つ、interactive 2つで確認）。worktree の中で動いたセッションの記録は、worktree のパスに対応するフォルダにある。依頼をまだ送っていないセッション（`blocked` + `idle`）には、このファイルがなかった。
 - 1行が1つの JSON。大きいものは 5MB あった。
 - 行の `type`：`user`、`assistant`、`system`（`subtype` が `stop_hook_summary`、`turn_duration`、`away_summary`、`local_command`、`compact_boundary` など）のほか、`attachment`、`queue-operation`、`file-history-snapshot`、`last-prompt`、`custom-title`、`agent-name`、`mode`、`permission-mode` などが混ざる。
 - `user` の行：利用者の指示は `message.content` が文字列で、`timestamp` を持つ。ツールの結果も `type: "user"` で、`message.content` が配列（`tool_result` を含む）なので、文字列かどうかで見分ける。
