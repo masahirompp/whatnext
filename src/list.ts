@@ -1,4 +1,4 @@
-import {openReceiver} from './receiver.js';
+import {onPrompt, openReceiver} from './receiver.js';
 import {debug, Store} from './store.js';
 import {paint, screenSize, startTerminal} from './term.js';
 import {configureServer} from './tmux.js';
@@ -25,6 +25,7 @@ export async function runList(): Promise<number> {
 	debug(`start pid=${process.pid} port=${process.env.WHATNEXT_PORT} socket=${process.env.WHATNEXT_TMUX_SOCKET}`);
 	// SIGUSR2 は tmux のキーとフックからの知らせ
 	process.on('SIGUSR2', () => store.onNotify());
+	onPrompt(sid => void store.onPrompt(sid).catch(e => debug(`prompt: ${(e as Error).stack ?? e}`)));
 	for (const sig of ['SIGTERM', 'SIGHUP', 'SIGINT'] as const) process.on(sig, () => end(0));
 	const err = await configureServer(process.pid);
 	if (err) debug(`configure: ${err}`);

@@ -14,6 +14,10 @@ export type HookState = {
 export const hooks = new Map<string, HookState>();
 export const ctx = new Map<string, number>();
 
+// UserPromptSubmit を受けたときに呼ぶ(attach した画面の概要の行を置き直す)
+const promptListeners: Array<(sid: string) => void> = [];
+export const onPrompt = (f: (sid: string) => void) => void promptListeners.push(f);
+
 const state = (sid: string): HookState => {
 	let s = hooks.get(sid);
 	if (!s) hooks.set(sid, (s = {prompts: 0}));
@@ -29,6 +33,7 @@ function onHook(body: Record<string, unknown>) {
 		case 'UserPromptSubmit':
 			s.prompt = {text: String(body.prompt ?? ''), ts};
 			s.prompts++;
+			for (const f of promptListeners) f(sid);
 			break;
 		case 'Stop':
 			s.stop = {text: String(body.last_assistant_message ?? ''), ts};

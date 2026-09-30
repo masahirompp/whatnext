@@ -231,6 +231,34 @@ export class Store {
 		void this.syncSummaries();
 	}
 
+	// 依頼のフックを受けたら、そのセッションの概要の行をすぐ置き直す(一覧の更新を待つと最長60秒出ない)。
+	// 会話記録に指示の行が書かれるのがフックより後のこともあるので、見つかるまで少し待って読み直す
+	async onPrompt(sid: string) {
+		debug(`prompt hook ${sid}`);
+		if (await readFirstPrompt(sid)) return;
+		// 起動した直後のセッションは一覧の行がまだないので --json を読み直す。取れなかった回は飛ばして次に試す
+		let row: AgentRow | undefined;
+		for (const ms of [0, 500, 1500, 3000, 6000]) {
+			await new Promise(res => setTimeout(res, ms));
+			row ??= this.rows.find(r => r.sessionId === sid) ?? (await this.freshRowBySid(sid));
+			debug(`prompt hook ${sid}: try after ${ms}ms row=${row?.id ?? '-'}`);
+			if (!row?.id) continue;
+			await this.syncSummaries(row);
+			const first = await readFirstPrompt(sid);
+			debug(`prompt hook ${sid}: first=${JSON.stringify(first)}`);
+			if (first) return;
+		}
+		debug(`prompt hook ${sid}: first prompt not found`);
+	}
+
+	private async freshRowBySid(sid: string): Promise<AgentRow | undefined> {
+		try {
+			return dedupe(await fetchAgents()).find(r => r.sessionId === sid);
+		} catch {
+			return undefined;
+		}
+	}
+
 	// claude の画面の概要の行(名前 · 最初の依頼)。名前が付いたり最初の依頼が来たりするので、更新のたびに置き直す
 	private summaries = new Map<string, string>();
 	private async syncSummaries(only?: AgentRow) {
@@ -244,6 +272,7 @@ export class Store {
 				const key = `${title}\n${first ?? ''}`;
 				if (this.summaries.get(r.id) === key) return;
 				this.summaries.set(r.id, key);
+				debug(`summary ${r.id} ${JSON.stringify(key)}${only ? ' (single)' : ''}`);
 				await setSummary(r.id, title, first);
 			}),
 		);
@@ -337,7 +366,9 @@ export class Store {
 		if (ok) {
 			this.summaries.delete(id);
 			const row = this.rows.find(r => r.id === id);
+			// 起動した直後のセッションは、まだ読み直していない --json にないので、名前だけ置く
 			if (row) await this.syncSummaries(row);
+			else await setSummary(id, name, undefined);
 		}
 		if (!ok || !me) {
 			this.say(`Could not open ${name}.`);
