@@ -1,8 +1,10 @@
 ---
 name: working-with-tmux
-description: whatnext の作業台(専用の tmux サーバ、popup、キーの割り当て、フック)を実装するときに読む。tmux 3.7c で実測した使い方と罠。画面を操作して確かめる手順は driving-whatnext-in-tmux スキル。
+description: whatnext の作業台(専用の tmux サーバ、作業台の画面のクライアント、キーの割り当て、フック)を実装するときに読む。tmux 3.7c で実測した使い方と罠。画面を操作して確かめる手順は driving-whatnext-in-tmux スキル。
 ---
 # tmux で作業台を作るときの罠(tmux 3.7c で実測)
+
+サイクル7で、作業台は popup ではなく、利用者が端末の別の分割で開く作業台の画面(専用サーバの2つ目のクライアント)に映す形に改めた(docs/adr/0014)。popup の中のクライアントについての項目は、サイクル6までの popup で測ったもので、作業台の画面のクライアントにも同じことが起きるかは確かめていない。キーを受けるクライアントの見分け方(`#{client_tty}`、`#{session_name}`)と、見ているセッションを畳む前に切り替える必要があることは、そのまま当てはまる見込み。
 
 ## 専用のサーバ
 - `tmux -L <名前> -f <whatnext の設定>` で、利用者のサーバと設定から切り離す。設定では `set -g prefix None` にし、作業台のセッションにだけ `set -t sh-<id> prefix <キー>` で prefix を効かせる。claude の画面では prefix が効かず、キーは claude に届く。

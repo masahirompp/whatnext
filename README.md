@@ -19,6 +19,12 @@ When several sessions are waiting at once, whatnext ranks them by how much it co
 npx @masahirompp/whatnext
 ```
 
+To see a session's workbench shell next to it, split your terminal (e.g. `cmd+d` in Ghostty) and run this in the new split. It follows the session you are looking at; close the split when you no longer need it.
+
+```sh
+npx @masahirompp/whatnext workbench
+```
+
 ## Requirements
 
 - Node.js 22 or later

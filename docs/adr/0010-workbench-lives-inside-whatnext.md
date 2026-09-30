@@ -8,6 +8,8 @@ status: accepted
 
 `Enter` で端末を子に明け渡す仕組みと、端末のウィンドウを閉じたときの扱いは、[ADR-0012](0012-list-runs-inside-the-dedicated-tmux-server.md) で置き換えた（サイクル5）。以下の該当箇所は、ADR-0012 の構成が破綻したときの戻り先として残す。
 
+作業台を popup として claude の画面の上に出し入れする部分（`ctrl+q ctrl+q` を含む）は、[ADR-0014](0014-workbench-shows-in-a-screen-the-user-opens.md) で置き換えた（サイクル7）。作業台を利用者が端末の別の分割で開く作業台の画面に映す。作業台を専用の tmux サーバに置くこと、寿命（whatnext を終了すると閉じる、確認を出せずに終わったときは動いているものを残す）、`claude attach` を残すことは、この ADR のまま変えない。以下の Considered Options の「端末のアプリの機能：外から操作する口がない」は、Ghostty 1.3 の AppleScript で古い事実になった（ADR-0014）。
+
 ステータス行は、サイクル5で attach した claude の画面の最下行にだけ出すことにした（PRODUCT.md「作業台」）。以下の「ステータス行も出さない」と、Considered Options の「tmux のステータス行にキーを出す」は、サイクル4の時点の判断である。
 
 利用者は仕事用の PC で Claude Code を sandbox の中で動かし、credential を読めないように設定している。
