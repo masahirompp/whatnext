@@ -1306,7 +1306,7 @@ function externalTargets(w: Where | undefined, cwd: string): ExternalTarget[] {
 	if (w?.pr) out.push({label: `Pull request #${w.pr.number} on GitHub`, target: w.pr.url, what: `pull request #${w.pr.number} on GitHub`});
 	const dir = w?.checkoutRoot ?? cwd;
 	const short = dir.replace(homedir(), '~');
-	out.push({label: `VS Code: ${short}`, target: `vscode://file${dir}/`, what: `${short} in VS Code`});
+	out.push({label: `VS Code: ${short}`, target: `vscode://file${dir}/?windowId=_blank`, what: `${short} in VS Code`});
 	const gh = w?.pr && /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(w.pr.url);
 	if (gh) out.push({label: `Pull request #${gh[3]} on vscode.dev`, target: `https://vscode.dev/github/${gh[1]}/${gh[2]}/pull/${gh[3]}`, what: `pull request #${gh[3]} on vscode.dev`});
 	return out;
