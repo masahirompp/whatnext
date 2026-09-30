@@ -747,9 +747,10 @@ export class Store {
 		}
 		const id = m[1]!;
 		if (waitParent) this.pendingWaits.push({parent: waitParent, id});
+		// 起動中の画面のまま claude の画面に切り替えてから、裏で一覧に戻す(先に戻すと、切り替えの準備の間だけ一覧が見える)
+		await this.attachId(id, dir, id);
 		this.mode = {k: 'list'};
 		this.emit();
-		await this.attachId(id, dir, id);
 	}
 
 	// claude --bg は信頼していないディレクトリで断る。対話モードの claude で本物の信頼の確認を出し、承認されたら起動し直す
