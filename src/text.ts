@@ -1,4 +1,4 @@
-// 応答の本文から一言と `!` のコマンドを取り出す(PRODUCT.md「一覧の表示」「`!` のコマンドのコピー」)。
+// 応答の本文から一言を取り出す(PRODUCT.md「一覧の表示」)。
 
 const FENCE = /^\s*(```|~~~)/;
 const HR = /^\s*([-*_])(\s*\1){2,}\s*$/;
@@ -40,39 +40,6 @@ export function headOf(text: string | undefined): string | undefined {
 }
 
 export const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
-
-// 制御文字(タブを含む)を含むものは拾わない
-// eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
-
-// 空白2つ以上のあとの `# ` 以下を外す
-export function stripComment(cmd: string): string {
-	return cmd.replace(/\s{2,}#\s.*$/, '').replace(/\s{2,}#$/, '').trim();
-}
-
-export function bangCommands(text: string | undefined): string[] {
-	if (!text) return [];
-	const found: string[] = [];
-	const add = (raw: string) => {
-		if (CONTROL.test(raw)) return;
-		const cmd = stripComment(raw);
-		if (cmd) found.push(cmd);
-	};
-	let inFence = false;
-	for (const line of text.split(/\r?\n/)) {
-		if (FENCE.test(line)) {
-			inFence = !inFence;
-			continue;
-		}
-		if (inFence) {
-			const m = /^\s*!\s+(.+)$/.exec(line);
-			if (m) add(m[1]!);
-			continue;
-		}
-		for (const m of line.matchAll(/`!\s+([^`]+)`/g)) add(m[1]!);
-	}
-	return found;
-}
 
 // 権限を求めている道具と対象(`Bash: <コマンド>`、`Edit: <ファイル>` など)
 export function toolTarget(name: string, input: unknown): string {

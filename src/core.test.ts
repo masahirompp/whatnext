@@ -3,7 +3,7 @@ import {classify, dedupe, type AgentRow} from './agents.js';
 import {filterCands, labelsFor} from './candidates.js';
 import {ATTACH_HELP} from './keys.js';
 import {canWaitFor, deriveTiers, layout, type Ranked} from './model.js';
-import {bangCommands, formatWait, headOf} from './text.js';
+import {formatWait, headOf} from './text.js';
 import {parseUsage} from './usage.js';
 
 const row = (o: Partial<AgentRow>): AgentRow => ({kind: 'background', sessionId: 's', cwd: '/r', ...o});
@@ -49,14 +49,10 @@ describe('並びと待ち先(シナリオ 3、17〜20)', () => {
 	});
 });
 
-describe('一言と ! のコマンド(シナリオ 36、39)', () => {
+describe('一言(シナリオ 39)', () => {
 	it('区切り線と記号を飛ばす', () => {
 		expect(headOf('---\n- **変更点**は3つです')).toBe('変更点は3つです');
 		expect(headOf('```\nnpm test\n```')).toBe('npm test');
-	});
-	it('コードブロックとインラインコードの ! を拾い、行末の注釈を外す', () => {
-		const text = '手順:\n```\n! npm version minor   # タグを作る\n! npm publish\n```\nあとで `! git push --follow-tags` も';
-		expect(bangCommands(text)).toEqual(['npm version minor', 'npm publish', 'git push --follow-tags']);
 	});
 	it('1分未満は <1m', () => {
 		expect(formatWait(30_000)).toBe('<1m');

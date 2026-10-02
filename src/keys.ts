@@ -3,7 +3,7 @@
 //
 // kind:
 //   back    whatnext の画面を一覧に戻す
-//   req     一覧に戻さずに一覧に頼む(メニュー、次のセッション、作業台を作る)
+//   req     一覧に戻さずに一覧に頼む(外のアプリのメニュー、次のセッション、作業台を作る)
 //   backreq whatnext の画面を一覧に戻してから、一覧の同じ文字の操作をする
 export type AttachKey = {
 	letter: string;
@@ -12,15 +12,12 @@ export type AttachKey = {
 	help: string;
 	// tmux の prefix の既定の割り当てがない文字は、文字だけでも同じ動作にする(説明には載せない)
 	plain?: boolean;
-	// メニューを貼る先として、押したペインを渡す
-	pane?: boolean;
 };
 
 export const ATTACH_KEYS: AttachKey[] = [
 	{letter: 'l', kind: 'back', action: 'back', help: 'back'},
 	{letter: 'j', kind: 'req', action: 'next', help: 'next', plain: true},
 	{letter: 'w', kind: 'req', action: 'create', help: 'workbench'},
-	{letter: 'y', kind: 'req', action: 'menu', help: '! commands', plain: true, pane: true},
 	{letter: 'e', kind: 'req', action: 'ext', help: 'external', plain: true},
 	{letter: 'h', kind: 'backreq', action: 'hold', help: 'hold', plain: true},
 	{letter: 'x', kind: 'backreq', action: 'stop', help: 'stop'},

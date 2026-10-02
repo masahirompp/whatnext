@@ -5,11 +5,10 @@ import {homedir} from 'node:os';
 import {resolve as resolvePath} from 'node:path';
 import {classify, dedupe, displayName, fetchAgents, type AgentRow, type Tier} from './agents.js';
 import {filterCands, ghqList, labelsFor, type Cand} from './candidates.js';
-import {copy} from './clipboard.js';
 import {bestOf, canWaitFor, deriveTiers, descendants, layout, parentOf, type Layout, type Node, type Waits} from './model.js';
 import {ctx, hooks, launchSettings, type HookState} from './receiver.js';
 import type {Key} from './term.js';
-import {bangCommands, headOf, oneLine, toolTarget} from './text.js';
+import {headOf, oneLine, toolTarget} from './text.js';
 import {BACKREQ_ACTIONS} from './keys.js';
 import {
 	createWorkbench,
@@ -44,7 +43,6 @@ export type Session = {
 	reason?: string;
 	since: number | null;
 	note?: string;
-	bangs: string[];
 	running: string[];
 	where?: Where;
 };
@@ -110,7 +108,6 @@ export class Store {
 	private ctrlXGuard?: {name: string; until: number};
 	// 止めている・削除している最中の行(STATUS の欄に出す。削除中の行は薄くし、操作を受け付けない)
 	busy = new Map<string, 'stopping' | 'deleting'>();
-	private menuPick?: {token: string; cmds: string[]; tty: string; pane?: string};
 	private extPick?: {token: string; targets: ExternalTarget[]; tty: string};
 	startDir = process.cwd();
 
@@ -203,7 +200,7 @@ export class Store {
 				const p = this.prev.get(sid);
 				since = p && p.tier === c.tier ? p.since : first ? null : this.lastRefresh;
 			}
-			const {note, response} = noteFor(c.tier, r, hook, tr);
+			const {note} = noteFor(c.tier, r, hook, tr);
 			const old = this.sessions.get(sid)?.where;
 			sessions.set(sid, {
 				sid,
@@ -213,7 +210,6 @@ export class Store {
 				reason: c.reason,
 				since,
 				note,
-				bangs: c.tier === 'working' ? [] : bangCommands(response),
 				running: (r.id && running.get(r.id)) || [],
 				// PR は取り直すまで前の値を出す(ブランチが変わっていなければ)
 				where: {...wheres[i]!, pr: old?.rawBranch === wheres[i]!.rawBranch ? old?.pr : undefined},
@@ -575,40 +571,13 @@ export class Store {
 		this.emit();
 	}
 
-	// ---- tmux からの頼みごと(ctrl+q ctrl+y、ctrl+q ctrl+e) ----
+	// ---- tmux からの頼みごと(ctrl+q ctrl+e など) ----
 
 	private async handleRequest(req: string) {
 		debug(`request ${req}`);
 		const [kind, ...args] = req.split(' ');
 		const pickCmd = (what: string, token: string, i: number) => keyCmd('req', what, token, String(i));
-		if (kind === 'menu') {
-			const [sn = '', tty = '', pane = ''] = args;
-			// 作業台の画面で選んだときだけ、作業台の入力欄に貼る(案内のペインには貼らない)
-			const fromWorkbench = sn.startsWith('sh-');
-			const id = await targetOf(sn);
-			const row = id ? await this.rowFor(id) : undefined;
-			const cmds = row ? await this.freshBangs(row) : [];
-			if (cmds.length === 0) {
-				flash(tty, 'No ! commands in the last response.');
-				return;
-			}
-			const token = Math.random().toString(36).slice(2, 10);
-			this.menuPick = {token, cmds, tty, pane: fromWorkbench ? pane : undefined};
-			const items = cmds.flatMap((c, i) => [` ${c.replaceAll('#', '##')}`, i < 9 ? String(i + 1) : '', pickCmd('pick', token, i)]);
-			tmuxDetached('display-menu', '-c', tty, '-T', 'Copy ! commands', ...items);
-		} else if (kind === 'pick') {
-			const [token, i] = args;
-			const p = this.menuPick;
-			if (!p || p.token !== token) return;
-			const cmd = p.cmds[Number(i)];
-			if (!cmd) return;
-			await copy(cmd);
-			if (p.pane) {
-				await tmux('set-buffer', '-b', 'wnpick', '--', cmd);
-				await tmux('paste-buffer', '-p', '-d', '-b', 'wnpick', '-t', p.pane);
-			}
-			flash(p.tty, `Copied: ${cmd}`);
-		} else if (kind === 'next') {
+		if (kind === 'next') {
 			// ctrl+q ctrl+j: 一覧に戻らずに、Up next の先頭へ移る(一覧に戻ったときに見える Up next と同じ並び)
 			// 作業台の画面で押しても、whatnext の画面が移り、作業台の画面が追従する
 			const [, tty = ''] = args;
@@ -679,14 +648,6 @@ export class Store {
 		} catch {
 			return undefined;
 		}
-	}
-
-	private async freshBangs(row: AgentRow): Promise<string[]> {
-		const c = classify(row);
-		if (c?.tier === 'working') return [];
-		const tr = await readTranscript(row.sessionId);
-		const {response} = noteFor(c?.tier ?? 'review', row, hooks.get(row.sessionId), tr);
-		return bangCommands(response);
 	}
 
 	// ---- Usage ----
@@ -1055,17 +1016,6 @@ export class Store {
 		this.emit();
 	}
 
-	private copyMenu(s: Session) {
-		if (s.bangs.length === 0) return;
-		const doCopy = async (c: string) => {
-			await copy(c);
-			this.say(`Copied: ${c}`);
-		};
-		if (s.bangs.length === 1) return void doCopy(s.bangs[0]!);
-		this.mode = {k: 'menu', title: `Copy ! commands from ${s.name}:`, items: s.bangs.map(c => ({label: c, run: () => doCopy(c)})), sel: 0};
-		this.emit();
-	}
-
 	// ---- キー入力 ----
 
 	selected(): Session | undefined {
@@ -1163,8 +1113,6 @@ export class Store {
 				return void this.createWorkbenchFromList(target.row.id);
 			case 'e':
 				return target && this.externalMenu(target);
-			case 'y':
-				return s && this.copyMenu(s);
 		}
 	}
 
@@ -1371,7 +1319,7 @@ export function sinceFrom(tier: Tier, hook: HookState | undefined, tr: Transcrip
 }
 
 // 行の一言と、最後の応答(`!` のコマンドを拾う本文)
-export function noteFor(tier: Tier, row: AgentRow, hook: HookState | undefined, tr: TranscriptInfo | undefined): {note?: string; response?: string} {
+export function noteFor(tier: Tier, row: AgentRow, hook: HookState | undefined, tr: TranscriptInfo | undefined): {note?: string} {
 	const hp = hook?.prompt?.ts ?? 0;
 	// 会話記録がフックより古い指示のものなら、前のターンの値なので使わない
 	const trFresh = tr && (tr.instruction?.ts ?? 0) >= hp - 2000 ? tr : undefined;
@@ -1384,23 +1332,23 @@ export function noteFor(tier: Tier, row: AgentRow, hook: HookState | undefined, 
 		return {note: text ? `→ ${oneLine(text)}` : undefined};
 	}
 	if (tier === 'permission') {
-		if (fresh(hook?.permission?.ts)) return {note: toolTarget(hook!.permission!.tool, hook!.permission!.input), response};
-		if (trFresh?.pendingTool) return {note: toolTarget(trFresh.pendingTool.name, trFresh.pendingTool.input), response};
-		return {note: head(), response};
+		if (fresh(hook?.permission?.ts)) return {note: toolTarget(hook!.permission!.tool, hook!.permission!.input)};
+		if (trFresh?.pendingTool) return {note: toolTarget(trFresh.pendingTool.name, trFresh.pendingTool.input)};
+		return {note: head()};
 	}
 	if (tier === 'question') {
-		if (fresh(hook?.ask?.ts) && !fresh(hook?.stop?.ts)) return {note: oneLine(hook!.ask!.question), response};
-		if (trFresh?.ask) return {note: oneLine(trFresh.ask.question), response};
+		if (fresh(hook?.ask?.ts) && !fresh(hook?.stop?.ts)) return {note: oneLine(hook!.ask!.question)};
+		if (trFresh?.ask) return {note: oneLine(trFresh.ask.question)};
 		if (row.state === 'working' && row.status === 'idle') {
-			if (fresh(hook?.permission?.ts)) return {note: `Declined: ${toolTarget(hook!.permission!.tool, hook!.permission!.input)}`, response};
-			if (trFresh?.declined) return {note: `Declined: ${toolTarget(trFresh.declined.name, trFresh.declined.input)}`, response};
+			if (fresh(hook?.permission?.ts)) return {note: `Declined: ${toolTarget(hook!.permission!.tool, hook!.permission!.input)}`};
+			if (trFresh?.declined) return {note: `Declined: ${toolTarget(trFresh.declined.name, trFresh.declined.input)}`};
 		}
-		return {note: head(), response};
+		return {note: head()};
 	}
 	if (tier === 'failed') {
 		const f = fresh(hook?.stopFailure?.ts) ? hook!.stopFailure : undefined;
 		const text = f?.text || trFresh?.apiError?.text || f?.error;
-		return {note: text ? oneLine(text) : head(), response};
+		return {note: text ? oneLine(text) : head()};
 	}
-	return {note: head(), response};
+	return {note: head()};
 }

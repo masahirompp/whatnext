@@ -34,12 +34,11 @@ export const keyArgv = (action: string, ...args: string[]) => ['sh', '-c', KEY_S
 
 const SN = "'#{session_name}'";
 const CT = "'#{client_tty}'";
-const PANE = "'#{pane_id}'";
 
 function keyBinding(k: AttachKey): string {
 	if (k.kind === 'back') return keyCmd('back', SN, CT);
 	if (k.kind === 'backreq') return keyCmd('backreq', k.action, SN, CT);
-	return keyCmd('req', k.action, SN, CT, ...(k.pane ? [PANE] : []));
+	return keyCmd('req', k.action, SN, CT);
 }
 
 // 一覧のプロセスが起動するたびに、サーバ全体の設定を入れ直す(異常終了のあとも同じ)。

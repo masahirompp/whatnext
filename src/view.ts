@@ -118,7 +118,6 @@ export function frame(store: Store, {cols: w, rows: h}: Screen): string[] {
 		const done = store.doneNotes.get(s.sid);
 		if (done?.length && t !== 'waiting') note(`↳ ${done.map(x => store.names.get(x) ?? x).join(', ')} done`, 'green');
 		if (s.note) note(s.note);
-		if (s.bangs.length) note(`! ${s.bangs.join(' · ')}`, 'cyan');
 		if (s.running.length) note(`⚙ ${s.running.join(' · ')}`, 'yellow');
 		return out;
 	};
@@ -179,8 +178,7 @@ export function frame(store: Store, {cols: w, rows: h}: Screen): string[] {
 		footer.push(dim('type to filter  ↑↓ select  Enter link/unlink  Esc close'));
 	} else {
 		footer.push(...statusRows);
-		const c = sel?.bangs.length ? 'y copy ! commands  ' : '';
-		footer.push(dim(`↑↓ select  Enter attach  ${c}n new  h hold  f wait for  w workbench  e external  ^X stop/delete  r refresh  q quit`));
+		footer.push(dim(`↑↓ select  Enter attach  n new  h hold  f wait for  w workbench  e external  ^X stop/delete  r refresh  q quit`));
 		footer.push(dim(ATTACH_HELP));
 	}
 
