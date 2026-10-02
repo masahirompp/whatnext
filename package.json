@@ -25,7 +25,8 @@
     "start": "node dist/cli.js",
     "test": "vitest run --dir test/unit",
     "check": "biome check .",
-    "format": "biome check --write ."
+    "format": "biome check --write .",
+    "test:e2e": "npm run build && vitest run --dir test/e2e --no-file-parallelism --testTimeout 60000"
   },
   "dependencies": {
     "cli-truncate": "^6.1.1",

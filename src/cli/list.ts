@@ -1,6 +1,7 @@
 // cli: 一覧のプロセス(専用の tmux サーバのセッション `list` の中で動く)。
 
 import {spawnSync} from 'node:child_process';
+import {appendFileSync} from 'node:fs';
 import {readFile, stat} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
@@ -27,10 +28,25 @@ export function isListRole(env: NodeJS.ProcessEnv, s: Settings): boolean {
   return r.status === 0 && r.stdout.trim() === LIST;
 }
 
+/** テストのときだけ(`WHATNEXT_DEBUG_LOG` があるとき)、一覧のプロセスの出来事をファイルに書く。利用者の環境では何も書かない。 */
+export function debugLog(text: string): void {
+  const f = process.env.WHATNEXT_DEBUG_LOG;
+  if (!f) return;
+  try {
+    appendFileSync(f, `${new Date().toISOString()} ${process.pid} ${text}\n`);
+  } catch {}
+}
+
 const ALT_ON = '\x1b[?1049h\x1b[?25l\x1b[?2004h';
 const ALT_OFF = '\x1b[?2004l\x1b[?25h\x1b[?1049l';
 
 export async function runList(s: Settings, version: string, distDir: string, cliPath: string): Promise<void> {
+  // 設定を流し込むとフックが知らせ(SIGUSR2)を送り始めるので、受け手を先に付ける(既定の動作ではプロセスが終わる)。
+  let signalled = false;
+  let onSignal = () => {
+    signalled = true;
+  };
+  process.on('SIGUSR2', () => onSignal());
   const tmux = new Tmux(s.socket, run);
   await tmux.sourceConfig(
     serverConfig({
@@ -76,8 +92,10 @@ export async function runList(s: Settings, version: string, distDir: string, cli
 
   const write = (str: string) => process.stdout.write(str);
   let app: App;
+  onSignal = () => void app.signal();
 
   const cleanupAndExit = (code: number) => {
+    debugLog(`exit ${code}`);
     // 確認を出せずに終わるとき: 残した attach と何も動いていない作業台を畳み、動いているものがある作業台だけを残す。
     try {
       const sessions = spawnSync('tmux', ['-L', s.socket, 'list-sessions', '-F', '#{session_name}'], {
@@ -219,19 +237,19 @@ export async function runList(s: Settings, version: string, distDir: string, cli
   stdin.resume();
   process.on('SIGWINCH', () => app.draw());
   process.stdout.on('resize', () => app.draw());
-  process.on('SIGUSR2', () => void app.signal());
+  if (signalled) void app.signal();
   process.on('SIGTERM', () => cleanupAndExit(143));
   process.on('SIGHUP', () => cleanupAndExit(129));
   process.on('SIGINT', () => {});
   process.on('uncaughtException', e => {
     try {
-      process.stderr.write(`${e?.stack ?? e}\n`);
+      debugLog(`uncaught ${e?.stack ?? e}`);
     } catch {}
     cleanupAndExit(1);
   });
   process.on('unhandledRejection', e => {
     try {
-      process.stderr.write(`${(e as Error)?.stack ?? e}\n`);
+      debugLog(`unhandled ${(e as Error)?.stack ?? e}`);
     } catch {}
   });
   await app.start();

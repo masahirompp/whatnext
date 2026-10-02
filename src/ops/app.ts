@@ -429,10 +429,15 @@ export class App {
     return this.rows?.find(x => x.id === id)?.sessionId;
   }
 
+  /** 作業ディレクトリの候補に出すパス。worktree のパスは元のリポジトリに寄せる。 */
+  private repoPathOf(cwd: string): string {
+    const pl = this.places.get(cwd);
+    return pl?.worktree ? pl.mainRoot : cwd;
+  }
+
   private mainRootOf(sid: string): string | undefined {
     const r = this.rowOf(sid);
-    if (!r) return undefined;
-    return this.places.get(r.cwd)?.mainRoot ?? r.cwd;
+    return r ? this.repoPathOf(r.cwd) : undefined;
   }
 
   // ---- 描画 ----
@@ -747,7 +752,10 @@ export class App {
       this.arm = null;
       this.messages = [];
     }
-    if (!isCtrlX) this.moved = null;
+    if (!isCtrlX) {
+      this.moved = null;
+      this.messages = [];
+    }
     const list = this.entries();
     const i = list.findIndex(e => e.sid === this.cursor);
     const sel = this.cursor;
@@ -837,6 +845,10 @@ export class App {
     if (!ok) {
       this.flash(`Could not attach to ${rowName(row)}.`);
       return;
+    }
+    if (!this.firstPrompts.has(sid)) {
+      const f = await this.p.firstPrompt(sid);
+      if (f) this.firstPrompts.set(sid, f);
     }
     await this.p.tmux.setSummary(id, this.summaryText(sid, id));
     this.attached = {sid, id, snapshot: this.snapshotOf(row)};
@@ -1438,7 +1450,7 @@ export class App {
     const paths: string[] = [];
     if (first) paths.push(first);
     paths.push(this.p.startDir);
-    for (const r of this.rows ?? []) paths.push(this.places.get(r.cwd)?.mainRoot ?? r.cwd);
+    for (const r of this.rows ?? []) paths.push(this.repoPathOf(r.cwd));
     paths.push(...(await this.p.ghqList()));
     const uniq = [...new Set(paths.filter(Boolean))];
     const names = displayNames(uniq);
@@ -1513,7 +1525,7 @@ export class App {
       await this.startTrust(dir, model, flow);
       return;
     }
-    const m = /backgrounded\s*·\s*([0-9a-f]{8})/.exec(out);
+    const m = /backgrounded\s*·\s*([^\s·]+)/.exec(out);
     if (!m) {
       const lines = out.trim().split('\n').filter(Boolean).slice(-8);
       this.mode = {kind: 'pressKey', lines: [`claude --bg did not start a session:`, ...lines]};

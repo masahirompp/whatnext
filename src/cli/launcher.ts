@@ -1,6 +1,7 @@
 // cli: `whatnext`(一覧につなぐ)と `whatnext workbench`(作業台の画面としてつなぐ)。
 
 import {spawnSync} from 'node:child_process';
+import {realpathSync} from 'node:fs';
 import {run} from '../input/exec.js';
 import {probe} from '../input/receiver.js';
 import {GUIDE, LIST, shq, Tmux} from '../tmux/tmux.js';
@@ -12,6 +13,15 @@ function ttyName(): string | undefined {
   return t?.startsWith('/dev/') ? t : undefined;
 }
 
+/** 起動したディレクトリ。シンボリックリンクを解く前の `PWD` が同じ場所を指していれば、そちらを使う。 */
+function startDir(): string {
+  const pwd = process.env.PWD;
+  try {
+    if (pwd && realpathSync(pwd) === process.cwd()) return pwd;
+  } catch {}
+  return process.cwd();
+}
+
 function childEnv(): NodeJS.ProcessEnv {
   const env = {...process.env};
   delete env.TMUX;
@@ -19,12 +29,10 @@ function childEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function attach(socket: string, target: string): number {
-  const r = spawnSync('tmux', ['-L', socket, 'attach-session', '-t', `=${target}`], {
-    stdio: 'inherit',
-    env: childEnv(),
-  });
-  return r.status ?? 1;
+/** 専用サーバにつなぎ、離れるまで待つ。tmux が終わるときに書く1行(`[detached ...]`、`[server exited]`)は消す。 */
+function attach(socket: string, target: string): void {
+  spawnSync('tmux', ['-L', socket, 'attach-session', '-t', `=${target}`], {stdio: 'inherit', env: childEnv()});
+  if (process.stdout.isTTY) process.stdout.write('\x1b[1A\x1b[2K');
 }
 
 const fail = (msg: string, code = 1): number => {
@@ -73,7 +81,7 @@ export async function launch(s: Settings, version: string, cliPath: string): Pro
         '-e',
         'WHATNEXT_ROLE=list',
         '-e',
-        `WHATNEXT_START_DIR=${process.cwd()}`,
+        `WHATNEXT_START_DIR=${startDir()}`,
         '-e',
         `WHATNEXT_TMUX_SOCKET=${s.socket}`,
         '-e',
@@ -95,7 +103,8 @@ export async function launch(s: Settings, version: string, cliPath: string): Pro
     if (r.code !== 0) return fail(`whatnext: could not start tmux: ${r.stderr.trim()}`);
   }
   await claimClient(tmux, '@wn_main_tty', '@wn_wb_tty', tty);
-  return attach(s.socket, LIST) === 0 ? 0 : 1;
+  attach(s.socket, LIST);
+  return 0;
 }
 
 /** つなぐ端末の印を置き、同じ役の古いクライアントを離す。もう一方の印が自分と同じ tty なら消す(tty の使い回し)。 */
@@ -119,8 +128,8 @@ export async function workbench(s: Settings): Promise<number> {
   if (!tty) return fail('whatnext: run it in a terminal.');
   for (let i = 0; i < 20 && !(await tmux.hasSession(GUIDE)); i++) await new Promise(r => setTimeout(r, 100));
   await claimClient(tmux, '@wn_wb_tty', '@wn_main_tty', tty);
-  const code = attach(s.socket, GUIDE);
+  attach(s.socket, GUIDE);
   // 古いタイトルの分割へ移らないよう、終わるときにタイトルを消す。
   process.stdout.write('\x1b]2;\x07');
-  return code === 0 ? 0 : 1;
+  return 0;
 }
