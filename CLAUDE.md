@@ -24,6 +24,8 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 
 パスは init で確定した値。cycle-end の削除対象はこの定義を正とする。コードは雑に、ドキュメントは厳格に。
 
+**cycle 8 は例外**: 最後のサイクルとして本番品質で書き直し、`src/` とテストは cycle-end で消さずに通常開発へ移る。品質の条件は「動けばOK」ではなく、`docs/PRODUCT.md`「サイクル8の完了条件」に従う(#207)。
+
 **使い捨て層の削除は cycle-end の儀式の中でのみ行う**: issue 棚卸しの完了 → `git tag cycle-N` の作成 → 人間の明示的な承認、を必ずこの順で経ること。タグ前・承認前の削除は、学びと復元手段を同時に失う。
 
 ### 要件と設計の2ファイル
