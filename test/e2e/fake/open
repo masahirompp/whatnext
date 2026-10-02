@@ -1,0 +1,8 @@
+#!/bin/sh
+# 画面の通しで使う偽の open。開こうとしたものを $WN_FAKE_DIR/open.log に書く。
+printf '%s\n' "$*" >> "$WN_FAKE_DIR/open.log"
+if [ -f "$WN_FAKE_DIR/behavior-open" ]; then
+  echo "fake open failure" >&2
+  exit 1
+fi
+exit 0

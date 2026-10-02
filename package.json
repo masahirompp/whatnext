@@ -23,7 +23,7 @@
     "build": "rm -rf dist && tsc && chmod +x dist/cli.js",
     "prepack": "npm run build",
     "start": "node dist/cli.js",
-    "test": "vitest run --passWithNoTests --exclude '.claude/**'",
+    "test": "vitest run --dir test/unit",
     "check": "biome check .",
     "format": "biome check --write ."
   },

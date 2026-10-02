@@ -1,0 +1,189 @@
+#!/usr/bin/env node
+// 画面の通しで使う偽の claude。状態は $WN_FAKE_DIR/agents.json に持つ。
+// 呼ばれたコマンドは $WN_FAKE_DIR/calls.log に1行ずつ書く。
+const {appendFileSync, existsSync, readFileSync, writeFileSync} = require('node:fs');
+const {join} = require('node:path');
+
+const dir = process.env.WN_FAKE_DIR;
+if (!dir) {
+  process.stderr.write('WN_FAKE_DIR is not set\n');
+  process.exit(3);
+}
+const file = join(dir, 'agents.json');
+const args = process.argv.slice(2);
+appendFileSync(join(dir, 'calls.log'), `${args.join(' ')}\n`);
+const load = () => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : []);
+const save = rows => writeFileSync(file, JSON.stringify(rows, null, 2));
+const behavior = name => {
+  const p = join(dir, `behavior-${name}`);
+  return existsSync(p) ? readFileSync(p, 'utf8').trim() : '';
+};
+
+const [cmd, ...rest] = args;
+
+if (cmd === 'agents') {
+  const b = behavior('agents');
+  if (b === 'fail') {
+    process.stderr.write('fake agents failure\n');
+    process.exit(1);
+  }
+  if (b === 'broken') {
+    process.stdout.write('{not json');
+    process.exit(0);
+  }
+  process.stdout.write(JSON.stringify(load()));
+  process.exit(0);
+}
+
+if (cmd === '-p') {
+  if (behavior('usage') === 'fail') process.exit(1);
+  const result = [
+    'Current session: 42% used · resets Oct 2 at 2:09pm (Asia/Tokyo)',
+    'Current week (all models): 85% used · resets Oct 9 at 9:59am (Asia/Tokyo)',
+  ].join('\n');
+  process.stdout.write(JSON.stringify({type: 'result', result}));
+  process.exit(0);
+}
+
+if (cmd === 'stop') {
+  const id = rest[0];
+  if (behavior('stop') === 'fail') {
+    process.stdout.write(`could not stop ${id}: fake failure\n`);
+    process.exit(1);
+  }
+  const rows = load();
+  for (const r of rows)
+    if (r.id === id) {
+      if (r.state !== 'done' && r.state !== 'failed') r.state = 'stopped';
+      delete r.pid;
+      delete r.status;
+      delete r.waitingFor;
+    }
+  save(rows);
+  process.stdout.write(`stopped ${id}\n`);
+  process.exit(0);
+}
+
+if (cmd === 'rm') {
+  const id = rest[0];
+  const rows = load();
+  const row = rows.find(r => r.id === id);
+  const discard = rest.indexOf('--discard-unpushed');
+  if (row?.unpushed && discard < 0) {
+    process.stdout.write(
+      `kept ${id} — 1 unpushed commit on its branch; deleting the worktree would lose it\n  push it, or run 'claude rm ${id} --discard-unpushed abc1234@${id}'\n`,
+    );
+    process.exit(1);
+  }
+  if (row?.uncommitted) {
+    process.stdout.write(
+      `kept ${id} — its worktree is still at “/tmp/wt/${id}”\n  The worktree has uncommitted changes. Deleting it would lose them.\n`,
+    );
+    process.exit(1);
+  }
+  save(rows.filter(r => r.id !== id));
+  process.stdout.write(`removed ${id}\n`);
+  process.exit(0);
+}
+
+if (cmd === '--bg') {
+  if (behavior('trust') === 'untrusted' && !existsSync(join(dir, 'trusted'))) {
+    process.stderr.write(
+      'Workspace not trusted. Run claude in the directory once and accept the trust prompt, then retry.\n',
+    );
+    process.exit(1);
+  }
+  const rows = load();
+  const n = rows.length + 1;
+  const id = `new${String(n).padStart(5, '0')}`;
+  const sid = `${id}-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const mi = rest.indexOf('--model');
+  rows.push({
+    kind: 'background',
+    sessionId: sid,
+    id,
+    cwd: process.cwd(),
+    name: id,
+    pid: 4000 + n,
+    state: 'blocked',
+    status: 'idle',
+    startedAt: Date.now(),
+    ...(mi >= 0 ? {model: rest[mi + 1]} : {}),
+  });
+  save(rows);
+  process.stdout.write(`\x1b[2mbackgrounded · ${id} · ${id} (idle — send a prompt to start)\x1b[0m\n`);
+  process.exit(0);
+}
+
+if (cmd === 'attach') {
+  const id = rest[0];
+  if (behavior('attach') === 'fail') {
+    process.stdout.write(`Couldn't attach ${id}: fake failure\n`);
+    process.exit(1);
+  }
+  const rows = load();
+  const row = rows.find(r => r.id === id);
+  process.stdout.write('\x1b[?1049h\x1b[H\x1b[2J');
+  process.stdout.write(`\x1b]2;${row?.name ?? id}\x07`);
+  process.stdout.write(`FAKE CLAUDE SCREEN ${id}\r\n> `);
+  let line = '';
+  process.stdin.setRawMode(true);
+  process.stdin.on('data', buf => {
+    const s = buf.toString('utf8');
+    if (s === '\x1a') {
+      process.stdout.write('\x1b[?1049l');
+      process.exit(0);
+    }
+    if (s === '\x1b[D' && line === '') {
+      process.stdout.write('\x1b]2;claude agents\x07');
+      return;
+    }
+    if (s === '\r') {
+      appendFileSync(join(dir, 'prompts.log'), `${id} ${line}\n`);
+      if (line === '/exit' || line === 'exit') {
+        process.stdout.write('\x1b[?1049l');
+        process.exit(0);
+      }
+      const rs = load();
+      for (const r of rs)
+        if (r.id === id) {
+          r.state = 'working';
+          r.status = 'busy';
+          delete r.waitingFor;
+        }
+      save(rs);
+      process.stdout.write(`\r\nsent: ${line}\r\n> `);
+      line = '';
+      return;
+    }
+    if (s === '\x7f') {
+      line = line.slice(0, -1);
+      process.stdout.write('\b \b');
+      return;
+    }
+    line += s;
+    process.stdout.write(s);
+  });
+} else if (cmd === undefined || cmd === '--model') {
+  // 対話モード(信頼の確認)
+  process.stdout.write('Do you trust the files in this folder?\r\n 1. Yes, I trust this folder\r\n 2. No, exit\r\n');
+  process.stdin.setRawMode(true);
+  process.stdin.on('data', buf => {
+    const s = buf.toString('utf8');
+    if (s === '1') {
+      writeFileSync(join(dir, 'trusted'), '1');
+      const cfg = process.env.CLAUDE_CONFIG_DIR;
+      if (cfg) {
+        const f = join(cfg, '.claude.json');
+        const data = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : {};
+        data.projects ??= {};
+        data.projects[process.cwd()] = {hasTrustDialogAccepted: true};
+        writeFileSync(f, JSON.stringify(data));
+      }
+      process.stdout.write('Trusted. Welcome to fake claude.\r\n');
+    } else if (s === '2') process.exit(1);
+  });
+} else {
+  process.stderr.write(`fake claude: unknown command ${args.join(' ')}\n`);
+  process.exit(2);
+}
