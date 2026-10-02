@@ -22,6 +22,7 @@ description: whatnext の作業台(専用の tmux サーバ、作業台の画面
 - `bind` → `display-popup` などのコマンド → シェル、のように引用が入れ子になると、`#{session_name}` などの書式が展開されずに空になった。キーの処理は `run-shell -b "<スクリプト> '#{session_name}' '#{client_tty}' '#{@変数}'"` で小さなスクリプトに渡す。`run-shell` の引数は書式が展開される。
 - Claude Code は `ctrl+b`(`task:background`)、`ctrl+]`、`ctrl+g` などを使う。ルートのキー表に割り当てたキーは claude にもシェルにも届かなくなる。
 - `set`(`set-option`)の `-t` は target-pane なので、セッションを名前で指すときは末尾にコロンを付けて `-t =<名前>:` とする。`-t =<名前>` は、セッションがあっても `no such session: =<名前>` で失敗する(終了コード 1)。同じコマンド列の中で作った直後でも、コロンを付ければ通る。`has-session` と `kill-session` の `-t` は target-session なので、コロンなしで通る。
+- ペインのコマンド(`new-session` に渡す文字列)の中で `-t =<名前>` を書くときは `'=list'` のように引用する。ペインのコマンドは default-shell(利用者の SHELL、多くは zsh)で動き、zsh は引用のない `=名前` をコマンドのパスに展開して `zsh: list not found` で終わる。sh では起きない(#210)。
 - 失敗しても、`source-file` の中や `execFile` の戻りを見ていなければ気づかない。サイクル5では、claude の画面のセッションに `prefix None` と `@wn_claude` が入らず、← の検知が発火しなかった(`ctrl+q l` は、全体の prefix が claude の画面でも効いたせいで偶然動いていた)。サイクル4では、作業台の popup が `@wn_cwd` を読めず `~` で開いた。
 - キーに割り当てた `run-shell -b "<コマンド>"` が 0 以外で終わるか何かを出力すると、tmux はその結果を、その時点のアクティブなペインに view mode(`[0/0]`)で被せて出す(popup の中から `ctrl+q l` で外側のクライアントを detach すると `display-popup` が 0 以外で終わり、作業台のペインに残った)。キーのコマンドの末尾を `>/dev/null 2>&1; true` にして抑える。
 
@@ -51,6 +52,7 @@ description: whatnext の作業台(専用の tmux サーバ、作業台の画面
 - `detach-on-destroy` はセッションのオプションで、消えるセッション自身の値が使われる。見ているセッションが消える前に別のセッションへ切り替えるには、`remain-on-exit on` でペインを残し、`pane-died` のフックで処理する。`pane-died` は `remain-on-exit` のときだけ発火し、`set-hook -g` で効いた。
 - 全体を `remain-on-exit on` にすると、`claude attach` や一覧のペインも残ってセッションが閉じなくなる。それらのウィンドウは `set -w -t =<名前>: remain-on-exit off` にする(設定を流し込むより前にできているウィンドウは、流し込む設定の中で off にする)。
 - `client-focus-in` のフックがある(`focus-events on` のとき)。
+- 一覧のプロセスは、設定(フック)を流し込む前に SIGUSR2 の受け手を付ける。設定を入れた直後から、フック(client-attached など)が一覧に SIGUSR2 を送り始める。受け手を付ける前に届くと、Node の既定の動作でプロセスが黙って終わる(終了の処理も走らない)。異常終了のあとに起動し直したとき(作業台の後始末をしている間にランチャーが attach する)に起きた(#209)。
 
 ## マウス
 - `mouse` はセッションごとの設定で、`set -t =<セッション>: mouse on` でそのセッションだけ on にできる。全体(`-g`)を off のまま、作業台のセッションだけ on にできた。

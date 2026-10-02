@@ -60,7 +60,9 @@ export function scripts(socket: string): Record<string, string> {
       `for pid in $(${T} list-panes -s -t "=sh-$1" -F '#{pane_pid}' 2>/dev/null); do`,
       '  tp=$(ps -o tpgid= -p "$pid" 2>/dev/null | tr -d " ")',
       '  if [ -n "$tp" ] && [ "$tp" != "$pid" ] && [ "$tp" -gt 0 ] 2>/dev/null; then',
-      '    a=$(ps -o args= -p "$tp" 2>/dev/null)',
+      // パイプでつないだコマンドは、シェルの子で前面のプロセスグループに属するものを ` | ` でつなぐ。
+      `    a=$(ps -A -o pid=,ppid=,pgid=,args= 2>/dev/null | sort -n | awk -v p="$pid" -v g="$tp" '$2==p && $3==g { $1=$2=$3=""; sub(/^ +/, ""); printf "%s%s", (n++ ? " | " : ""), $0 }')`,
+      '    [ -z "$a" ] && a=$(ps -o args= -p "$tp" 2>/dev/null)',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: sh のパラメータ展開
       '    [ -n "$a" ] && out="${out:+$out · }$a"',
       '  fi',
@@ -392,22 +394,55 @@ export class Tmux {
       .map(l => l.split('\t'))
       .filter(([s, , dead]) => s?.startsWith('sh-') && dead === '0');
     if (panes.length === 0) return out;
-    const ps = await this.run('ps', ['-A', '-o', 'pid=,tpgid=,args='], {timeout: 5000});
+    const ps = await this.run('ps', ['-A', '-o', 'pid=,ppid=,pgid=,tpgid=,args='], {timeout: 5000});
     if (ps.code !== 0) return out;
-    const procs = new Map<number, {tpgid: number; args: string}>();
-    for (const line of ps.stdout.split('\n')) {
-      const m = /^\s*(\d+)\s+(-?\d+)\s+(.*)$/.exec(line);
-      if (m) procs.set(Number(m[1]), {tpgid: Number(m[2]), args: (m[3] as string).trim()});
-    }
+    const procs = parsePs(ps.stdout);
     for (const [s, pidText] of panes) {
-      const pid = Number(pidText);
-      const shell = procs.get(pid);
-      if (!shell || shell.tpgid <= 0 || shell.tpgid === pid) continue;
-      const fg = procs.get(shell.tpgid);
-      if (!fg) continue;
+      const cmd = foregroundCommand(procs, Number(pidText));
+      if (!cmd) continue;
       const id = (s as string).slice(3);
-      out.set(id, [...(out.get(id) ?? []), fg.args]);
+      out.set(id, [...(out.get(id) ?? []), cmd]);
     }
     return out;
   }
+}
+
+export interface Proc {
+  pid: number;
+  ppid: number;
+  pgid: number;
+  tpgid: number;
+  args: string;
+}
+
+/** `ps -A -o pid=,ppid=,pgid=,tpgid=,args=` の出力を読む。 */
+export function parsePs(text: string): Proc[] {
+  const out: Proc[] = [];
+  for (const line of text.split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(.*)$/.exec(line);
+    if (m)
+      out.push({
+        pid: Number(m[1]),
+        ppid: Number(m[2]),
+        pgid: Number(m[3]),
+        tpgid: Number(m[4]),
+        args: (m[5] as string).trim(),
+      });
+  }
+  return out;
+}
+
+/**
+ * 作業台のシェルが前面で動かしているコマンド行。シェルだけなら undefined。
+ * パイプでつないだコマンドは、シェルの子で前面のプロセスグループに属するものを ` | ` でつなぐ。
+ */
+export function foregroundCommand(procs: readonly Proc[], shellPid: number): string | undefined {
+  const shell = procs.find(p => p.pid === shellPid);
+  if (!shell || shell.tpgid <= 0 || shell.tpgid === shellPid) return undefined;
+  const members = procs
+    .filter(p => p.ppid === shellPid && p.pgid === shell.tpgid)
+    .sort((a, b) => a.pid - b.pid)
+    .map(p => p.args);
+  if (members.length > 0) return members.join(' | ');
+  return procs.find(p => p.pid === shell.tpgid)?.args;
 }

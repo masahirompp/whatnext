@@ -177,6 +177,7 @@ describe('起動', () => {
     expect(r.stderr).toContain('Usage:');
     expect(run('workbench', '--help').status).toBe(2);
     expect(run('x', '--help').status).toBe(2);
+    expect(run('--help', 'x').status).toBe(0);
     const help = run('--help');
     expect(help.status).toBe(0);
     expect(help.stdout).toContain('whatnext workbench');

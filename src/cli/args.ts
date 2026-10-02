@@ -5,7 +5,7 @@ export type Command = {kind: 'list'} | {kind: 'workbench'} | {kind: 'help'} | {k
 export function parseArgs(argv: readonly string[]): Command {
   const [first, ...rest] = argv;
   if (first === undefined) return {kind: 'list'};
-  if (first === '--help') return rest.length === 0 ? {kind: 'help'} : {kind: 'unknown', arg: rest[0] as string};
+  if (first === '--help') return {kind: 'help'};
   if (first === 'workbench') return rest.length === 0 ? {kind: 'workbench'} : {kind: 'unknown', arg: rest[0] as string};
   return {kind: 'unknown', arg: first};
 }

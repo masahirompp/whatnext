@@ -393,6 +393,10 @@ describe('新しいセッション', () => {
     await h.type('t', '/no/such/dir');
     await h.keys('t', 'Enter');
     await h.waitFor('t', 'Not a directory: /no/such/dir');
+    for (let i = 0; i < 12; i++) await h.keys('t', 'BSpace');
+    await h.type('t', '../repo');
+    await h.keys('t', 'Enter');
+    await h.waitFor('t', 'Not a directory: ../repo');
     await h.keys('t', 'Escape');
     await h.waitFor('t', 'New session — working directory:');
     await h.keys('t', 'Escape');

@@ -36,3 +36,14 @@ tmux kill-session -t wn                  # 片付け
 - Claude Code のセッションが worktree に隔離されている(EnterWorktree)と、Bash で `tmux -L ... new-session ... "env ... node dist/cli.js"` のような複合コマンドや、シェル関数を含むコマンドは「worktree の外に出ないか確かめられない」として拒否された。起動とキー送信(1キーずつ send-keys して capture-pane)は `$CLAUDE_JOB_DIR/tmp` のスクリプトファイルに書いて実行する。中で `cd <worktree>` して worktree の dist を動かす。
 - 状態のファイル(保留と待ち先)を確かめるときは、`XDG_STATE_HOME` を一時ディレクトリに向け、`WHATNEXT_TMUX_SOCKET` も変える(ソケット名が既定でないとファイル名が `state-<ソケット名>.json` になる)。利用者の `~/.local/state/whatnext/state.json` に触れない。
 - 利用者に実機で比べてもらうときは、先に `type whatnext` で実際に動く版を確かめ、フルパスで揃える。利用者の PATH に古い npx のキャッシュ(`~/.npm/_npx/<hash>/node_modules/.bin`)が入っていて、`whatnext` と打つと古い版が動いたことがある。`exec` を付けて起動すると、すぐ終わったときにエラーの表示ごと分割が消えて理由が見えない。
+
+## Ghostty で確かめるとき(AppleScript、Ghostty 1.3.1)
+
+実機の通し(`test/real/ghostty.test.ts`)で分かったこと(#211)。
+
+- `send key` のキー名は camelCase(`arrowDown`、`enter`)。`down`、`arrow_down`、`ArrowDown` は `Unknown key name` で失敗する。
+- `send key "w"` のように修飾キーのない文字は、端末に何も届かない。`modifiers "control"` を付けた文字は届く。
+- `input text "w"` は届くが、アプリが bracketed paste を有効にしていると貼り付けとして届く。一覧は bracketed paste を有効にしているので、文字キーとして効かない。
+- そのため、`ctrl+q` の組み合わせ(tmux のキー表を通す必要がある)だけを Ghostty の `send key` で送り、一覧への文字キーと矢印は `tmux -L <ソケット> send-keys -t '=list:' w` で一覧のペインに直接送る。
+- AppleScript の変数名に `left` などを使うと、分割の向きの予約語とぶつかり `Access not allowed` で失敗する。
+- 分割の数と名前は `terminals of selected tab of <window>` の `name` で読む。作業台の画面のタイトルは `whatnext workbench`。

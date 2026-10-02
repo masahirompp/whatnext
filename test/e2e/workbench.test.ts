@@ -119,12 +119,12 @@ describe('作業台', () => {
     await setup(1);
     await h.keys('t', 'w');
     await h.waitFor('t', 'Workbench created. Run "whatnext workbench" in a split to see it.');
-    h.tmux('send-keys', '-t', '=sh-a0000001:', 'sleep 3 && echo done', 'Enter');
+    h.tmux('send-keys', '-t', '=sh-a0000001:', 'sleep 3 | cat', 'Enter');
     await sleep(300);
     await h.keys('t', 'r');
-    await h.waitFor('t', '⚙ sleep 3');
+    await h.waitFor('t', '⚙ sleep 3 | cat');
     await h.keys('t', 'Enter');
-    await h.waitFor('t', /^⚙ sleep 3 /m, 6000);
+    await h.waitFor('t', /^⚙ sleep 3 \| cat /m, 6000);
     await h.waitFor('t', /^⌂ workbench \(shell\) /m, 10000);
     await h.keys('t', 'C-q', 'C-l');
     await h.keys('t', 'r');

@@ -1528,7 +1528,9 @@ export class App {
   private async otherDone(md: Extract<Mode, {kind: 'other'}>): Promise<void> {
     const v = md.value.trim();
     const dir = v === '' ? this.p.startDir : expandHome(v, this.p.home);
-    if (!(await this.p.isDirectory(dir))) {
+    // 相対パスは、どこを基準に解いたかが画面から分からないので断る。
+    const absolute = dir.startsWith('/');
+    if (!absolute || !(await this.p.isDirectory(dir))) {
       md.error = `Not a directory: ${dir}`;
       this.draw();
       return;
