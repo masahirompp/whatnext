@@ -28,7 +28,7 @@ npx @masahirompp/whatnext workbench
 ## Requirements
 
 - Node.js 22 or later
-- [Claude Code](https://code.claude.com) (`claude`), `git`, and `tmux` 3.2 or later (whatnext runs the list, sessions and per-session workbench shells in its own tmux server; your tmux config is not touched. Closing the terminal window leaves whatnext running — run it again to come back to the same list. Quitting whatnext closes the workbench shells — it asks first if something is still running)
+- [Claude Code](https://code.claude.com) (`claude`), `git`, and `tmux` (tested with 3.7c) (whatnext runs the list, sessions and per-session workbench shells in its own tmux server; your tmux config is not touched. Closing the terminal window leaves whatnext running — run it again to come back to the same list. Quitting whatnext closes the workbench shells — it asks first if something is still running)
 - Optional: `ghq` (more working-directory candidates), `gh` (PR numbers on rows, and opening those PRs). Without them, whatnext works the same with less shown.
 
 ## Documentation

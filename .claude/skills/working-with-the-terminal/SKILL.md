@@ -4,7 +4,7 @@ description: whatnext の一覧の画面の描画(同期出力、幅の計算、
 ---
 # 一覧を自前で描き、キーを受けるときの罠
 
-一覧は Ink を使わない(DESIGN.md「描画とキー入力」)。サイクル6の開始時の試作(`proto/cycle-6-no-ink` ブランチの `prototype/no-ink.mjs`)で、専用サーバと同じ設定(`escape-time 10`、`extended-keys on`、`extended-keys-format csi-u`)の tmux 3.7c と Node 24.16.0 を使って確かめた。
+一覧は Ink を使わない(DESIGN.md「描画とキー入力」)。サイクル6の開始時の試作(`proto/cycle-6-no-ink` タグの `prototype/no-ink.mjs`)で、専用サーバと同じ設定(`escape-time 10`、`extended-keys on`、`extended-keys-format csi-u`)の tmux 3.7c と Node 24.16.0 を使って確かめた。
 
 ## キー入力(readline)
 
