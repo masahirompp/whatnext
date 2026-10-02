@@ -63,6 +63,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - attach して何も入力せずに離脱しても、`--json` の `state`、`status`、`waitingFor` は変わらない（`blocked` + `idle` で確認。2.1.282）。`done` や `waitingFor` のある状態で同じかと、OTel を送るセッションで attach しただけでイベントが飛ぶかは未確認。
 - `pid` のない `blocked` の行に attach すると、2.1.281 では `Couldn't wake <id> — This session has no saved transcript …` と出して終了コード 1 で終わり、起き直らなかった（やり直すコマンドとして `claude respawn <id>` がある）。2.1.282 では、会話の記録があるセッションも、記録のない（プロンプトなしで起動してプロセスを `kill -9` で落とした）セッションも、attach で起き直り、離脱後は `blocked` + `idle` + `pid` ありになった。`Couldn't wake` は再現できなかった。
 - `state: "stopped"` の行に attach すると起き直る（2.1.283、whatnext の専用 tmux サーバの中で確認）。
+- `sessionId` と `id` は、セッションを `claude stop` で止めてから `claude respawn` で起こしても、`claude attach` で起こしても変わらない（2.1.287）。whatnext は保留と待ち先の関係を `sessionId` で引いて、状態のファイルに持ち越す（[ADR-0016](adr/0016-persist-holds-and-waits-in-a-state-file.md)）。
   - 会話のない行（指示を送らずに止めたもの。`pid` なし）は、ふつうの起動画面が出て入力を待った。`claude attach` は 0 以外で終わらなかった。離脱後の `--json` は `pid` あり、`state: "working"`、`status: "idle"`。
   - 権限待ち（`blocked` + `waiting` + `permission prompt`）のまま止めた行は、止める前の権限の確認は出ず、そのツールの呼び出しは中断として扱われた（`Interrupted · What should Claude do instead?`）。離脱後の `--json` は `pid` あり、`state: "working"`、`status: "idle"`。権限の確認で `No` を選んだときと違い、会話記録に「断った」印は残らない。
 - attach の中で `/exit` を送ると（入力欄に `exit` とだけ打った場合も）、`claude attach` が終わる。セッション本体は `done` + `idle` のまま動き続ける（2.1.283、whatnext の専用 tmux サーバの中で確認。← と同じく Agent View を経て終わったのかは切り分けていない）。

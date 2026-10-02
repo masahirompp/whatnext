@@ -10,7 +10,7 @@ When several sessions are waiting at once, whatnext ranks them by how much it co
 
 - **Ranks sessions from `claude agents --json` alone.** No screen scraping. To show what each session is doing and how long it has waited, whatnext also reads hook events from sessions it started and, for other sessions, Claude Code's own conversation transcripts (`~/.claude/projects`) — read-only. Account usage comes from `claude`'s own `/usage`, which calls no model.
 - **Sessions whatnext starts send their context size (OpenTelemetry) and hook events to whatnext on 127.0.0.1:14318, only while whatnext is running.** Nothing leaves your machine and nothing is stored. Rows are still ranked from `claude agents --json` alone.
-- **Writes nothing and keeps no state.** Sessions keep running after you quit whatnext, and sessions started elsewhere show up too. Your settings are never modified.
+- **Keeps almost no state.** Sessions keep running after you quit whatnext, and sessions started elsewhere show up too. Your settings are never modified. The only file whatnext writes is `~/.local/state/whatnext/state.json` (or under `$XDG_STATE_HOME`), which keeps your holds and wait-for links across restarts.
 - **Never answers for you.** No input injection or auto-approval — you attach and act yourself.
 
 ## Usage
@@ -19,7 +19,7 @@ When several sessions are waiting at once, whatnext ranks them by how much it co
 npx @masahirompp/whatnext
 ```
 
-To see a session's workbench shell next to it, split your terminal (e.g. `cmd+d` in Ghostty) and run this in the new split. It follows the session you are looking at; close the split when you no longer need it. In Ghostty, `ctrl+q ctrl+w` on a session opens this split for you (or moves to it if it is already open).
+To see a session's workbench shell next to it, split your terminal (e.g. `cmd+d` in Ghostty) and run this in the new split. It follows the session you are looking at; close the split when you no longer need it. In Ghostty, `ctrl+q ctrl+w` on a session (or `w` in the list) opens this split for you (or moves to it if it is already open).
 
 ```sh
 npx @masahirompp/whatnext workbench

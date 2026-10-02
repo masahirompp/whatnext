@@ -4,6 +4,8 @@ status: accepted
 
 # whatnext は何も書き込まず、永続状態を持たない
 
+保留（理由を含む）と待ち先の関係は、[ADR-0016](0016-persist-holds-and-waits-in-a-state-file.md) で、状態のファイルに書いて起動し直しても引き継ぐように改めた。
+
 whatnext はファイルにもどこにも書き込まず、次の起動に持ち越す状態を持たない。
 セッションの起動は `claude --bg` を呼ぶだけ、状態の取得は `claude agents --json` を読むだけにし、独自のセッション台帳やプロセス管理も持たない。
 状態をすべて Claude Code 側に置くことで、whatnext を閉じてもセッションは動き続け、whatnext を経由せずに起動したセッションも同じように拾え、whatnext を捨てても何も失われない。

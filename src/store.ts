@@ -33,6 +33,7 @@ import {readFirstPrompt, readTranscript, type TranscriptInfo} from './transcript
 import {fetchUsage, type UsageItem} from './usage.js';
 import {closeFor, runningInWorkbenches} from './workbench.js';
 import {showWorkbenchSplit} from './ghostty.js';
+import {loadState, saveState} from './state.js';
 import {fetchPr, gitWhere, mainRepoOf, type Where} from './where.js';
 
 export type Session = {
@@ -84,8 +85,9 @@ export class Store {
 	private prev = new Map<string, {tier: Tier; since: number | null}>();
 	private timer?: NodeJS.Timeout;
 
-	holds = new Map<string, string>();
-	waits: Waits = new Map();
+	// 保留と待ち先の関係は、起動し直しても引き継ぐ(state.ts)。行が消えたものは最初の更新で外す
+	holds: Map<string, string>;
+	waits: Waits;
 	private pendingWaits: Array<{parent: string; id: string}> = [];
 	doneNotes = new Map<string, string[]>();
 	private prevDerived = new Map<string, Tier>();
@@ -115,7 +117,13 @@ export class Store {
 	subscribe(fn: () => void) {
 		this.listeners.add(fn);
 	}
+	constructor() {
+		({holds: this.holds, waits: this.waits} = loadState());
+	}
+
 	emit() {
+		// 保留と待ち先を変える操作は、どれも emit を通る
+		saveState(this.holds, this.waits);
 		for (const fn of this.listeners) fn();
 		// カーソルが動いたら、作業台の画面をカーソルの行の作業台に切り替える(一覧を映しているときだけ効く)
 		if (this.cursor !== this.syncedCursor) {
