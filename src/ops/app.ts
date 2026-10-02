@@ -495,12 +495,13 @@ export class App {
   private screenRow(e: Entry, next: Entry | undefined): ScreenRow {
     const pl = this.places.get(e.row.cwd);
     const pr = this.prOf(e.row.cwd);
+    // 保留の理由は行のすぐ下に出す(PRODUCT.md「保留」)。`⚙` は一言の下に出す。
     const notes: string[] = [];
+    if (e.holdReason) notes.push(`↳ ${e.holdReason}`);
+    if (e.doneNames) notes.push(`↳ ${e.doneNames.join(', ')} done`);
     if (e.note) notes.push(e.note);
     const cmds = e.row.id ? this.running.get(e.row.id) : undefined;
     if (cmds && cmds.length > 0) notes.push(`⚙ ${cmds.join(' · ')}`);
-    if (e.doneNames) notes.push(`↳ ${e.doneNames.join(', ')} done`);
-    if (e.holdReason) notes.push(`↳ ${e.holdReason}`);
     return {
       key: e.sid,
       name: e.name,

@@ -219,7 +219,15 @@ function block(rows: ScreenRow[], c: Columns, m: ScreenModel, lines: string[], r
   }
 }
 
-function panelLines(p: Panel, cols: number): string[] {
+/** メニューの項目のうち出す範囲。収まらないときは選んだ項目が見えるように窓を動かす。 */
+function menuWindow(count: number, selected: number, max: number): {start: number; end: number} {
+  if (count <= max) return {start: 0, end: count};
+  const h = Math.max(1, max - 1); // 1行は通し番号に使う
+  const start = Math.min(Math.max(0, selected - Math.floor(h / 2)), count - h);
+  return {start, end: start + h};
+}
+
+function panelLines(p: Panel, cols: number, maxItems: number): string[] {
   switch (p.kind) {
     case 'input': {
       const out = [`${p.prompt} ${p.value}█`];
@@ -233,7 +241,9 @@ function panelLines(p: Panel, cols: number): string[] {
       return p.lines;
     case 'menu': {
       const out = [color.bold(p.title) + (p.filter !== undefined ? `  ${p.filter}█` : '')];
+      const win = menuWindow(p.items.length, p.selected, maxItems);
       p.items.forEach((it, i) => {
+        if (i < win.start || i >= win.end) return;
         const sel = i === p.selected && !it.disabled;
         const num = p.numbered && !it.disabled ? `(${i + 1}) ` : p.numbered ? '    ' : '';
         const mark = it.marked ? '✓ ' : p.items.some(x => x.marked) ? '  ' : '';
@@ -242,6 +252,7 @@ function panelLines(p: Panel, cols: number): string[] {
         const line = truncate(label + detail, cols);
         out.push(it.disabled ? color.gray(line) : sel ? color.bold(line) : line);
       });
+      if (win.end - win.start < p.items.length) out.push(color.gray(`  ${p.selected + 1}/${p.items.length}`));
       if (p.footer) out.push(color.gray(p.footer));
       return out;
     }
@@ -255,7 +266,9 @@ export function render(m: ScreenModel): string[] {
   if (m.usage && m.usage.length > 0) top.push(formatUsage(m.usage));
 
   const bottom: string[] = [...m.messages.map(s => oneLine(s))];
-  if (m.panel) bottom.push(...panelLines(m.panel, cols));
+  // メニューの項目は画面の半分ほどに収め、一覧のヘッダと何行かを残す。
+  const maxItems = Math.max(3, Math.floor((m.rows - m.messages.length) / 2) - 2);
+  if (m.panel) bottom.push(...panelLines(m.panel, cols, maxItems));
   bottom.push(color.gray(m.help));
 
   let middle: string[];

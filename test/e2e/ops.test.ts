@@ -155,6 +155,23 @@ describe('保留', () => {
     expect(h.screen('t2')).not.toContain('On hold');
   });
 
+  it('15: 保留の理由は、一言や作業台で動いているものより先に、行のすぐ下に出る', async () => {
+    h = new Harness();
+    h.setAgents([h.row(1, {name: 'alpha'})]);
+    h.open('t');
+    await h.waitFor('t', 'alpha');
+    await h.keys('t', 'w');
+    await h.waitFor('t', 'Workbench created.');
+    h.tmux('send-keys', '-t', '=sh-a0000001:', 'sleep 1031', 'Enter');
+    await sleep(500);
+    await h.keys('t', 'h');
+    await h.type('t', 'ask Bob');
+    await h.keys('t', 'Enter');
+    await h.keys('t', 'r');
+    const s = await h.waitFor('t', '⚙ sleep 1031');
+    expect(s).toMatch(/[> ] alpha +Review[^\n]*\n {4}↳ ask Bob\n {4}⚙ sleep 1031/);
+  });
+
   it('15: Esc で保留せずに閉じる。保留の行に attach して何もせずに戻ると残り、指示を出して戻ると解ける', async () => {
     h = new Harness();
     h.setAgents([h.row(1, {name: 'alpha'}), h.row(2, {name: 'beta'})]);

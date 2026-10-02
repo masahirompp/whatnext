@@ -166,4 +166,22 @@ describe('一覧の画面', () => {
     const lines = plain(render(model({placeholder: 'No sessions.'})));
     expect(lines).toContain('  No sessions.');
   });
+
+  it('メニューの項目が多いときは、選んだ項目が見えるように窓を動かし、通し番号を出す (シナリオ 8、20)', () => {
+    const items = Array.from({length: 60}, (_, i) => ({label: `repo-${i}`}));
+    const out = plain(
+      render(
+        model({
+          rows: 20,
+          upNext: [row('a'), row('b')],
+          panel: {kind: 'menu', title: 'New session — working directory:', items, selected: 45, footer: 'footer'},
+        }),
+      ),
+    );
+    expect(out.length).toBe(20);
+    expect(out.some(l => l.startsWith('> repo-45'))).toBe(true);
+    expect(out).toContain('  46/60');
+    expect(out).toContain('footer');
+    expect(out[0]).toContain('SESSION');
+  });
 });
