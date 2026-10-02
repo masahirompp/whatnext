@@ -4,6 +4,8 @@ status: accepted
 
 # 作業台は、利用者が端末の別の分割で開く作業台の画面に、専用の tmux の2つ目のクライアントとして映す
 
+Decision の「whatnext は端末のアプリを操作しない」は、Ghostty で押した `ctrl+q ctrl+w` に限って [ADR-0015](0015-ghostty-split-for-workbench-on-ctrl-q-ctrl-w.md) で改めた（作業台の画面の分割を作り、そこへ移る）。
+
 [ADR-0010](0010-workbench-lives-inside-whatnext.md) のうち、作業台を claude の画面の上に popup で出す部分を置き換える。作業台の寿命（whatnext を終了すると閉じる、確認を出せずに終わったときは動いているものを残す）と、専用の tmux サーバに置くことは、ADR-0010 のまま変えない。サイクル7の開始時に決めた。
 
 サイクル6の作業台は、`ctrl+q ctrl+q` で claude の画面の上半分に popup で出した。利用者は、作業台を開いたまま claude の画面にも入力したいこと、並べて見比べるときに claude の画面の高さを減らしたくないことから、popup をやめると決めた（サイクル6の終わり）。左右に並べると、端末の選択が左右の文字をまたいでコピーに混ざる。これを解くことが、形を決めるうえでの中心の制約だった。

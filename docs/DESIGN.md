@@ -131,6 +131,9 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 - 作業台の画面は、専用の tmux サーバの2つ目のクライアントである。`whatnext workbench` は、専用サーバの一覧が動いていることを確かめてから、専用サーバにクライアントとしてつなぐ。一覧は、どのクライアントが whatnext の画面で、どれが作業台の画面かを見分ける（見分け方は実装に任せる。クライアントの名前や tty、つなぐときに立てる印など）。一覧のクライアントを1つに限るのと同じく、作業台の画面のクライアントも1つに限り、新しくつながったら古いほうを離す。
 - 作業台の画面は、whatnext の画面が映すものに合わせて `switch-client -c <作業台の画面のクライアント> -t <セッション>` で切り替える。whatnext の画面が `<id>` なら `sh-<id>`、`list` ならカーソルの行の `sh-<id>`、作業台がなければ案内を出すセッションに切り替える。案内のセッションは、作業台がないことと作ったときの場所を描き、`Enter` で作業台を作る頼みごとを一覧に渡す小さなプログラムを動かす（作り方は実装に任せる）。
 - 作業台を作るとき（`ctrl+q ctrl+w`、一覧の `w`、案内の `Enter`）は、`--json` を読み直してそのセッションの `cwd` を取り、`new-session -d -s sh-<id> -c <cwd>` で作る。`ctrl+q ctrl+e` の読み直しと同じ取り方である。
+- Ghostty で押した `ctrl+q ctrl+w` は、作業台を作ったあと（あれば作らずに）、`osascript` で Ghostty の AppleScript を呼ぶ（[ADR-0015](adr/0015-ghostty-split-for-workbench-on-ctrl-q-ctrl-w.md)）。押したクライアントの `client_termname` が `ghostty` を含むときだけ呼ぶ。
+  - 作業台の画面のクライアントがつながっていれば、名前（端末のタイトル）が `whatnext workbench` の Ghostty の分割を探して `focus` する。タイトルは、作業台のセッション（`sh-<id>` と案内のセッション）だけで `set-titles on` にして出す。whatnext の画面のタイトルには触れない。`whatnext workbench` は終わるときに OSC 2 でタイトルを消し、古いタイトルの分割へ移らないようにする。
+  - つながっていなければ、Ghostty が前面にあることを確かめ、前面のウィンドウの選ばれたタブの `focused terminal`（押した分割）を `split ... direction right` で分割する。新しい分割はいつものシェルで開き、`initial input` で ` exec <node> <cli.js> workbench` を打ち込む。`WHATNEXT_TMUX_SOCKET` と `WHATNEXT_PORT` は `environment variables` で渡す。`exec` にするので、作業台の画面が終わるとシェルごと終わり、分割が閉じる。
 - 作業台の最後のシェルが終わって `sh-<id>` が消えるときは、作業台の画面のクライアントを先に案内のセッションへ切り替えておく。`detach-on-destroy on` なので、クライアントが見ているセッションが先に消えると、作業台の画面ごと離れてしまう（working-with-tmux スキル）。
 - 作業台の画面で押した `ctrl+q` のキーは、押したクライアントが作業台の画面であることと、映している `sh-<id>` から対象のセッションを決める。`ctrl+q ctrl+l` などの「whatnext の画面を一覧に戻す」キーは、作業台の画面ではなく whatnext の画面のクライアントを切り替える。メニュー（`ctrl+q ctrl+y`、`ctrl+q ctrl+e`）と短い知らせ（`display-message`）は、押したクライアントに出す。
 - 作業台の画面のステータス行は `sh-<id>` と案内のセッションにだけ出し、1行にする。whatnext の画面のステータス行（2行）とは別の書式にする。
@@ -140,6 +143,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 
 - **claude の画面の幅の変化は問題にならない**（claude 2.1.284、tmux 3.7c）。`claude attach` は代替画面で描くので、分割と解除を繰り返してもスクロールバックに描き直しが積もらない。狭めると折り返して描き直し、戻すと元の画面に戻る。ただし利用者の statusline は、広げた直後も狭い幅で切った形のまま残り、statusline の次の再実行で直る。作業台の画面を開閉すると、whatnext の画面の幅が変わるので、同じことが起きる。
 - **Ghostty の既定のキー**（1.3.1）：`cmd+d` で右に分割、`cmd+shift+d` で下に分割、`cmd+w` で分割を閉じる、`cmd+[` と `cmd+]` で前後の分割へ、`cmd+opt+矢印` でその方向の分割へ、`cmd+ctrl+矢印` で境界を動かす、`cmd+shift+enter` で分割の拡大。作業台の画面の開閉、フォーカス、幅は、これらで足りる。
+- **Ghostty の AppleScript**（1.3.1）：tmux サーバから起動した `osascript` でも Ghostty を操作できる（利用者の環境では許可済みだった）。`split` の `with configuration` で `command` を渡すと、`wait after command` を false にしても、コマンドが終わったあと `Process exited. Press any key to close the terminal.` を出して分割が残る。`initial input` で `exec` を打ち込めば、終わると分割が閉じる。分割がどの tty か、シェルの入力待ちかどうかは取れない。分割の見分けには `name`（端末のタイトル）と `id` を使う。
 
 ### 未確認のこと（実装で確かめる）
 

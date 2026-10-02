@@ -198,8 +198,13 @@ export async function setSummary(id: string, title: string, first: string | unde
 	]);
 }
 
+// 作業台の画面の端末のタイトル。Ghostty の分割を見分けるのに使う(ghostty.ts)
+export const WB_TITLE = 'whatnext workbench';
+
 // 作業台の画面の最下行: `workbench: <名前>  0:zsh* 1:zsh`(キーの説明は出さない)
 const workbenchStatus = (name: string): Array<[string, string]> => [
+	['set-titles', 'on'],
+	['set-titles-string', WB_TITLE],
 	['status', 'on'],
 	['status-position', 'bottom'],
 	['status-style', 'reverse'],

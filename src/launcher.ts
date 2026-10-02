@@ -123,5 +123,7 @@ export async function launchWorkbench(): Promise<number> {
 	// 案内のセッションは一覧が作る。まだなければ(一覧が起動した直後など)少し待つ
 	for (let i = 0; i < 20 && run(['has-session', '-t', '=wbguide']).status !== 0; i++) await new Promise(res => setTimeout(res, 100));
 	const r = spawnSync('tmux', ['-L', SOCKET, 'attach-session', '-t', '=wbguide'], {env: envWithoutTmux(), stdio: 'inherit'});
+	// 作業台のセッションが端末に出したタイトル(whatnext workbench)を消す。残ると ctrl+q ctrl+w が、作業台の画面のない分割へ移る
+	process.stdout.write('\x1b]2;\x07');
 	return afterAttach(r.status);
 }

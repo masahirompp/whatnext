@@ -33,6 +33,7 @@ import {isNotTrustedOutput, isTrusted} from './trust.js';
 import {readFirstPrompt, readTranscript, type TranscriptInfo} from './transcript.js';
 import {fetchUsage, type UsageItem} from './usage.js';
 import {closeFor, runningInWorkbenches} from './workbench.js';
+import {showWorkbenchSplit} from './ghostty.js';
 import {fetchPr, gitWhere, mainRepoOf, type Where} from './where.js';
 
 export type Session = {
@@ -530,12 +531,17 @@ export class Store {
 		const tell = (text: string) => (tty ? flash(tty, text, 3000) : this.say(text));
 		const row = (await this.freshRow(id)) ?? (await this.rowFor(id));
 		const name = row ? displayName(row) : id;
-		if (await hasSession(`sh-${id}`)) return tell(`Workbench already exists for ${name}.`);
-		if (!row) return tell(`Could not find ${name}.`);
-		if (!(await createWorkbench(id, row.cwd, name))) return tell(`Could not create a workbench for ${name}.`);
+		const exists = await hasSession(`sh-${id}`);
+		if (!exists) {
+			if (!row) return tell(`Could not find ${name}.`);
+			if (!(await createWorkbench(id, row.cwd, name))) return tell(`Could not create a workbench for ${name}.`);
+		}
 		const {wb} = await screens();
+		if (wb) await this.syncWorkbench();
+		// ctrl+q ctrl+w を Ghostty で押したときは、作業台の画面の分割へ移る。なければ右に分割して開く(何度押しても同じ形になる)
+		if (tty && (await showWorkbenchSplit(tty, !!wb))) return;
+		if (exists) return tell(`Workbench already exists for ${name}.`);
 		if (!wb) tell('Workbench created. Run "whatnext workbench" in a split to see it.');
-		await this.syncWorkbench();
 	}
 
 	private async onReturn(a: Attached) {
