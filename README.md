@@ -25,6 +25,23 @@ To see a session's workbench shell next to it, split your terminal (e.g. `cmd+d`
 npx @masahirompp/whatnext workbench
 ```
 
+Keys in the list:
+
+| Key | Action |
+| --- | --- |
+| `↑` `↓` | Select a row |
+| `Enter` | Attach to the session (or show where an interactive session runs) |
+| `n` | Start a new session |
+| `Ctrl+X` | Stop the session; press again within 2s to delete it |
+| `h` | Put the session on hold (or bring it back) |
+| `f` | Choose the sessions this one waits for |
+| `w` | Create the session's workbench shell |
+| `e` | Open the session's directory or PR in VS Code, GitHub or vscode.dev |
+| `r` | Refresh |
+| `q` | Quit (asks first if something is still running in a workbench) |
+
+While attached, `ctrl+q` followed by the same letter with ctrl held does the same thing (`ctrl+q ctrl+l` goes back to the list, `ctrl+q ctrl+j` moves to the next session). The keys are shown at the bottom of the session's screen.
+
 ## Requirements
 
 - Node.js 22 or later
@@ -44,6 +61,16 @@ Design documents are written in Japanese.
 ## Development
 
 This project is rebuilt from scratch in cycles; only the docs above persist. See [CLAUDE.md](CLAUDE.md).
+
+```sh
+npm run build      # tsc (strict)
+npm run check      # biome (format and lint)
+npm test           # unit tests
+npm run test:e2e   # drives whatnext in a private tmux server with a fake claude
+npm run test:real  # uses the real claude (haiku) and Ghostty; creates and removes its own sessions
+```
+
+The tests use their own tmux socket, port and state file, so they never touch a whatnext you are running.
 
 ## License
 
