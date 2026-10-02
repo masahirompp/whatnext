@@ -9,7 +9,7 @@ import {Harness, ROOT, sleep} from './harness.js';
 let h: Harness;
 afterEach(() => h?.cleanup());
 
-const attachAndBack = async (name: string) => {
+const attachAndBack = async () => {
   await h.keys('t', 'Enter');
   await h.waitFor('t', `FAKE CLAUDE SCREEN`);
   await h.keys('t', 'C-q', 'C-l');
@@ -56,7 +56,7 @@ describe('attach', () => {
     h.setAgents([h.row(1, {name: 'alpha'})]);
     h.open('t');
     await h.waitFor('t', 'alpha');
-    await attachAndBack('alpha');
+    await attachAndBack();
     expect(h.sessions()).toContain('a0000001');
     const before = h.calls().filter(c => c.startsWith('attach')).length;
     await h.keys('t', 'Enter');
@@ -147,7 +147,7 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     h.setAgents([h.row(1, {name: 'alpha'})]);
     h.open('t');
     await h.waitFor('t', 'alpha');
-    await attachAndBack('alpha');
+    await attachAndBack();
     await h.keys('t', 'q');
     await h.waitFor('t', /\[exit 0\]/);
     expect(h.sessions()).toEqual([]);

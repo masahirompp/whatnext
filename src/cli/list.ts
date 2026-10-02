@@ -2,7 +2,7 @@
 
 import {spawnSync} from 'node:child_process';
 import {appendFileSync} from 'node:fs';
-import {readFile, stat} from 'node:fs/promises';
+import {readFile, realpath, stat} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {emitKeypressEvents} from 'node:readline';
@@ -167,7 +167,8 @@ export async function runList(s: Settings, version: string, distDir: string, cli
         const data = JSON.parse(await readFile(file, 'utf8')) as {
           projects?: Record<string, {hasTrustDialogAccepted?: boolean}>;
         };
-        return data.projects?.[dir]?.hasTrustDialogAccepted === true;
+        const real = await realpath(dir).catch(() => dir);
+        return [dir, real].some(d => data.projects?.[d]?.hasTrustDialogAccepted === true);
       } catch {
         return false;
       }
@@ -195,7 +196,7 @@ export async function runList(s: Settings, version: string, distDir: string, cli
     exit: () => {
       receiver?.close();
       process.stdout.write(ALT_OFF);
-      void writer.save(relations).finally(async () => {
+      void writer.flush().finally(async () => {
         await tmux.killServer();
         process.exit(0);
       });

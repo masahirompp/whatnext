@@ -62,6 +62,11 @@ export class StateWriter {
     if (initial) this.last = serialize(initial);
   }
 
+  /** 書きかけの分が終わるのを待つ。 */
+  flush(): Promise<void> {
+    return this.writing;
+  }
+
   save(r: Relations): Promise<void> {
     const text = serialize(r);
     if (text === this.last) return this.writing;

@@ -140,6 +140,8 @@ export class App {
   private menuChoices = new Map<string, ExtItem[]>();
   private menuSeq = 0;
   private firstPrompts = new Map<string, string>();
+  /** 一覧に出したことのある行の名前(消えた行の名前を示すため)。 */
+  private shownNames = new Map<string, string>();
   private summaryRetry = new Set<string>();
   private wbTimer: {cancel(): void} | undefined;
   private wbChain: Promise<void> = Promise.resolve();
@@ -332,6 +334,7 @@ export class App {
       return;
     }
     this.arranged = a;
+    for (const e of flatten(a)) this.shownNames.set(e.sid, e.name);
     if (this.lastAttached && !visible.has(this.lastAttached)) this.lastAttached = null;
     this.fixCursor();
     this.save();
@@ -353,7 +356,7 @@ export class App {
     const prev = this.cursor;
     const top = this.arranged?.upNext[0]?.positionSid ?? list[0]?.sid ?? null;
     if (prev && top !== prev) {
-      const name = this.nameOf(prev);
+      const name = this.shownNames.get(prev) ?? this.nameOf(prev);
       if (top) this.moved = {name, until: this.p.now() + MOVED_MS};
     }
     this.cursor = top;
