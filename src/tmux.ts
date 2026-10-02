@@ -204,6 +204,9 @@ export const WB_TITLE = 'whatnext workbench';
 const workbenchStatus = (name: string): Array<[string, string]> => [
 	['set-titles', 'on'],
 	['set-titles-string', WB_TITLE],
+	// ホイールで作業台の出力をさかのぼる(tmux の履歴)。mouse が off だと、代替画面の中で端末がホイールを ↑↓ に変え、シェルの履歴が動く。
+	// claude の画面と一覧のマウスの扱いは変えないので、作業台のセッションにだけ入れる
+	['mouse', 'on'],
 	['status', 'on'],
 	['status-position', 'bottom'],
 	['status-style', 'reverse'],
