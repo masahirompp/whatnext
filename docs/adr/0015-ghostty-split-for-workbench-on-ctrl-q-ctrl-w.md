@@ -4,7 +4,7 @@ status: accepted
 
 # Ghostty では、ctrl+q ctrl+w が作業台の画面の分割を作り、そこへ移る
 
-[ADR-0014](0014-workbench-shows-in-a-screen-the-user-opens.md) の「whatnext は端末のアプリを操作しない」を、Ghostty で押した `ctrl+q ctrl+w` に限って改める。作業台の画面を専用の tmux の2つ目のクライアントとして映すこと、中身の切り替えを tmux の `switch-client` で行うことは、ADR-0014 のまま変えない。サイクル7のあとに、利用者の依頼で決めた（2026-10-02）。
+[ADR-0014](0014-workbench-shows-in-a-screen-the-user-opens.md) の「whatnext は端末のアプリを操作しない」を、Ghostty で押した `ctrl+q ctrl+w` と一覧の `w` に限って改める。作業台の画面を専用の tmux の2つ目のクライアントとして映すこと、中身の切り替えを tmux の `switch-client` で行うことは、ADR-0014 のまま変えない。サイクル7のあとに、利用者の依頼で決めた（2026-10-02）。
 
 利用者は、作業台を作るたびに `cmd+d` で分割して `whatnext workbench` を打つ手間を省き、`ctrl+q ctrl+w` を押せば作業台の画面まで開いた状態になることを望んだ。何度押しても同じ形になる（すでに分割があれば移るだけ）ことも求めた。
 
@@ -27,7 +27,8 @@ status: accepted
 - 初めて押したときに、macOS が「Ghostty の操作」の許可を求めることがある。
 - whatnext は、作業台の画面を映している Ghostty の分割を、端末のタイトルで見分ける。作業台のセッション（`sh-<id>` と案内のセッション）だけ tmux の `set-titles` を on にして、タイトルを `whatnext workbench` にする。`whatnext workbench` は終わるときにタイトルを消す。
 - whatnext が作った分割は、作業台の画面が終わる（whatnext を終了する、別の端末で作業台の画面を開き直す）と閉じる。
-- 一覧の `w` と案内の `Enter` は、分割を作らない。どちらも作業台の画面か whatnext の画面の中の操作で、移る先の分割を決める必要がないため。
+- 一覧の `w` も、`ctrl+q ctrl+w` と同じく分割を作り、そこへ移る。当初は「whatnext の画面の中の操作で、移る先の分割を決める必要がない」として分割を作らなかったが、一覧で `w` を押しても作業台の画面が開かず、attach しているときと動きが食い違うため、利用者の依頼で揃えた（2026-10-02）。分割するのは whatnext の画面の分割である。
+- 案内の `Enter` は、分割を作らない。作業台の画面の中の操作で、作業台の画面はすでに開いているため。
 
 ## 見直す条件
 

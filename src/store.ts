@@ -527,7 +527,8 @@ export class Store {
 	}
 
 	// 作業台を作る(ctrl+q ctrl+w、一覧の w、案内の Enter)。作る直前に --json を読み直し、その時点の cwd で開く
-	async createWorkbench(id: string, tty?: string) {
+	// split は Ghostty の分割を作る・移るときに使うクライアント。ctrl+q ctrl+w は押したクライアント、一覧の w は whatnext の画面
+	async createWorkbench(id: string, tty?: string, split = tty) {
 		const tell = (text: string) => (tty ? flash(tty, text, 3000) : this.say(text));
 		const row = (await this.freshRow(id)) ?? (await this.rowFor(id));
 		const name = row ? displayName(row) : id;
@@ -538,10 +539,16 @@ export class Store {
 		}
 		const {wb} = await screens();
 		if (wb) await this.syncWorkbench();
-		// ctrl+q ctrl+w を Ghostty で押したときは、作業台の画面の分割へ移る。なければ右に分割して開く(何度押しても同じ形になる)
-		if (tty && (await showWorkbenchSplit(tty, !!wb))) return;
+		// ctrl+q ctrl+w と一覧の w を Ghostty で押したときは、作業台の画面の分割へ移る。なければ右に分割して開く(何度押しても同じ形になる)
+		if (split && (await showWorkbenchSplit(split, !!wb))) return;
 		if (exists) return tell(`Workbench already exists for ${name}.`);
 		if (!wb) tell('Workbench created. Run "whatnext workbench" in a split to see it.');
+	}
+
+	// 一覧の w。知らせは一覧に出し、Ghostty の分割は whatnext の画面から作る
+	private async createWorkbenchFromList(id: string) {
+		const {main} = await screens();
+		await this.createWorkbench(id, undefined, main?.tty);
 	}
 
 	private async onReturn(a: Attached) {
@@ -1153,7 +1160,7 @@ export class Store {
 			case 'w':
 				if (!target) return;
 				if (target.row.kind !== 'background' || !target.row.id) return this.say(`${target.name} is an interactive session. It has no workbench.`);
-				return void this.createWorkbench(target.row.id);
+				return void this.createWorkbenchFromList(target.row.id);
 			case 'e':
 				return target && this.externalMenu(target);
 			case 'y':
