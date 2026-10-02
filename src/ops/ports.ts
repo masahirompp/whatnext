@@ -64,4 +64,6 @@ export interface Ports {
   setTimer(fn: () => void, ms: number): {cancel(): void};
   home: string;
   startDir: string;
+  /** テストのときだけ出来事を書く。 */
+  log?(text: string): void;
 }

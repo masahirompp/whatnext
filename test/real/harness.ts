@@ -113,7 +113,7 @@ export class RealHarness {
       },
     );
     for (let i = 0; i < 60 && !/trust/i.test(this.screen(s)); i++) await sleep(500);
-    spawnSync('tmux', ['-L', this.outer, 'send-keys', '-t', `=${s}:`, '1']);
+    spawnSync('tmux', ['-L', this.outer, 'send-keys', '-t', `=${s}:`, 'Down']);
     await sleep(500);
     spawnSync('tmux', ['-L', this.outer, 'send-keys', '-t', `=${s}:`, 'Enter']);
     for (let i = 0; i < 40 && !trusted(WORKDIR); i++) await sleep(500);

@@ -174,7 +174,7 @@ export class App {
         `${n} ${n === 1 ? 'command is' : 'commands are'} still running from a previous whatnext: ${list}. Keep them? [Y/n]`,
         true,
       );
-      if (!keep) for (const id of left.keys()) await this.p.tmux.killSession(`sh-${id}`);
+      if (!keep) for (const id of left.keys()) await this.killWorkbench(id);
       this.draw();
     }
   }
@@ -380,6 +380,7 @@ export class App {
         now.status !== snapshot.status ||
         now.waitingFor !== snapshot.waitingFor ||
         now.activity > snapshot.activity;
+      this.p.log?.(`hold check ${sid} before=${JSON.stringify(snapshot)} now=${JSON.stringify(now)} worked=${worked}`);
       if (worked) {
         this.holds.delete(sid);
         changed = true;
@@ -854,11 +855,21 @@ export class App {
       if (f) this.firstPrompts.set(sid, f);
     }
     await this.p.tmux.setSummary(id, this.summaryText(sid, id));
-    this.attached = {sid, id, snapshot: this.snapshotOf(row)};
+    const snapshot = this.snapshotOf(row);
     this.clearDone(sid);
+    await this.switchTo({sid, id, snapshot});
+  }
+
+  /**
+   * whatnext の画面をセッションの画面に切り替える。作業台の画面を先に切り替える。
+   * attach している印は切り替えたあとに立てる。先に立てると、切り替える前に届いた知らせで「一覧に戻った」と取り違える。
+   */
+  private async switchTo(att: Attached): Promise<void> {
     const tty = await this.mainTty();
-    await this.syncWorkbench(id);
-    if (tty) await this.p.tmux.switchClient(tty, id);
+    await this.syncWorkbench(att.id);
+    if (tty) await this.p.tmux.switchClient(tty, att.id);
+    this.attached = att;
+    this.p.log?.(`attach ${JSON.stringify(att)}`);
   }
 
   private clearDone(sid: string): void {
@@ -946,6 +957,7 @@ export class App {
 
   /** attach から戻ったとき(新しく起動したセッションから戻ったときを含む)。 */
   private async returned(att: Attached): Promise<void> {
+    this.p.log?.(`returned ${JSON.stringify(att)}`);
     this.attached = null;
     const sid = att.sid ?? this.sidOfId(att.id);
     if (sid) {
@@ -1180,6 +1192,18 @@ export class App {
     if (wb.session !== target) await this.p.tmux.switchClient(wbTty, target);
   }
 
+  /**
+   * 作業台を畳む。作業台の画面が映していれば、先に案内へ切り替える。
+   * `detach-on-destroy on` なので、見ているセッションを先に畳むと作業台の画面ごと離れてしまう。
+   */
+  private async killWorkbench(id: string): Promise<void> {
+    const wbTty = await this.p.tmux.option('@wn_wb_tty');
+    if (wbTty && (await this.p.tmux.clients()).some(c => c.tty === wbTty && c.session === `sh-${id}`))
+      await this.p.tmux.switchClient(wbTty, GUIDE);
+    await this.p.tmux.killSession(`sh-${id}`);
+    this.scheduleWbSync();
+  }
+
   private async refreshGuidePlace(): Promise<void> {
     const sid = this.guideTarget;
     if (!sid) return;
@@ -1239,13 +1263,15 @@ export class App {
     if (how.from === 'list') {
       const mainTty = await this.mainTty();
       ghostty = /ghostty/i.test(clients.find(c => c.tty === mainTty)?.termname ?? '');
+      this.p.log?.(`wb from list termname=${clients.find(c => c.tty === mainTty)?.termname}`);
     }
     if (ghostty) {
       if (wbOpen) {
-        await this.p.ghosttyFocus();
+        this.p.log?.(`ghostty focus ${await this.p.ghosttyFocus()}`);
         return;
       }
       const r = await this.p.ghosttySplit();
+      this.p.log?.(`ghostty split ${r}`);
       if (r === 'split') return;
     }
     if (existed) await say(`Workbench already exists for ${name}.`);
@@ -1545,10 +1571,7 @@ export class App {
       return;
     }
     await this.p.tmux.setSummary(id, id);
-    this.attached = {id};
-    const tty = await this.mainTty();
-    await this.syncWorkbench(id);
-    if (tty) await this.p.tmux.switchClient(tty, id);
+    await this.switchTo({id});
     this.draw();
   }
 
@@ -1676,7 +1699,7 @@ export class App {
     for (;;) {
       const r = await this.p.remove(id, discard);
       if (r.code === 0) {
-        await this.p.tmux.killSession(`sh-${id}`);
+        await this.killWorkbench(id);
         await this.p.tmux.killSession(id);
         if (this.attached?.id === id) this.attached = null;
         this.forgetSession(sid);

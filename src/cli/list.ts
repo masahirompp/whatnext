@@ -207,6 +207,7 @@ export async function runList(s: Settings, version: string, distDir: string, cli
     },
     home,
     startDir: env.WHATNEXT_START_DIR || process.cwd(),
+    log: debugLog,
   };
 
   app = new App(ports, {relations, version, leftovers});

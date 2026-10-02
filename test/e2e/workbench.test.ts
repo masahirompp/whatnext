@@ -246,4 +246,69 @@ describe('作業台', () => {
     await h.waitFor('t', 'tty-x is an interactive session. It has no workbench.');
     expect(h.sessions().filter(s => s.startsWith('sh-'))).toEqual([]);
   });
+
+  it('27、53、54、55: 作業台の画面では ctrl+q の文字だけの形は tmux の既定(l は直前のウィンドウ、x はペインを閉じる確認、n は次のウィンドウ、f は検索)', async () => {
+    await setup(1);
+    h.open('wb', ['workbench'], {cols: 100, rows: 24});
+    await h.keys('t', 'w');
+    await h.waitFor('wb', /workbench: alpha {2}0:/);
+    await h.keys('wb', 'C-q', 'c');
+    await h.waitFor('wb', /0:\S* 1:\S*\*/);
+    await h.keys('wb', 'C-q', 'l');
+    await h.waitFor('wb', /0:\S*\* 1:/);
+    await h.keys('wb', 'C-q', 'n');
+    await h.waitFor('wb', /0:\S* 1:\S*\*/);
+    await h.keys('wb', 'C-q', 'x');
+    await h.waitFor('wb', /kill-pane .*\(y\/n\)/);
+    await h.keys('wb', 'n');
+    await h.keys('wb', 'C-q', 'f');
+    await h.waitFor('wb', /find-window/);
+    await h.keys('wb', 'Escape');
+    expect(h.clients().find(c => c.session === 'list')).toBeTruthy();
+  });
+
+  it('52、53、54、55: 作業台の画面で ctrl+q ctrl+h・ctrl+n・ctrl+f・ctrl+x を押すと、作業台の画面のセッションを対象に一覧で処理する', async () => {
+    await setup();
+    h.open('wb', ['workbench'], {cols: 100, rows: 24});
+    await h.select('t', 'beta');
+    await h.keys('t', 'w');
+    await h.waitFor('wb', /workbench: beta/);
+    await h.keys('t', 'Enter');
+    await h.waitFor('t', 'FAKE CLAUDE SCREEN a0000002');
+    await h.keys('wb', 'C-q', 'C-h');
+    await h.waitFor('t', 'Put beta on hold. Reason (optional):');
+    await h.keys('t', 'Escape');
+    await h.keys('wb', 'C-q', 'C-f');
+    await h.waitFor('t', 'beta waits for:');
+    await h.keys('t', 'Escape');
+    await h.keys('wb', 'C-q', 'C-n');
+    await h.waitFor('t', 'working directory:');
+    await h.keys('t', 'Escape');
+    await h.keys('wb', 'C-q', 'C-x');
+    await h.waitFor('t', /beta +Review|Stopped beta/);
+    expect(h.calls()).toContain('stop a0000002');
+  });
+
+  it('29: 作業台の画面が映していた作業台のセッションを消すと、作業台の画面は次に映すものに切り替わる', async () => {
+    await setup();
+    h.open('wb', ['workbench'], {cols: 100, rows: 24});
+    await h.select('t', 'alpha');
+    await h.keys('t', 'w');
+    await h.waitFor('wb', /workbench: alpha/);
+    await h.keys('t', 'C-x', 'C-x');
+    await h.waitFor('wb', 'No workbench for beta yet.');
+    expect(h.sessions()).not.toContain('sh-a0000001');
+  });
+});
+
+describe('tmux がない環境', () => {
+  it('29: tmux がない環境で起動すると、英語で示して終了する', () => {
+    h = new Harness();
+    const r = spawnSync('node', [join(ROOT, 'dist', 'cli.js')], {
+      encoding: 'utf8',
+      env: {...h.env(), PATH: `${process.execPath.replace(/\/node$/, '')}:/usr/bin:/bin`},
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('whatnext: tmux is required but was not found.');
+  });
 });
