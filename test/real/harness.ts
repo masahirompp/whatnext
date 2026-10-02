@@ -118,6 +118,7 @@ export class RealHarness {
     spawnSync('tmux', ['-L', this.outer, 'send-keys', '-t', `=${s}:`, 'Enter']);
     for (let i = 0; i < 40 && !trusted(WORKDIR); i++) await sleep(500);
     spawnSync('tmux', ['-L', this.outer, 'kill-session', '-t', `=${s}`]);
+    rmSync(`/private/tmp/tmux-${process.getuid?.()}/${this.outer}`, {force: true});
     if (!trusted(WORKDIR)) throw new Error(`could not trust ${WORKDIR}`);
   }
 
@@ -232,6 +233,7 @@ export class RealHarness {
     spawnSync('tmux', ['-L', this.outer, 'kill-server']);
     cleanupSessions();
     rmSync(this.root, {recursive: true, force: true});
+    for (const s of [this.socket, this.outer]) rmSync(`/private/tmp/tmux-${process.getuid?.()}/${s}`, {force: true});
   }
 }
 

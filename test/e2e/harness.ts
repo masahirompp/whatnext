@@ -314,5 +314,6 @@ export class Harness {
     spawnSync('tmux', ['-L', this.socket, 'kill-server']);
     spawnSync('tmux', ['-L', this.outer, 'kill-server']);
     rmSync(this.root, {recursive: true, force: true});
+    for (const s of [this.socket, this.outer]) rmSync(`/private/tmp/tmux-${process.getuid?.()}/${s}`, {force: true});
   }
 }
