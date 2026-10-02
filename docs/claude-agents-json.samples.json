@@ -1,16 +1,113 @@
 {
-  "claudeVersion": "2.1.281",
-  "otherKnownValues": {"interactive.status": ["idle", "waiting"], "interactive.waitingFor": ["permission prompt"], "background.waitingFor": ["input needed", "sandbox request", "worker request", "dialog open"]},
-  "rows": [
-    {"pid": 31457, "id": "a1b2c3d4", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258818408, "sessionId": "a1b2c3d4-0000-4000-8000-000000000001", "name": "sample-working", "status": "busy", "state": "working"},
-    {"pid": 31457, "id": "a1b2c3d5", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258818408, "sessionId": "a1b2c3d5-0000-4000-8000-000000000002", "name": "sample-done", "status": "idle", "state": "done"},
-    {"pid": 29702, "id": "a1b2c3d6", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258766077, "sessionId": "a1b2c3d6-0000-4000-8000-000000000003", "name": "sample-idle-no-prompt", "status": "idle", "state": "blocked"},
-    {"pid": 31239, "id": "a1b2c3d7", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258779888, "sessionId": "a1b2c3d7-0000-4000-8000-000000000004", "name": "sample-permission", "status": "waiting", "waitingFor": "permission prompt", "state": "blocked"},
-    {"pid": 29941, "id": "a1b2c3d8", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258779193, "sessionId": "a1b2c3d8-0000-4000-8000-000000000005", "name": "sample-failed", "status": "idle", "state": "failed"},
-    {"id": "a1b2c3d9", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258778884, "sessionId": "a1b2c3d9-0000-4000-8000-000000000006", "name": "sample-failed-after-stop", "state": "failed"},
-    {"id": "a1b2c3da", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258765304, "sessionId": "a1b2c3da-0000-4000-8000-000000000007", "name": "sample-stopped", "state": "stopped"},
-    {"id": "a1b2c3db", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258818408, "sessionId": "a1b2c3db-0000-4000-8000-000000000008", "name": "sample-done-after-stop", "state": "done"},
-    {"pid": 40001, "cwd": "/home/user/repo", "kind": "interactive", "startedAt": 1790258700000, "sessionId": "a1b2c3dc-0000-4000-8000-000000000009", "name": "sample-interactive-busy", "status": "busy"},
-    {"pid": 40002, "id": "a1b2c3dd", "cwd": "/home/user/repo", "kind": "background", "startedAt": 1790258800000, "sessionId": "a1b2c3dd-0000-4000-8000-00000000000a", "name": "sample-working-idle-after-deny", "status": "idle", "state": "working"}
-  ]
+	"claudeVersion": "2.1.281",
+	"otherKnownValues": {
+		"interactive.status": ["idle", "waiting"],
+		"interactive.waitingFor": ["permission prompt"],
+		"background.waitingFor": ["input needed", "sandbox request", "worker request", "dialog open"]
+	},
+	"rows": [
+		{
+			"pid": 31457,
+			"id": "a1b2c3d4",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258818408,
+			"sessionId": "a1b2c3d4-0000-4000-8000-000000000001",
+			"name": "sample-working",
+			"status": "busy",
+			"state": "working"
+		},
+		{
+			"pid": 31457,
+			"id": "a1b2c3d5",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258818408,
+			"sessionId": "a1b2c3d5-0000-4000-8000-000000000002",
+			"name": "sample-done",
+			"status": "idle",
+			"state": "done"
+		},
+		{
+			"pid": 29702,
+			"id": "a1b2c3d6",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258766077,
+			"sessionId": "a1b2c3d6-0000-4000-8000-000000000003",
+			"name": "sample-idle-no-prompt",
+			"status": "idle",
+			"state": "blocked"
+		},
+		{
+			"pid": 31239,
+			"id": "a1b2c3d7",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258779888,
+			"sessionId": "a1b2c3d7-0000-4000-8000-000000000004",
+			"name": "sample-permission",
+			"status": "waiting",
+			"waitingFor": "permission prompt",
+			"state": "blocked"
+		},
+		{
+			"pid": 29941,
+			"id": "a1b2c3d8",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258779193,
+			"sessionId": "a1b2c3d8-0000-4000-8000-000000000005",
+			"name": "sample-failed",
+			"status": "idle",
+			"state": "failed"
+		},
+		{
+			"id": "a1b2c3d9",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258778884,
+			"sessionId": "a1b2c3d9-0000-4000-8000-000000000006",
+			"name": "sample-failed-after-stop",
+			"state": "failed"
+		},
+		{
+			"id": "a1b2c3da",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258765304,
+			"sessionId": "a1b2c3da-0000-4000-8000-000000000007",
+			"name": "sample-stopped",
+			"state": "stopped"
+		},
+		{
+			"id": "a1b2c3db",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258818408,
+			"sessionId": "a1b2c3db-0000-4000-8000-000000000008",
+			"name": "sample-done-after-stop",
+			"state": "done"
+		},
+		{
+			"pid": 40001,
+			"cwd": "/home/user/repo",
+			"kind": "interactive",
+			"startedAt": 1790258700000,
+			"sessionId": "a1b2c3dc-0000-4000-8000-000000000009",
+			"name": "sample-interactive-busy",
+			"status": "busy"
+		},
+		{
+			"pid": 40002,
+			"id": "a1b2c3dd",
+			"cwd": "/home/user/repo",
+			"kind": "background",
+			"startedAt": 1790258800000,
+			"sessionId": "a1b2c3dd-0000-4000-8000-00000000000a",
+			"name": "sample-working-idle-after-deny",
+			"status": "idle",
+			"state": "working"
+		}
+	]
 }

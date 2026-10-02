@@ -1,37 +1,40 @@
 {
-  "name": "@masahirompp/whatnext",
-  "version": "0.15.1",
-  "description": "A terminal list of your parallel Claude Code sessions, ordered by which one to touch next.",
-  "license": "MIT",
-  "type": "module",
-  "bin": {
-    "whatnext": "dist/cli.js"
-  },
-  "files": [
-    "dist"
-  ],
-  "engines": {
-    "node": ">=22"
-  },
-  "keywords": [
-    "claude",
-    "claude-code",
-    "cli",
-    "tui"
-  ],
-  "scripts": {
-    "build": "rm -rf dist && tsc && chmod +x dist/cli.js",
-    "prepack": "npm run build",
-    "start": "node dist/cli.js",
-    "test": "vitest run --passWithNoTests --exclude '.claude/**'"
-  },
-  "dependencies": {
-    "cli-truncate": "^6.1.1",
-    "string-width": "^8.3.0"
-  },
-  "devDependencies": {
-    "@types/node": "^26.6.2",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.1"
-  }
+	"name": "@masahirompp/whatnext",
+	"version": "0.15.1",
+	"description": "A terminal list of your parallel Claude Code sessions, ordered by which one to touch next.",
+	"license": "MIT",
+	"type": "module",
+	"bin": {
+		"whatnext": "dist/cli.js"
+	},
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"keywords": [
+		"claude",
+		"claude-code",
+		"cli",
+		"tui"
+	],
+	"scripts": {
+		"build": "rm -rf dist && tsc && chmod +x dist/cli.js",
+		"prepack": "npm run build",
+		"start": "node dist/cli.js",
+		"test": "vitest run --passWithNoTests --exclude '.claude/**'",
+		"check": "biome check .",
+		"format": "biome check --write ."
+	},
+	"dependencies": {
+		"cli-truncate": "^6.1.1",
+		"string-width": "^8.3.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.15",
+		"@types/node": "^26.6.2",
+		"typescript": "^7.0.2",
+		"vitest": "^5.0.1"
+	}
 }
