@@ -5,8 +5,6 @@ import type {TranscriptFacts} from './transcript.js';
 
 export interface HookFacts {
   prompt?: {text: string; at: number};
-  /** 受けた UserPromptSubmit の数(作業したかの判定に、前後の差だけを使う)。 */
-  promptCount: number;
   stop?: {at: number; text?: string};
   failure?: {at: number; error?: string};
   permission?: {at: number; target: string};
@@ -42,11 +40,10 @@ export class HookStore {
     const event = b.hook_event_name;
     if (typeof sid !== 'string' || typeof event !== 'string') return;
     const at = this.now();
-    const f = this.bySid.get(sid) ?? {promptCount: 0};
+    const f = this.bySid.get(sid) ?? {};
     switch (event) {
       case 'UserPromptSubmit': {
         const text = typeof b.prompt === 'string' ? firstLine(b.prompt) : undefined;
-        f.promptCount++;
         f.prompt = text !== undefined ? {text, at} : undefined;
         f.stop = undefined;
         f.failure = undefined;

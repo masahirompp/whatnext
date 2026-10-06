@@ -10,7 +10,7 @@ whatnext が `n` で起動するセッションには、`claude --bg --settings`
 whatnext は起動している間だけ受け口を開き、受けた値はメモリにだけ持つ。
 段は引き続き `--json` だけで決める（[ADR-0001](0001-read-state-only-from-agents-json.md)）。
 
-- **フック**（`UserPromptSubmit`、`Stop`、`StopFailure`、`PermissionRequest`、`PreToolUse` の `AskUserQuestion`）：行の一言、待機時間の推定、保留を解くかの判断に使う。フックは段が変わる瞬間に発火するので、観測による推定より正確で、権限待ちの時刻も取れる。
+- **フック**（`UserPromptSubmit`、`Stop`、`StopFailure`、`PermissionRequest`、`PreToolUse` の `AskUserQuestion`）：行の一言と待機時間の推定に使う（保留を解くかの判断にも使っていたが、サイクル8で保留は利用者の操作でだけ解くことにした）。フックは段が変わる瞬間に発火するので、観測による推定より正確で、権限待ちの時刻も取れる。
 - **OTel**（logs だけ）：CTX の列に使う。サイクル3では、フックとの待機時間のずれを見るためにも使った。オプトインの機能として続けるか廃止するかは、まだ決めていない。
 
 フックの種類は `command` にし、コマンドは `curl -s -m 1 -o /dev/null --data-binary @- http://127.0.0.1:14318/v1/hooks; exit 0` とする。

@@ -107,7 +107,7 @@ describe('フックと補う値', () => {
     const store = new HookStore(() => 1000);
     store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'old'});
     store.receiveHook({session_id: 's', hook_event_name: 'Stop', last_assistant_message: 'old answer'});
-    const s = supplement(store.get('s'), {prompt: {text: 'new', at: 60000}, activity: 3}, undefined);
+    const s = supplement(store.get('s'), {prompt: {text: 'new', at: 60000}}, undefined);
     expect(s.prompt?.text).toBe('new');
     expect(s.lastText).toBeUndefined();
   });

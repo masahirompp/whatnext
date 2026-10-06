@@ -10,8 +10,6 @@ import type {Client, MenuItem} from '../tmux/tmux.js';
 
 export interface Observed {
   sup: Supplied;
-  /** 作業したかの判定に使う数(UserPromptSubmit の数と、会話記録の user と assistant の行の数の和)。 */
-  activity: number;
 }
 
 export interface TmuxPort {

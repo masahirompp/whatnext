@@ -128,18 +128,18 @@ describe('停止と削除', () => {
 });
 
 describe('保留', () => {
-  it('15: h で理由を入れて保留にし、カーソルは次の行へ。h で戻す。再起動しても残る', async () => {
+  it('15: h で理由を入れて保留にし、カーソルは次の行へ。再起動しても残る。h で理由を直し、空にすると戻る', async () => {
     h = new Harness();
     h.setAgents([h.row(1, {name: 'alpha', ...perm}), h.row(2, {name: 'beta'})]);
     h.open('t');
     await h.waitFor('t', 'beta');
     await h.select('t', 'alpha');
     await h.keys('t', 'h');
-    await h.waitFor('t', 'Put alpha on hold. Reason (optional):');
+    await h.waitFor('t', 'Put alpha on hold. Reason:');
     await h.type('t', 'ask Bob');
     await h.keys('t', 'Enter');
     let s = await h.waitFor('t', 'On hold');
-    expect(s).toContain('Put alpha on hold. It comes back when you attach and work on it, or press h on it.');
+    expect(s).toContain('Put alpha on hold. To bring it back, press h on it and clear the reason.');
     expect(s).toMatch(/On hold\n {2}alpha +Permission[^\n]*\n {4}↳ ask Bob/);
     expect(h.selected('t')).toMatch(/^> beta/);
     expect(h.stateFile()).toMatchObject({version: 1, holds: {[h.row(1).sessionId as string]: 'ask Bob'}});
@@ -149,8 +149,17 @@ describe('保留', () => {
     h.open('t2');
     s = await h.waitFor('t2', 'On hold');
     expect(s).toContain('↳ ask Bob');
+    // h で理由を直す。空にすると保留を解く
     await h.select('t2', 'alpha');
     await h.keys('t2', 'h');
+    await h.waitFor('t2', 'Reason for holding alpha (clear it to bring it back): ask Bob');
+    await h.type('t2', ' again');
+    await h.keys('t2', 'Enter');
+    s = await h.waitFor('t2', 'Updated the reason for holding alpha.');
+    expect(s).toContain('↳ ask Bob again');
+    await h.keys('t2', 'h');
+    await h.waitFor('t2', 'Reason for holding alpha (clear it to bring it back): ask Bob again');
+    await h.keys('t2', 'C-u', 'Enter');
     await h.waitFor('t2', 'alpha is back in the list.');
     expect(h.screen('t2')).not.toContain('On hold');
   });
@@ -172,7 +181,7 @@ describe('保留', () => {
     expect(s).toMatch(/[> ] alpha +Review[^\n]*\n {4}↳ ask Bob\n {4}⚙ sleep 1031/);
   });
 
-  it('15: Esc で保留せずに閉じる。保留の行に attach して何もせずに戻ると残り、指示を出して戻ると解ける', async () => {
+  it('15: Esc で保留せずに閉じる。保留の行に attach して戻ると、指示を出しても保留に残る', async () => {
     h = new Harness();
     h.setAgents([h.row(1, {name: 'alpha'}), h.row(2, {name: 'beta'})]);
     h.open('t');
@@ -181,7 +190,12 @@ describe('保留', () => {
     await h.keys('t', 'h', 'Escape');
     await sleep(300);
     expect(h.screen('t')).not.toContain('On hold');
+    // 理由がないと保留にしない
     await h.keys('t', 'h', 'Enter');
+    await h.waitFor('t', 'Enter a reason to put it on hold.');
+    expect(h.screen('t')).not.toContain('On hold');
+    await h.type('t', 'later');
+    await h.keys('t', 'Enter');
     await h.waitFor('t', 'On hold');
     await h.select('t', 'alpha');
     await h.keys('t', 'Enter');
@@ -195,8 +209,9 @@ describe('保留', () => {
     await h.type('t', 'do it');
     await h.keys('t', 'Enter');
     await h.keys('t', 'C-q', 'C-l');
-    const s = await h.waitFor('t', 'Last attached');
-    expect(s).not.toContain('On hold');
+    await h.waitFor('t', 'On hold');
+    expect(h.selected('t')).toMatch(/^> alpha/);
+    expect(h.screen('t')).not.toContain('Last attached');
   });
 
   it('52: attach している間に ctrl+q ctrl+h を押すと一覧に戻り、保留の理由の入力欄が開く', async () => {
@@ -208,12 +223,15 @@ describe('保留', () => {
     await h.waitFor('t', 'FAKE CLAUDE SCREEN');
     await h.keys('t', 'C-q', 'C-h');
     await h.waitFor('t', /Put \w+ on hold\. Reason/);
+    await h.type('t', 'later');
     await h.keys('t', 'Enter');
     await h.waitFor('t', 'On hold');
     await h.select('t', 'alpha');
     await h.keys('t', 'Enter');
     await h.waitFor('t', 'FAKE CLAUDE SCREEN');
     await h.keys('t', 'C-q', 'h');
+    await h.waitFor('t', /Reason for holding \S+ \(clear it to bring it back\):/);
+    await h.keys('t', 'C-u', 'Enter');
     await h.waitFor('t', 'is back in the list.');
   });
 });
@@ -269,11 +287,15 @@ describe('待ち先', () => {
     expect(m2.slice(m2.indexOf('gamma waits for:'))).not.toMatch(/\bbeta\b/);
     await h.keys('t', 'Escape');
     await h.select('t', 'beta');
-    await h.keys('t', 'h', 'Enter');
+    await h.keys('t', 'h');
+    await h.type('t', 'later');
+    await h.keys('t', 'Enter');
     await h.waitFor('t', 'beta (on hold)');
     // 根を保留にすると組ごと保留の組へ
     await h.select('t', 'alpha');
-    await h.keys('t', 'h', 'Enter');
+    await h.keys('t', 'h');
+    await h.type('t', 'later');
+    await h.keys('t', 'Enter');
     const s = await h.waitFor('t', 'On hold');
     expect(s.slice(s.indexOf('On hold'))).toMatch(/alpha[\s\S]*beta \(on hold\)/);
   });

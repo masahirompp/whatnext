@@ -135,10 +135,7 @@ export async function runList(s: Settings, version: string, distDir: string, cli
         rows.map(async r => {
           const hook = store.get(r.sessionId);
           const tr = await transcripts.read(r.sessionId);
-          out.set(r.sessionId, {
-            sup: supplement(hook, tr, store.ctxOf(r.sessionId)),
-            activity: (hook?.promptCount ?? 0) + (tr?.activity ?? 0),
-          });
+          out.set(r.sessionId, {sup: supplement(hook, tr, store.ctxOf(r.sessionId))});
         }),
       );
       const keep = new Set(rows.map(r => r.sessionId));

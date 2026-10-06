@@ -143,33 +143,6 @@ describe('whatnext の外で起動したセッション', () => {
     expect(lines[i + 1]?.trim().length).toBeGreaterThan(10);
   });
 
-  it('35: 外で起動したセッションを保留にし、attach して指示を出しターンが終わるまで待って戻ると、保留が解ける', async () => {
-    h = new RealHarness();
-    const tag = Date.now().toString(36);
-    const id = launchOutside('Do not use any tools. Reply with exactly: ready.', `wn-real-hold-${tag}`);
-    await waitState(id, r => r.state === 'done');
-    h.open('t');
-    await h.waitFor('t', `wn-real-hold-${tag}`);
-    await h.select('t', `wn-real-hold-${tag}`);
-    await h.keys('t', 'h', 'Enter');
-    await h.waitFor('t', 'On hold');
-    // 何も入力せずに戻ると残る
-    await h.select('t', `wn-real-hold-${tag}`);
-    await h.keys('t', 'Enter');
-    await sleep(4000);
-    await h.keys('t', 'C-q', 'C-l');
-    await h.waitFor('t', 'On hold');
-    await h.keys('t', 'Enter');
-    await sleep(4000);
-    await send('Do not use any tools. Reply with exactly: again.');
-    await waitState(id, r => r.state === 'working' || r.status === 'busy', 30000).catch(() => undefined);
-    await waitState(id, r => r.state === 'done');
-    await sleep(1000);
-    await h.keys('t', 'C-q', 'C-l');
-    const s = await h.waitFor('t', 'Last attached');
-    expect(s).not.toContain('On hold');
-  });
-
   it('51: 選んでいる行を外で claude rm すると、移った先の行への Ctrl+X は受け付けない', async () => {
     h = new RealHarness();
     const tag = Date.now().toString(36);

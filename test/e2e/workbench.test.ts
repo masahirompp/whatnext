@@ -276,7 +276,7 @@ describe('作業台', () => {
     await h.keys('t', 'Enter');
     await h.waitFor('t', 'FAKE CLAUDE SCREEN a0000002');
     await h.keys('wb', 'C-q', 'C-h');
-    await h.waitFor('t', 'Put beta on hold. Reason (optional):');
+    await h.waitFor('t', 'Put beta on hold. Reason:');
     await h.keys('t', 'Escape');
     await h.keys('wb', 'C-q', 'C-f');
     await h.waitFor('t', 'beta waits for:');

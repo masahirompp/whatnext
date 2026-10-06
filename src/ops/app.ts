@@ -43,18 +43,10 @@ const FLASH_MS = 2_000;
 export const LIST_HELP =
   '↑↓ select · Enter attach · n new · ^X stop/delete · h hold · f wait for · w workbench · e external · r refresh · q quit';
 
-interface Snapshot {
-  state?: string;
-  status?: string;
-  waitingFor?: string;
-  activity: number;
-}
-
 interface Attached {
   /** 起動した直後で `--json` にまだ出ていなければ undefined。 */
   sid?: string;
   id: string;
-  snapshot?: Snapshot;
 }
 
 interface Candidate {
@@ -64,7 +56,7 @@ interface Candidate {
 
 type Mode =
   | {kind: 'list'}
-  | {kind: 'hold'; sid: string; value: string}
+  | {kind: 'hold'; sid: string; value: string; editing: boolean; error?: string}
   | {kind: 'confirm'; text: string; defaultYes: boolean; resolve: (yes: boolean) => void}
   | {kind: 'ext'; sid: string; items: ExtItem[]; sel: number}
   | {kind: 'wait'; waiter: string; filter: string; sel: number}
@@ -135,7 +127,6 @@ export class App {
   private arm: {sid: string; until: number} | null = null;
   private moved: {name: string; until: number} | null = null;
   private pendingLinks: {waiter: string; id: string}[] = [];
-  private leftSnapshots: {sid: string; snapshot: Snapshot}[] = [];
   private leftovers: Map<string, string[]> | undefined;
   private menuChoices = new Map<string, ExtItem[]>();
   private menuSeq = 0;
@@ -211,7 +202,6 @@ export class App {
           if (r) att.sid = r.sessionId;
         }
         this.rearrange(now, true);
-        this.releaseHolds();
         void this.updateSummaries();
         void this.loadPullRequests(rows);
       }
@@ -366,38 +356,6 @@ export class App {
     this.p.saveState({holds: this.holds, waits: this.waits});
   }
 
-  private releaseHolds(): void {
-    const left = this.leftSnapshots;
-    this.leftSnapshots = [];
-    let changed = false;
-    for (const {sid, snapshot} of left) {
-      if (!this.holds.has(sid)) continue;
-      const row = this.rows?.find(r => r.sessionId === sid);
-      const now = row ? this.snapshotOf(row) : undefined;
-      const worked =
-        !now ||
-        now.state !== snapshot.state ||
-        now.status !== snapshot.status ||
-        now.waitingFor !== snapshot.waitingFor ||
-        now.activity > snapshot.activity;
-      this.p.log?.(`hold check ${sid} before=${JSON.stringify(snapshot)} now=${JSON.stringify(now)} worked=${worked}`);
-      if (worked) {
-        this.holds.delete(sid);
-        changed = true;
-      }
-    }
-    if (changed) this.rearrange(this.p.now(), false);
-  }
-
-  private snapshotOf(row: AgentRow): Snapshot {
-    return {
-      state: row.state,
-      status: row.status,
-      waitingFor: row.waitingFor,
-      activity: this.observed.get(row.sessionId)?.activity ?? 0,
-    };
-  }
-
   async fetchUsage(force = false): Promise<void> {
     const now = this.p.now();
     if (this.usageInFlight) return;
@@ -534,12 +492,20 @@ export class App {
       case 'list':
         return undefined;
       case 'hold':
-        return {
-          kind: 'input',
-          prompt: `Put ${this.nameOf(md.sid)} on hold. Reason (optional):`,
-          value: md.value,
-          hint: 'Enter confirm · Esc cancel',
-        };
+        return md.editing
+          ? {
+              kind: 'input',
+              prompt: `Reason for holding ${this.nameOf(md.sid)} (clear it to bring it back):`,
+              value: md.value,
+              hint: 'Enter confirm · ^U clear · Esc cancel',
+            }
+          : {
+              kind: 'input',
+              prompt: `Put ${this.nameOf(md.sid)} on hold. Reason:`,
+              value: md.value,
+              hint: 'Enter confirm · Esc cancel',
+              error: md.error,
+            };
       case 'confirm':
         return {kind: 'confirm', text: md.text};
       case 'ext':
@@ -659,8 +625,14 @@ export class App {
       }
       case 'hold':
         this.inputKey(str, k, md, () => {
+          const reason = md.value.trim();
+          if (!md.editing && !reason) {
+            md.error = 'Enter a reason to put it on hold.';
+            return;
+          }
           this.mode = {kind: 'list'};
-          this.putOnHold(md.sid, md.value.trim());
+          if (md.editing) this.editHold(md.sid, reason);
+          else this.putOnHold(md.sid, reason);
         });
         return;
       case 'ext':
@@ -740,7 +712,8 @@ export class App {
       this.draw();
       return;
     }
-    if (k.name === 'backspace') {
+    if (k.ctrl && k.name === 'u') md.value = '';
+    else if (k.name === 'backspace') {
       const segs = [...new Intl.Segmenter().segment(md.value)];
       md.value = segs
         .slice(0, -1)
@@ -856,9 +829,8 @@ export class App {
       if (f) this.firstPrompts.set(sid, f);
     }
     await this.p.tmux.setSummary(id, this.summaryText(sid, id));
-    const snapshot = this.snapshotOf(row);
     this.clearDone(sid);
-    await this.switchTo({sid, id, snapshot});
+    await this.switchTo({sid, id});
   }
 
   /**
@@ -964,7 +936,6 @@ export class App {
     if (sid) {
       this.lastAttached = sid;
       this.cursor = sid;
-      if (att.snapshot) this.leftSnapshots.push({sid, snapshot: att.snapshot});
     } else this.pendingReturnId = att.id;
     void this.fetchUsage();
     await this.refresh();
@@ -1121,8 +1092,6 @@ export class App {
       await this.p.tmux.display(tty, 'No other session in Up next.', 2000);
       return;
     }
-    const att = this.attached;
-    if (att?.sid && att.snapshot) this.leftSnapshots.push({sid: att.sid, snapshot: att.snapshot});
     this.attached = null;
     this.cursor = current ?? target;
     await this.attach(target);
@@ -1364,15 +1333,24 @@ export class App {
 
   private hold(sid: string): void {
     if (this.isDeleting(sid)) return;
-    if (this.holds.has(sid)) {
-      this.holds.delete(sid);
+    const reason = this.holds.get(sid);
+    this.mode = {kind: 'hold', sid, value: reason ?? '', editing: reason !== undefined, error: undefined};
+    this.draw();
+  }
+
+  /** 保留の理由を直す。空にしたら保留を解く。 */
+  private editHold(sid: string, reason: string): void {
+    if (!this.holds.has(sid)) return;
+    if (reason) {
+      this.holds.set(sid, reason);
       this.rearrange(this.p.now(), false);
-      this.cursor = sid;
-      this.flash(`${this.nameOf(sid)} is back in the list.`);
+      this.flash(`Updated the reason for holding ${this.nameOf(sid)}.`);
       return;
     }
-    this.mode = {kind: 'hold', sid, value: ''};
-    this.draw();
+    this.holds.delete(sid);
+    this.rearrange(this.p.now(), false);
+    this.cursor = sid;
+    this.flash(`${this.nameOf(sid)} is back in the list.`);
   }
 
   private putOnHold(sid: string, reason: string): void {
@@ -1385,7 +1363,7 @@ export class App {
     this.holds.set(sid, reason);
     this.rearrange(this.p.now(), false);
     this.cursor = after?.sid ?? before?.sid ?? sid;
-    this.flash(`Put ${this.nameOf(sid)} on hold. It comes back when you attach and work on it, or press h on it.`);
+    this.flash(`Put ${this.nameOf(sid)} on hold. To bring it back, press h on it and clear the reason.`);
     this.scheduleWbSync();
   }
 

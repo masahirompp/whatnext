@@ -13,8 +13,6 @@ export interface TranscriptFacts {
   declined?: string;
   error?: string;
   lastText?: string;
-  /** これまでに読んだ user と assistant の行の数(作業したかの判定に、前後の差だけを使う)。 */
-  activity: number;
 }
 
 interface Pending {
@@ -33,7 +31,6 @@ interface FileState {
   declined?: string;
   error?: string;
   lastAt?: number;
-  activity: number;
 }
 
 const TAIL = 512 * 1024;
@@ -61,7 +58,6 @@ function apply(st: FileState, line: string): void {
   const at = ts(o);
   const msg = o.message as {content?: unknown} | undefined;
   if (o.type === 'user') {
-    st.activity++;
     const c = msg?.content;
     if (typeof c === 'string') {
       if (o.isMeta === true || o.isCompactSummary === true) return;
@@ -90,7 +86,6 @@ function apply(st: FileState, line: string): void {
     return;
   }
   if (o.type === 'assistant') {
-    st.activity++;
     const c = msg?.content;
     if (o.isApiErrorMessage === true) {
       const text = Array.isArray(c)
@@ -120,7 +115,7 @@ function apply(st: FileState, line: string): void {
 }
 
 function facts(st: FileState): TranscriptFacts {
-  const f: TranscriptFacts = {activity: st.activity};
+  const f: TranscriptFacts = {};
   if (st.prompt) f.prompt = st.prompt;
   if (st.lastText) f.lastText = st.lastText;
   if (st.declined) f.declined = st.declined;
@@ -225,7 +220,7 @@ export class Transcripts {
     let back = TAIL;
     for (;;) {
       const start = Math.max(0, size - back);
-      const st: FileState = {path, offset: 0, mtimeMs: 0, size, pending: new Map(), activity: 0};
+      const st: FileState = {path, offset: 0, mtimeMs: 0, size, pending: new Map()};
       const buf = await readRange(path, start, size);
       const {lines, end} = completeLines(buf, start, start > 0);
       for (const l of lines) apply(st, l);
