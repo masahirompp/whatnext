@@ -206,8 +206,8 @@ function rowLines(r: ScreenRow, c: Columns, selected: boolean, asOf: number, col
   if (deleting) main = color.dim(mark + body);
   const out = [main];
   for (const n of r.notes) {
-    const line = `  ${notePrefix(r)}${truncate(oneLine(n), Math.max(1, cols - CURSOR_W - width(notePrefix(r))))}`;
-    out.push(color.gray(line));
+    const prefix = notePrefix(r);
+    out.push(`  ${prefix}${color.gray(truncate(oneLine(n), Math.max(1, cols - CURSOR_W - width(prefix))))}`);
   }
   return out.map(l => (deleting ? color.dim(l) : l));
 }
