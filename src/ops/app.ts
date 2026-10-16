@@ -128,8 +128,6 @@ export class App {
   private moved: {name: string; until: number} | null = null;
   private pendingLinks: {waiter: string; id: string}[] = [];
   private leftovers: Map<string, string[]> | undefined;
-  private menuChoices = new Map<string, ExtItem[]>();
-  private menuSeq = 0;
   private firstPrompts = new Map<string, string>();
   /** 一覧に出したことのある行の名前(消えた行の名前を示すため)。 */
   private shownNames = new Map<string, string>();
@@ -982,21 +980,6 @@ export class App {
       const id = parts[1] ?? '';
       const sid = this.sidOfId(id);
       if (sid) await this.makeWorkbench(sid, {from: 'guide'});
-    } else if (kind === 'open') {
-      const [, token = '', idx = '', tty = ''] = parts;
-      const items = this.menuChoices.get(token);
-      this.menuChoices.delete(token);
-      const it = items?.[Number(idx)];
-      if (it?.target) {
-        const res = await this.p.open(it.target);
-        await this.p.tmux.display(
-          tty,
-          res.code === 0
-            ? `Opened ${it.what}.`
-            : `open failed: ${(res.stderr || res.stdout || res.error || '').trim()}`,
-          3000,
-        );
-      }
     }
   }
 
@@ -1024,10 +1007,6 @@ export class App {
     const sid = await this.targetOfPressed(session);
     const idOfSession = session.startsWith('sh-') ? session.slice(3) : session === GUIDE ? undefined : session;
 
-    if (action === 'ext') {
-      await this.externalMenu(sid, idOfSession, tty);
-      return;
-    }
     if (action === 'wb') {
       if (sid) await this.makeWorkbench(sid, {from: 'attach', tty, ghostty: /ghostty/i.test(termname)});
       else if (idOfSession)
@@ -1066,6 +1045,9 @@ export class App {
         break;
       case 'wait':
         if (target) this.openWait(target);
+        break;
+      case 'ext':
+        if (target) await this.openExtFresh(target);
         break;
     }
     this.draw();
@@ -1256,14 +1238,16 @@ export class App {
   private extItems(cwd: string, place: Place | undefined, pr: PullRequest | undefined): ExtItem[] {
     const root = place?.checkoutRoot ?? cwd;
     const home = this.p.home;
-    const items: ExtItem[] = [];
+    // 一番よく使う手元の VS Code を先頭に置く。
+    const items: ExtItem[] = [
+      {
+        label: `VS Code: ${tildify(root, home)}`,
+        target: `vscode://file${root}/?windowId=_blank`,
+        what: `${tildify(root, home)} in VS Code`,
+      },
+    ];
     if (pr)
       items.push({label: `Pull request #${pr.number} on GitHub`, target: pr.url, what: `pull request #${pr.number}`});
-    items.push({
-      label: `VS Code: ${tildify(root, home)}`,
-      target: `vscode://file${root}/?windowId=_blank`,
-      what: `${tildify(root, home)} in VS Code`,
-    });
     const dev = pr ? vscodeDevUrl(pr.url) : undefined;
     if (pr && dev)
       items.push({
@@ -1304,32 +1288,16 @@ export class App {
     this.flash(r.code === 0 ? `Opened ${it.what}.` : `open failed: ${(r.stderr || r.stdout || r.error || '').trim()}`);
   }
 
-  /** `ctrl+q ctrl+e`: 押したときに `--json` を読み直し、tmux のメニューで出す。 */
-  private async externalMenu(sid: string | undefined, id: string | undefined, tty: string): Promise<void> {
+  /** `ctrl+q ctrl+e`: 一覧に戻り、押したときに `--json` を読み直した場所で `e` のメニューを出す。 */
+  private async openExtFresh(sid: string): Promise<void> {
     const res = await this.p.readAgents();
-    let row: AgentRow | undefined;
-    if (res.ok) {
-      const rows = dedupe(res.rows);
-      row = rows.find(r => (sid ? r.sessionId === sid : r.id === id));
-    }
-    row ??= this.rowOf(sid);
-    if (!row) return;
+    const row = (res.ok ? dedupe(res.rows).find(r => r.sessionId === sid) : undefined) ?? this.rowOf(sid);
+    if (!row || this.isDeleting(sid)) return;
     const place = await this.p.place(row.cwd);
     const pr =
       place.git && place.branch && place.nonDefault ? await this.p.pullRequest(row.cwd, place.branch) : undefined;
-    const items = this.extItems(row.cwd, place, pr);
-    const token = String(++this.menuSeq);
-    this.menuChoices.set(token, items);
-    let n = 0;
-    this.p.tmux.menu(
-      tty,
-      `Show ${rowName(row)} in:`,
-      items.map((it, i) =>
-        it.target
-          ? {label: it.label, key: String(++n), command: this.p.tmux.reqCommand(`open ${token} ${i} "#{client_tty}"`)}
-          : {label: it.label},
-      ),
-    );
+    this.cursor = sid;
+    this.mode = {kind: 'ext', sid, items: this.extItems(row.cwd, place, pr), sel: 0};
   }
 
   // ---- 保留 ----

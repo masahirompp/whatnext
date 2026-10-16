@@ -1,6 +1,5 @@
 // tmux: 専用の tmux サーバの操作(DESIGN.md「一覧と作業台の仕組み」「作業台の画面の仕組み」)。
 
-import {spawn} from 'node:child_process';
 import type {Run, RunResult} from '../input/exec.js';
 import {ATTACH_KEYS, attachKeysHelp} from './keys.js';
 
@@ -133,13 +132,6 @@ export function serverConfig(c: ServerConfigInput): string {
   return `${lines.join('\n')}\n`;
 }
 
-export interface MenuItem {
-  label: string;
-  key?: string;
-  /** tmux のコマンド。選べない行は undefined。 */
-  command?: string;
-}
-
 export class Tmux {
   constructor(
     readonly socket: string,
@@ -148,11 +140,6 @@ export class Tmux {
 
   t(args: string[], input?: string): Promise<RunResult> {
     return this.run('tmux', ['-L', this.socket, ...args], {timeout: 10000, input});
-  }
-
-  /** 頼みごとを書く sh を呼ぶコマンド(メニューの項目などから)。 */
-  reqCommand(args: string): string {
-    return `run-shell -b '${callScript(this.socket, '@wn_req_sh', args)}'`;
   }
 
   async hasSession(name: string): Promise<boolean> {
@@ -239,18 +226,6 @@ export class Tmux {
 
   async display(tty: string, text: string, ms = 2000): Promise<void> {
     await this.t(['display-message', '-c', tty, '-d', String(ms), escapeFormat(text)]);
-  }
-
-  /** メニューを出す。閉じるまで戻らないので、終わりを待たない。 */
-  menu(tty: string, title: string, items: MenuItem[]): void {
-    const args = ['-L', this.socket, 'display-menu', '-c', tty, '-T', escapeFormat(title)];
-    for (const it of items) {
-      if (it.command === undefined) args.push(`-${escapeFormat(it.label)}`, '', '');
-      else args.push(escapeFormat(it.label), it.key ?? '', it.command);
-    }
-    const child = spawn('tmux', args, {stdio: 'ignore', detached: true});
-    child.on('error', () => {});
-    child.unref();
   }
 
   /** claude の画面のセッション `<id>` を作る(すでにあれば作らない)。 */

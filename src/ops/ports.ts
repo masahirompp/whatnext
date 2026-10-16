@@ -6,7 +6,7 @@ import type {Supplied} from '../input/hooks.js';
 import type {Place, PullRequest} from '../input/place.js';
 import type {Relations} from '../state/store.js';
 import type {GhosttyResult} from '../tmux/ghostty.js';
-import type {Client, MenuItem} from '../tmux/tmux.js';
+import type {Client} from '../tmux/tmux.js';
 
 export interface Observed {
   sup: Supplied;
@@ -23,8 +23,6 @@ export interface TmuxPort {
   killSession(name: string): Promise<void>;
   killServer(): Promise<void>;
   display(tty: string, text: string, ms?: number): Promise<void>;
-  menu(tty: string, title: string, items: MenuItem[]): void;
-  reqCommand(args: string): string;
   ensureClaudeSession(id: string, cwd: string, size: {cols: number; rows: number}): Promise<boolean>;
   setSummary(id: string, text: string): Promise<void>;
   createWorkbench(id: string, cwd: string, name: string): Promise<boolean>;

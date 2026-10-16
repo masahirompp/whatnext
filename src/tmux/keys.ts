@@ -17,7 +17,7 @@ export const ATTACH_KEYS: readonly AttachKey[] = [
   {letter: 'l', action: 'back', help: 'back', bare: false, returnsToList: true},
   {letter: 'j', action: 'next', help: 'next', bare: true, returnsToList: false},
   {letter: 'w', action: 'wb', help: 'workbench', bare: false, returnsToList: false},
-  {letter: 'e', action: 'ext', help: 'external', bare: true, returnsToList: false},
+  {letter: 'e', action: 'ext', help: 'external', bare: true, returnsToList: true},
   {letter: 'h', action: 'hold', help: 'hold', bare: true, returnsToList: true},
   {letter: 'x', action: 'stop', help: 'stop', bare: false, returnsToList: true},
   {letter: 'n', action: 'new', help: 'new', bare: false, returnsToList: true},

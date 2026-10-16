@@ -201,18 +201,18 @@ describe('作業台', () => {
     await h.waitFor('wb', 'No workbench for beta yet.');
   });
 
-  it('60、48: 作業台の画面で ctrl+q ctrl+e を押すと、その作業台のセッションの開く先のメニューが作業台の画面に出る', async () => {
+  it('60、48: 作業台の画面で ctrl+q ctrl+e を押すと、whatnext の画面が一覧に戻り、その作業台のセッションの開く先のメニューが出る', async () => {
     await setup(1);
     h.open('wb', ['workbench'], {cols: 80, rows: 20});
     await h.keys('t', 'w');
     await h.waitFor('wb', /workbench: alpha/);
     await h.keys('wb', 'C-q', 'C-e');
-    const s = await h.waitFor('wb', 'Show alpha in:');
-    expect(s).toContain('VS Code:');
+    const s = await h.waitFor('t', 'Show alpha in:');
+    expect(s).toMatch(/\(1\) VS Code:/);
     expect(s).toContain('No pull request for this session.');
-    expect(h.screen('t')).not.toContain('Show alpha in:');
-    await h.keys('wb', '1');
-    await h.waitFor('wb', 'Opened');
+    expect(h.screen('wb')).not.toContain('Show alpha in:');
+    await h.keys('t', '1');
+    await h.waitFor('t', 'Opened');
     expect(h.log('open.log')[0]).toMatch(/^vscode:\/\/file.*\/repo\/\?windowId=_blank$/);
   });
 

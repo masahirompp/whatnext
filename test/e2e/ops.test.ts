@@ -497,7 +497,7 @@ describe('新しいセッション', () => {
 });
 
 describe('外のアプリで開く', () => {
-  it('14: e で開く先のメニューが出る。PR があれば GitHub と vscode.dev も出る', async () => {
+  it('14: e で開く先のメニューが出る。先頭は VS Code で、PR があれば GitHub と vscode.dev も出る', async () => {
     h = new Harness({gh: true});
     const wt = join(h.root, 'wt');
     const {execFileSync} = await import('node:child_process');
@@ -513,8 +513,8 @@ describe('外のアプリで開く', () => {
     await h.select('t', 'alpha');
     await h.keys('t', 'e');
     const s = await h.waitFor('t', 'Show alpha in:');
-    expect(s).toMatch(/\(1\) Pull request #12 on GitHub/);
-    expect(s).toMatch(/\(2\) VS Code: .*wt/);
+    expect(s).toMatch(/\(1\) VS Code: .*wt/);
+    expect(s).toMatch(/\(2\) Pull request #12 on GitHub/);
     expect(s).toMatch(/\(3\) Pull request #12 on vscode.dev/);
     await h.keys('t', '3');
     await h.waitFor('t', 'Opened pull request #12 on vscode.dev.');
@@ -527,7 +527,7 @@ describe('外のアプリで開く', () => {
     await h.waitFor('t', /Opened .*repo in VS Code\./);
   });
 
-  it('48: attach している間に ctrl+q ctrl+e(ctrl+q e)で tmux のメニューが出て、選ぶと開いたものが示される', async () => {
+  it('48: attach している間に ctrl+q ctrl+e(ctrl+q e)を押すと、一覧に戻って e のメニューが出て、選ぶと開いたものが示される', async () => {
     h = new Harness();
     h.setAgents([h.row(1, {name: 'alpha'})]);
     h.open('t');
@@ -537,6 +537,7 @@ describe('外のアプリで開く', () => {
     await h.keys('t', 'C-q', 'e');
     const s = await h.waitFor('t', 'Show alpha in:');
     expect(s).toContain('No pull request for this session.');
+    expect(s).toContain('Last attached');
     await h.keys('t', '1');
     await h.waitFor('t', /Opened .*repo in VS Code\./);
     expect(h.log('open.log')[0]).toMatch(/^vscode:\/\/file.*\/repo\/\?windowId=_blank$/);
