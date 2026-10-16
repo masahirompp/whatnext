@@ -432,6 +432,7 @@ export class App {
       asOf: this.refreshedAt,
       messages: msgs,
       panel: this.panel(),
+      panelUnder: this.mode.kind === 'hold' ? this.mode.sid : undefined,
       help: this.mode.kind === 'list' ? LIST_HELP : '',
     };
     if (this.rows === null) {
@@ -455,7 +456,9 @@ export class App {
     const pr = this.prOf(e.row.cwd);
     // 保留の理由は行のすぐ下に出す(PRODUCT.md「保留」)。`⚙` は一言の下に出す。
     const notes: string[] = [];
-    if (e.holdReason) notes.push(`↳ ${e.holdReason}`);
+    // 理由を直している間は、理由の行の代わりに入力欄を出す。
+    const editing = this.mode.kind === 'hold' && this.mode.sid === e.sid;
+    if (e.holdReason && !editing) notes.push(`↳ ${e.holdReason}`);
     if (e.doneNames) notes.push(`↳ ${e.doneNames.join(', ')} done`);
     if (e.note) notes.push(e.note);
     const cmds = e.row.id ? this.running.get(e.row.id) : undefined;

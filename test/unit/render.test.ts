@@ -184,4 +184,62 @@ describe('一覧の画面', () => {
     expect(out).toContain('footer');
     expect(out[0]).toContain('SESSION');
   });
+  it('入力欄とメニューは一覧のすぐ下に出し、キーの説明は最下行に残す', () => {
+    const out = plain(
+      render(
+        model({
+          rows: 20,
+          upNext: [row('a'), row('b')],
+          panel: {kind: 'input', prompt: 'Directory:', value: 'x'},
+          help: 'q quit',
+        }),
+      ),
+    );
+    const b = out.findIndex(l => l.startsWith('  b '));
+    expect(out[b + 1]).toBe('');
+    expect(out[b + 2]).toBe('Directory: x█');
+    expect(out[19]).toBe('q quit');
+  });
+
+  it('保留の理由の入力欄は、対象の行と注記の直下に出す', () => {
+    const out = plain(
+      render(
+        model({
+          upNext: [row('a', {notes: ['note']}), row('b')],
+          cursor: 'a',
+          panel: {kind: 'input', prompt: 'Reason:', value: 'r', hint: 'Esc cancel'},
+          panelUnder: 'a',
+        }),
+      ),
+    );
+    const a = out.findIndex(l => l.startsWith('> a '));
+    expect(out.slice(a + 1, a + 4)).toEqual(['    note', '    Reason: r█', '    Esc cancel']);
+    expect(out[a + 4]?.startsWith('  b ')).toBe(true);
+  });
+
+  it('行の直下の入力欄は、一覧がスクロールしても見える', () => {
+    const rows = Array.from({length: 40}, (_, i) => row(`s${i}`));
+    const out = plain(
+      render(
+        model({
+          rows: 12,
+          upNext: rows,
+          cursor: 's39',
+          panel: {kind: 'input', prompt: 'Reason:', value: '', hint: 'Esc cancel'},
+          panelUnder: 's39',
+        }),
+      ),
+    );
+    expect(out.length).toBe(12);
+    expect(out).toContain('    Reason: █');
+    expect(out).toContain('    Esc cancel');
+  });
+
+  it('SESSION の列は最長の名前に合わせ、48 文字を超える分だけ切る', () => {
+    const n40 = 'n'.repeat(40);
+    const n60 = 'm'.repeat(60);
+    expect(plain(render(model({upNext: [row(n40)]}))).some(l => l.includes(`${n40}  Review`))).toBe(true);
+    const out = plain(render(model({cols: 160, upNext: [row(n60)]})));
+    expect(out.some(l => l.includes(`${'m'.repeat(47)}…  Review`))).toBe(true);
+  });
 });

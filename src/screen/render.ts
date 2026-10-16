@@ -68,6 +68,8 @@ export interface ScreenModel {
   placeholder?: string;
   messages: string[];
   panel?: Panel;
+  /** パネルをこの行(と注記)の直下に出す。ないときは一覧のすぐ下に出す。 */
+  panelUnder?: string;
   help: string;
 }
 
@@ -160,7 +162,7 @@ const GAP = 2;
 const CURSOR_W = 2;
 
 function columns(all: ScreenRow[], cols: number): Columns {
-  const session = Math.min(32, Math.max(7, ...all.map(r => width(sessionLabel(r)))));
+  const session = Math.min(48, Math.max(7, ...all.map(r => width(sessionLabel(r)))));
   const status = Math.max(6, ...all.map(r => width(statusText(r))));
   const whereMax = Math.max(5, ...all.map(r => width(formatWhere(r.where, false))));
   const rest = cols - CURSOR_W - session - status - CTX_W - WAIT_W - GAP * 4;
@@ -212,10 +214,30 @@ function rowLines(r: ScreenRow, c: Columns, selected: boolean, asOf: number, col
   return out.map(l => (deleting ? color.dim(l) : l));
 }
 
-function block(rows: ScreenRow[], c: Columns, m: ScreenModel, lines: string[], rowAt?: Map<string, number>): void {
+/** 行の直下に出すパネル。入れ子の縦線を引き継ぐ。 */
+interface Inline {
+  key: string;
+  lines: string[];
+  /** 差し込んだパネルの最後の行の次の位置(スクロールの窓に入れるため)。 */
+  end?: number;
+}
+
+function block(
+  rows: ScreenRow[],
+  c: Columns,
+  m: ScreenModel,
+  lines: string[],
+  rowAt?: Map<string, number>,
+  inline?: Inline,
+): void {
   for (const r of rows) {
     rowAt?.set(r.key, lines.length);
     lines.push(...rowLines(r, c, r.key === m.cursor, m.asOf, m.cols));
+    if (inline && r.key === inline.key) {
+      const prefix = `${' '.repeat(CURSOR_W)}${notePrefix(r)}`;
+      lines.push(...inline.lines.map(l => prefix + l));
+      inline.end = lines.length;
+    }
   }
 }
 
@@ -265,11 +287,17 @@ export function render(m: ScreenModel): string[] {
   const top: string[] = [];
   if (m.usage && m.usage.length > 0) top.push(formatUsage(m.usage));
 
-  const bottom: string[] = [...m.messages.map(s => oneLine(s))];
+  const bottom: string[] = [...m.messages.map(s => oneLine(s)), color.gray(m.help)];
   // メニューの項目は画面の半分ほどに収め、一覧のヘッダと何行かを残す。
   const maxItems = Math.max(3, Math.floor((m.rows - m.messages.length) / 2) - 2);
-  if (m.panel) bottom.push(...panelLines(m.panel, cols, maxItems));
-  bottom.push(color.gray(m.help));
+  const pLines = m.panel ? panelLines(m.panel, cols, maxItems) : [];
+  const allKeys = [...(m.lastAttached ?? []), ...m.upNext, ...(m.onHold ?? [])].map(r => r.key);
+  // 入力欄は視線の近くに出す。行に結びつくもの(保留の理由)はその行の直下、ほかは一覧のすぐ下。
+  const inline: Inline | undefined =
+    m.panelUnder !== undefined && m.placeholder === undefined && allKeys.includes(m.panelUnder) && pLines.length > 0
+      ? {key: m.panelUnder, lines: pLines}
+      : undefined;
+  const below = pLines.length > 0 && !inline ? ['', ...pLines] : [];
 
   let middle: string[];
   if (m.placeholder !== undefined) {
@@ -282,7 +310,7 @@ export function render(m: ScreenModel): string[] {
     const titled = m.lastAttached !== undefined || m.onHold !== undefined;
     if (m.lastAttached) {
       fixedLines.push(color.bold('  Last attached'));
-      block(m.lastAttached, c, m, fixedLines);
+      block(m.lastAttached, c, m, fixedLines, undefined, inline);
     }
     if (titled) {
       if (fixedLines.length > 0) fixedLines.push('');
@@ -290,12 +318,14 @@ export function render(m: ScreenModel): string[] {
     }
     const scrollLines: string[] = [];
     const rowAt = new Map<string, number>();
-    block(m.upNext, c, m, scrollLines, rowAt);
+    const fixedEnd = inline?.end;
+    block(m.upNext, c, m, scrollLines, rowAt, inline);
     if (m.onHold) {
       scrollLines.push('', color.bold('  On hold'));
-      block(m.onHold, c, m, scrollLines, rowAt);
+      block(m.onHold, c, m, scrollLines, rowAt, inline);
     }
-    const avail = Math.max(1, m.rows - top.length - fixedLines.length - bottom.length);
+    const inlineEnd = inline?.end !== fixedEnd ? inline?.end : undefined;
+    const avail = Math.max(1, m.rows - top.length - fixedLines.length - below.length - bottom.length);
     if (scrollLines.length <= avail) {
       middle = [...fixedLines, ...scrollLines];
     } else {
@@ -303,6 +333,8 @@ export function render(m: ScreenModel): string[] {
       const sel = m.cursor !== null ? rowAt.get(m.cursor) : undefined;
       let start = 0;
       if (sel !== undefined) start = Math.min(Math.max(0, sel - Math.floor(winH / 2)), scrollLines.length - winH);
+      // 行の直下の入力欄が窓からはみ出すときは、入力欄の最後まで見えるように動かす。
+      if (inlineEnd !== undefined && inlineEnd > start + winH) start = inlineEnd - winH;
       const idx = allRows.findIndex(r => r.key === m.cursor);
       middle = [
         ...fixedLines,
@@ -312,7 +344,7 @@ export function render(m: ScreenModel): string[] {
     }
   }
 
-  let lines = [...top, ...middle];
+  let lines = [...top, ...middle, ...below];
   const room = m.rows - lines.length;
   if (room < bottom.length) {
     // 下の欄が収まらないときは、キーの説明から削る。
