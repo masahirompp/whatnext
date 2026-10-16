@@ -3,7 +3,7 @@
 // 利用者の whatnext とそのセッションには触れない。起動したセッションは、終わったら claude stop と claude rm で消す。
 
 import {execFileSync, spawnSync} from 'node:child_process';
-import {existsSync, mkdirSync, readFileSync, realpathSync, rmSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join, resolve} from 'node:path';
 
@@ -83,6 +83,13 @@ export class RealHarness {
     rmSync(this.root, {recursive: true, force: true});
     mkdirSync(this.state, {recursive: true});
     mkdirSync(WORKDIR, {recursive: true});
+    // 利用者の既定の権限モードが auto だと、害のないコマンドは確認なしで通り、権限待ちが起きない。
+    // テストの作業ディレクトリのプロジェクト設定で default に戻す(利用者の設定には触れない)。
+    mkdirSync(join(WORKDIR, '.claude'), {recursive: true});
+    writeFileSync(
+      join(WORKDIR, '.claude', 'settings.local.json'),
+      `${JSON.stringify({permissions: {defaultMode: 'default'}}, null, 2)}\n`,
+    );
   }
 
   /** 作業ディレクトリの信頼の確認を、対話モードの claude で済ませる(初回だけ)。 */
@@ -261,4 +268,4 @@ export async function waitState(id: string, pred: (r: JsonRow) => boolean, timeo
 }
 
 export const PERM_PROMPT = (tag: string) =>
-  `Use the Bash tool to run exactly: date > /private/tmp/claude-501/wn-real-${tag}.txt . Then report the result.`;
+  `Use the Bash tool to run exactly: date > /private/tmp/wn-real-${tag}.txt . Then report the result.`;

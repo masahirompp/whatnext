@@ -50,9 +50,9 @@ describe('whatnext から起動したセッション', () => {
     await h.waitFor('t', /^\S+ · Use the Bash tool to run exactly/m, 15000);
     expect(Date.now() - sentAt).toBeLessThan(15000);
     // 権限の確認がふだんどおり出る
-    await h.waitFor('t', /date > \/private\/tmp\/claude-501\/wn-real/, 60000);
+    await h.waitFor('t', /date > \/private\/tmp\/wn-real/, 60000);
     await h.keys('t', 'C-q', 'C-l');
-    let s = await h.refreshUntil('t', /Permission[^\n]*\n\s+Bash: date > \/private\/tmp\/claude-501\/wn-real/);
+    let s = await h.refreshUntil('t', /Permission[^\n]*\n\s+Bash: date > \/private\/tmp\/wn-real/);
     expect(s).toMatch(/Last attached/);
     // 断る(45)
     await h.keys('t', 'Enter');
@@ -113,7 +113,7 @@ describe('whatnext の外で起動したセッション', () => {
     const s = await h.waitFor('t', new RegExp(`wn-real-perm-${tag}`));
     const line = s.split('\n').find(l => l.includes(`wn-real-perm-${tag}`)) ?? '';
     expect(line).toMatch(/Permission +\S+ +- +\d+m/);
-    expect(s).toMatch(/Bash: date > \/private\/tmp\/claude-501\/wn-real/);
+    expect(s).toMatch(/Bash: date > \/private\/tmp\/wn-real/);
     await h.select('t', `wn-real-perm-${tag}`);
     await h.keys('t', 'Enter');
     await h.waitFor('t', /date > \/private\/tmp/);
