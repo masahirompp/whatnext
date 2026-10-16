@@ -73,9 +73,3 @@ export async function pullRequestOf(run: Run, cwd: string, branch: string): Prom
     return undefined;
   }
 }
-
-/** github.com の PR の URL から vscode.dev の URL を作る。github.com でなければ undefined。 */
-export function vscodeDevUrl(prUrl: string): string | undefined {
-  const m = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(prUrl);
-  return m ? `https://vscode.dev/github/${m[1]}/${m[2]}/pull/${m[3]}` : undefined;
-}

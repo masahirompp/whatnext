@@ -4,7 +4,6 @@ import {basename} from 'node:path';
 import type {UsageFrame} from '../input/claude.js';
 import {stripControl} from '../input/exec.js';
 import type {Place, PullRequest} from '../input/place.js';
-import {vscodeDevUrl} from '../input/place.js';
 import {
   type Arranged,
   arrange,
@@ -41,7 +40,7 @@ const MOVED_MS = 2_000;
 const FLASH_MS = 2_000;
 
 export const LIST_HELP =
-  '↑↓ select · Enter attach · n new · ^X stop/delete · h hold · f wait for · w workbench · e external · r refresh · q quit';
+  '↑↓ select · Enter attach · n new · ^X stop/delete · h hold · f wait for · w workbench · v VS Code · r refresh · q quit';
 
 interface Attached {
   /** 起動した直後で `--json` にまだ出ていなければ undefined。 */
@@ -58,7 +57,6 @@ type Mode =
   | {kind: 'list'}
   | {kind: 'hold'; sid: string; value: string; editing: boolean; error?: string}
   | {kind: 'confirm'; text: string; defaultYes: boolean; resolve: (yes: boolean) => void}
-  | {kind: 'ext'; sid: string; items: ExtItem[]; sel: number}
   | {kind: 'wait'; waiter: string; filter: string; sel: number}
   | {kind: 'dir'; filter: string; sel: number; cands: Candidate[]; flow: NewFlow}
   | {kind: 'other'; value: string; error?: string; flow: NewFlow; cands: Candidate[]; filter: string}
@@ -71,12 +69,6 @@ interface NewFlow {
   firstRepo?: string;
   /** `f` の New session から起動したときの待ち元。 */
   linkTo?: string;
-}
-
-interface ExtItem {
-  label: string;
-  target?: string;
-  what?: string;
 }
 
 interface Message {
@@ -509,15 +501,6 @@ export class App {
             };
       case 'confirm':
         return {kind: 'confirm', text: md.text};
-      case 'ext':
-        return {
-          kind: 'menu',
-          title: `Show ${this.nameOf(md.sid)} in:`,
-          items: md.items.map(it => ({label: it.label, disabled: it.target === undefined})),
-          selected: md.sel,
-          numbered: true,
-          footer: '↑↓ select · Enter open · 1-9 pick · Esc close',
-        };
       case 'wait': {
         const opts = this.waitOptions(md.waiter, md.filter);
         return {
@@ -635,9 +618,6 @@ export class App {
           if (md.editing) this.editHold(md.sid, reason);
           else this.putOnHold(md.sid, reason);
         });
-        return;
-      case 'ext':
-        this.extKey(str, k, md);
         return;
       case 'wait':
         this.waitKey(str, k, md);
@@ -779,8 +759,8 @@ export class App {
           case 'w':
             if (sel) void this.makeWorkbench(sel, {from: 'list'});
             break;
-          case 'e':
-            if (sel) this.openExt(sel);
+          case 'v':
+            if (sel) void this.openInVsCode(sel);
             break;
           case 'r':
             this.messages = [];
@@ -1007,6 +987,12 @@ export class App {
     const sid = await this.targetOfPressed(session);
     const idOfSession = session.startsWith('sh-') ? session.slice(3) : session === GUIDE ? undefined : session;
 
+    if (action === 'vscode') {
+      if (sid) await this.openInVsCode(sid, tty);
+      else if (idOfSession)
+        await this.p.tmux.display(tty, 'This session is not in the list yet. Try again in a moment.', 3000);
+      return;
+    }
     if (action === 'wb') {
       if (sid) await this.makeWorkbench(sid, {from: 'attach', tty, ghostty: /ghostty/i.test(termname)});
       else if (idOfSession)
@@ -1045,9 +1031,6 @@ export class App {
         break;
       case 'wait':
         if (target) this.openWait(target);
-        break;
-      case 'ext':
-        if (target) await this.openExtFresh(target);
         break;
     }
     this.draw();
@@ -1233,71 +1216,28 @@ export class App {
     else if (!wbOpen) await say('Workbench created. Run "whatnext workbench" in a split to see it.');
   }
 
-  // ---- 外のアプリで開く ----
+  // ---- VS Code で開く ----
 
-  private extItems(cwd: string, place: Place | undefined, pr: PullRequest | undefined): ExtItem[] {
-    const root = place?.checkoutRoot ?? cwd;
-    const home = this.p.home;
-    // 一番よく使う手元の VS Code を先頭に置く。
-    const items: ExtItem[] = [
-      {
-        label: `VS Code: ${tildify(root, home)}`,
-        target: `vscode://file${root}/?windowId=_blank`,
-        what: `${tildify(root, home)} in VS Code`,
-      },
-    ];
-    if (pr)
-      items.push({label: `Pull request #${pr.number} on GitHub`, target: pr.url, what: `pull request #${pr.number}`});
-    const dev = pr ? vscodeDevUrl(pr.url) : undefined;
-    if (pr && dev)
-      items.push({
-        label: `Pull request #${pr.number} on vscode.dev`,
-        target: dev,
-        what: `pull request #${pr.number} on vscode.dev`,
-      });
-    if (!pr) items.push({label: 'No pull request for this session.'});
-    return items;
-  }
-
-  private openExt(sid: string): void {
-    const row = this.rowOf(sid);
-    if (!row || this.isDeleting(sid)) return;
-    const items = this.extItems(row.cwd, this.places.get(row.cwd), this.prOf(row.cwd));
-    this.mode = {kind: 'ext', sid, items, sel: 0};
-  }
-
-  private extKey(str: string | undefined, k: Key, md: Extract<Mode, {kind: 'ext'}>): void {
-    const selectable = md.items.map((it, i) => (it.target ? i : -1)).filter(i => i >= 0);
-    if (k.name === 'escape') this.mode = {kind: 'list'};
-    else if (k.name === 'up' || k.name === 'down') {
-      const pos = selectable.indexOf(md.sel);
-      const next = pos + (k.name === 'up' ? -1 : 1);
-      if (next >= 0 && next < selectable.length) md.sel = selectable[next] as number;
-    } else if (k.name === 'return') void this.openItem(md.items[md.sel]);
-    else if (str && /^[1-9]$/.test(str)) {
-      const it = md.items[Number(str) - 1];
-      if (it?.target) void this.openItem(it);
-    }
-    this.draw();
-  }
-
-  private async openItem(it: ExtItem | undefined): Promise<void> {
-    if (!it?.target) return;
-    this.mode = {kind: 'list'};
-    const r = await this.p.open(it.target);
-    this.flash(r.code === 0 ? `Opened ${it.what}.` : `open failed: ${(r.stderr || r.stdout || r.error || '').trim()}`);
-  }
-
-  /** `ctrl+q ctrl+e`: 一覧に戻り、押したときに `--json` を読み直した場所で `e` のメニューを出す。 */
-  private async openExtFresh(sid: string): Promise<void> {
+  /**
+   * 一覧の `v` と `ctrl+q ctrl+v`: そのセッションのチェックアウトの根を VS Code で開く。
+   * attach している間に worktree に入る(出る)ので、押したときに `--json` を読み直す。
+   */
+  private async openInVsCode(sid: string, tty?: string): Promise<void> {
+    const say = async (text: string) => {
+      if (tty) await this.p.tmux.display(tty, text, 3000);
+      else this.flash(text);
+    };
     const res = await this.p.readAgents();
     const row = (res.ok ? dedupe(res.rows).find(r => r.sessionId === sid) : undefined) ?? this.rowOf(sid);
     if (!row || this.isDeleting(sid)) return;
     const place = await this.p.place(row.cwd);
-    const pr =
-      place.git && place.branch && place.nonDefault ? await this.p.pullRequest(row.cwd, place.branch) : undefined;
-    this.cursor = sid;
-    this.mode = {kind: 'ext', sid, items: this.extItems(row.cwd, place, pr), sel: 0};
+    const root = place.checkoutRoot ?? row.cwd;
+    const r = await this.p.open(`vscode://file${root}/?windowId=_blank`);
+    await say(
+      r.code === 0
+        ? `Opened ${tildify(root, this.p.home)} in VS Code.`
+        : `open failed: ${(r.stderr || r.stdout || r.error || '').trim()}`,
+    );
   }
 
   // ---- 保留 ----

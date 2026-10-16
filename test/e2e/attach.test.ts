@@ -94,7 +94,7 @@ describe('attach', () => {
     await h.keys('t', 'Enter');
     const s = await h.waitFor('t', 'alpha · fix the login bug');
     const lines = s.replace(/\n$/, '').split('\n');
-    expect(lines.at(-1)).toMatch(/\^Q\^L back · \^Q\^J next · \^Q\^W workbench · \^Q\^E external/);
+    expect(lines.at(-1)).toMatch(/\^Q\^L back · \^Q\^J next · \^Q\^W workbench · \^Q\^V VS Code/);
     expect(lines.at(-2)).toMatch(/^alpha · fix the login bug/);
     await h.keys('t', 'C-q', 'C-l');
     await h.waitFor('t', 'Last attached');

@@ -242,4 +242,34 @@ describe('一覧の画面', () => {
     const out = plain(render(model({cols: 160, upNext: [row(n60)]})));
     expect(out.some(l => l.includes(`${'m'.repeat(47)}…  Review`))).toBe(true);
   });
+  it('使用率はキーの説明のすぐ上に出し、知らせは一覧の下に1行空けて出す', () => {
+    const out = plain(
+      render(
+        model({
+          rows: 12,
+          upNext: [row('a')],
+          usage: [{label: 'session', percent: 42}],
+          messages: ['Deleted b.'],
+          help: 'q quit',
+        }),
+      ),
+    );
+    expect(out[0]).toContain('SESSION');
+    const a = out.findIndex(l => l.startsWith('  a '));
+    expect(out.slice(a + 1, a + 3)).toEqual(['', 'Deleted b.']);
+    expect(out.slice(-2)).toEqual(['session 42%', 'q quit']);
+  });
+  it('入力欄と知らせが一緒に出るときは、一覧、入力欄、知らせの順に1行ずつ空けて並べる', () => {
+    const out = plain(
+      render(
+        model({
+          upNext: [row('a')],
+          panel: {kind: 'input', prompt: 'Directory:', value: ''},
+          messages: ['refreshing...'],
+        }),
+      ),
+    );
+    const a = out.findIndex(l => l.startsWith('  a '));
+    expect(out.slice(a + 1, a + 5)).toEqual(['', 'Directory: █', '', 'refreshing...']);
+  });
 });

@@ -497,49 +497,31 @@ describe('新しいセッション', () => {
 });
 
 describe('外のアプリで開く', () => {
-  it('14: e で開く先のメニューが出る。先頭は VS Code で、PR があれば GitHub と vscode.dev も出る', async () => {
+  it('14: v で選んだ行の場所(worktree ならその worktree)が VS Code で開く', async () => {
     h = new Harness({gh: true});
     const wt = join(h.root, 'wt');
     const {execFileSync} = await import('node:child_process');
     execFileSync('git', ['-C', h.repo, 'worktree', 'add', '-q', '-b', 'fix-login', wt]);
-    const {writeFileSync} = await import('node:fs');
-    writeFileSync(
-      join(h.fake, 'gh.json'),
-      JSON.stringify([{number: 12, state: 'OPEN', isDraft: false, url: 'https://github.com/me/app/pull/12'}]),
-    );
     h.setAgents([h.row(1, {name: 'alpha', cwd: wt}), h.row(2, {name: 'beta'})]);
     h.open('t', [], {cols: 140});
-    await h.waitFor('t', /alpha +Review +repo fix-login \(wt\) #12 \(open\)/);
+    await h.waitFor('t', /alpha +Review +repo fix-login \(wt\)/);
     await h.select('t', 'alpha');
-    await h.keys('t', 'e');
-    const s = await h.waitFor('t', 'Show alpha in:');
-    expect(s).toMatch(/\(1\) VS Code: .*wt/);
-    expect(s).toMatch(/\(2\) Pull request #12 on GitHub/);
-    expect(s).toMatch(/\(3\) Pull request #12 on vscode.dev/);
-    await h.keys('t', '3');
-    await h.waitFor('t', 'Opened pull request #12 on vscode.dev.');
-    expect(h.log('open.log')).toEqual(['https://vscode.dev/github/me/app/pull/12']);
-    await h.select('t', 'beta');
-    await h.keys('t', 'e');
-    const s2 = await h.waitFor('t', 'Show beta in:');
-    expect(s2).toContain('No pull request for this session.');
-    await h.keys('t', 'Enter');
-    await h.waitFor('t', /Opened .*repo in VS Code\./);
+    await h.keys('t', 'v');
+    await h.waitFor('t', /Opened .*wt in VS Code\./);
+    expect(h.log('open.log')[0]).toMatch(/^vscode:\/\/file.*\/wt\/\?windowId=_blank$/);
+    expect(h.screen('t')).not.toContain('Show alpha in:');
   });
 
-  it('48: attach している間に ctrl+q ctrl+e(ctrl+q e)を押すと、一覧に戻って e のメニューが出て、選ぶと開いたものが示される', async () => {
+  it('48: attach している間に ctrl+q ctrl+v(ctrl+q v)を押すと、一覧に戻らずに VS Code で開き、開いたものが示される', async () => {
     h = new Harness();
     h.setAgents([h.row(1, {name: 'alpha'})]);
     h.open('t');
     await h.waitFor('t', 'alpha');
     await h.keys('t', 'Enter');
     await h.waitFor('t', 'FAKE CLAUDE SCREEN');
-    await h.keys('t', 'C-q', 'e');
-    const s = await h.waitFor('t', 'Show alpha in:');
-    expect(s).toContain('No pull request for this session.');
-    expect(s).toContain('Last attached');
-    await h.keys('t', '1');
+    await h.keys('t', 'C-q', 'v');
     await h.waitFor('t', /Opened .*repo in VS Code\./);
+    expect(h.screen('t')).toContain('FAKE CLAUDE SCREEN');
     expect(h.log('open.log')[0]).toMatch(/^vscode:\/\/file.*\/repo\/\?windowId=_blank$/);
   });
 });

@@ -1,6 +1,6 @@
 // tmux: attach している間のキーの表。tmux の割り当て、一覧に戻ってから処理する頼みごと、キーの説明を、この1か所から作る。
 
-export type KeyAction = 'back' | 'next' | 'wb' | 'ext' | 'hold' | 'stop' | 'new' | 'wait';
+export type KeyAction = 'back' | 'next' | 'wb' | 'vscode' | 'hold' | 'stop' | 'new' | 'wait';
 
 export interface AttachKey {
   /** `ctrl+q` のあとに ctrl を押したまま押す文字。 */
@@ -17,7 +17,7 @@ export const ATTACH_KEYS: readonly AttachKey[] = [
   {letter: 'l', action: 'back', help: 'back', bare: false, returnsToList: true},
   {letter: 'j', action: 'next', help: 'next', bare: true, returnsToList: false},
   {letter: 'w', action: 'wb', help: 'workbench', bare: false, returnsToList: false},
-  {letter: 'e', action: 'ext', help: 'external', bare: true, returnsToList: true},
+  {letter: 'v', action: 'vscode', help: 'VS Code', bare: true, returnsToList: false},
   {letter: 'h', action: 'hold', help: 'hold', bare: true, returnsToList: true},
   {letter: 'x', action: 'stop', help: 'stop', bare: false, returnsToList: true},
   {letter: 'n', action: 'new', help: 'new', bare: false, returnsToList: true},

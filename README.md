@@ -36,7 +36,7 @@ Keys in the list:
 | `h` | Put the session on hold (or bring it back) |
 | `f` | Choose the sessions this one waits for |
 | `w` | Create the session's workbench shell |
-| `e` | Open the session's directory or PR in VS Code, GitHub or vscode.dev |
+| `v` | Open the session's directory in VS Code |
 | `r` | Refresh |
 | `q` | Quit (asks first if something is still running in a workbench) |
 

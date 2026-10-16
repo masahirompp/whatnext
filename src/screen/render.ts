@@ -285,11 +285,11 @@ function panelLines(p: Panel, cols: number, maxItems: number): string[] {
 export function render(m: ScreenModel): string[] {
   const cols = Math.max(10, m.cols);
   const top: string[] = [];
-  if (m.usage && m.usage.length > 0) top.push(formatUsage(m.usage));
-
-  const bottom: string[] = [...m.messages.map(s => oneLine(s)), color.gray(m.help)];
+  // 使用率はキーの説明のすぐ上に置く。知らせは一覧の近く(入力欄の下)に出す。
+  const usage = m.usage && m.usage.length > 0 ? [formatUsage(m.usage)] : [];
+  const bottom: string[] = [...usage, color.gray(m.help)];
   // メニューの項目は画面の半分ほどに収め、一覧のヘッダと何行かを残す。
-  const maxItems = Math.max(3, Math.floor((m.rows - m.messages.length) / 2) - 2);
+  const maxItems = Math.max(3, Math.floor((m.rows - m.messages.length - usage.length) / 2) - 2);
   const pLines = m.panel ? panelLines(m.panel, cols, maxItems) : [];
   const allKeys = [...(m.lastAttached ?? []), ...m.upNext, ...(m.onHold ?? [])].map(r => r.key);
   // 入力欄は視線の近くに出す。行に結びつくもの(保留の理由)はその行の直下、ほかは一覧のすぐ下。
@@ -298,6 +298,7 @@ export function render(m: ScreenModel): string[] {
       ? {key: m.panelUnder, lines: pLines}
       : undefined;
   const below = pLines.length > 0 && !inline ? ['', ...pLines] : [];
+  if (m.messages.length > 0) below.push('', ...m.messages.map(s => oneLine(s)));
 
   let middle: string[];
   if (m.placeholder !== undefined) {
