@@ -120,11 +120,15 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 
 ### 対話セッションの複製（`--resume <sessionId> --fork-session`、2.1.302）
 
+対話セッションを覗く機能を検討したときに確かめた（#227、#228）。機能は入れていない（[PRODUCT.md](PRODUCT.md)「Out of Scope」）。
+
+
 - `claude attach` と `claude logs` は `background` のセッションだけを受け付け、対話セッションの `sessionId` や名前は `No job matching …` で断る。`claude -p` の中では `/export` は使えない（`/export isn't available in this environment.`）。
 - `claude --resume <sessionId> --fork-session` を対話モードで開くと、その時点までの会話が描かれる。開いている間は別の `sessionId` と名前（例 `whatnext-2f`）の `interactive` の `idle` の行として `--json` に出る。何も送らずに閉じると、`~/.claude/projects/` にファイルは増えなかった。
-- `claude -p "…"` で動いているセッションも `--json` に出る（2.1.304）。`kind` は `interactive`、`status` は `busy`、`pid` があり、名前は自動で付く（例 `whatnext-real-d3`）。`id` はないので attach できない。終わるとプロセスが消え、`--all` を付けても行は残らない。会話記録は1件ずつ書き足される（指示、応答の文、`tool_use` の順に、数秒のうちに出た）。複製はこれを開いた時点まで描くので、`-p` のセッションも、動いている間なら見られる。
+- `claude -p "…"` で動いているセッションも `--json` に出る（2.1.304）。`kind` は `interactive`、`status` は `busy`、`pid` があり、名前は自動で付く（例 `whatnext-real-d3`）。`id` はないので attach できない。終わるとプロセスが消え、`--all` を付けても行は残らない。会話記録は1件ずつ書き足される（指示、応答の文、`tool_use` の順に、数秒のうちに出た）。下の複製は開いた時点までを描くので、`-p` のセッションも、動いている間なら複製で見られる。
 - 元のセッションがターンの途中なら、複製ではそのターンが `Interrupted · What should Claude do instead?` と出る。
 - Claude Code の中で動いているシェルから開くと、環境変数 `CLAUDE_CODE_CHILD_SESSION` を引き継ぎ、`Transcript saving is off` の注意が出る（記録はもとより残さない）。
+- `--safe-mode --permission-mode plan` を足しても、会話の描き方と全画面の描き方は変わらず、記録も残らなかった（2.1.304）。フック、MCP、プラグイン、CLAUDE.md、ステータス行は読み込まず、権限のモードは plan になる。起動の画面に safe mode の注意が2行出る。
 - `CLAUDE_CODE_NO_FLICKER`（利用者の `settings.json` の `env`）では代替画面に描くので、さかのぼるには `PgUp` などのキーを Claude Code に渡す必要がある。`ctrl+o` で詳細の表示（`↑↓ scroll`）に切り替わる。
 
 ## OTel（2.1.282）

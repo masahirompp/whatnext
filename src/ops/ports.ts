@@ -29,7 +29,6 @@ export interface TmuxPort {
   setSessionName(session: string, name: string): Promise<void>;
   running(): Promise<Map<string, string[]>>;
   newTrustSession(dir: string): Promise<string | undefined>;
-  newViewSession(sid: string, cwd: string, size: {cols: number; rows: number}, title: string): Promise<boolean>;
   /** 案内のセッションのプログラムに描き直しを知らせる。 */
   signalGuide(): Promise<void>;
 }

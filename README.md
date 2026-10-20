@@ -30,7 +30,7 @@ Keys in the list:
 | Key | Action |
 | --- | --- |
 | `↑` `↓` | Select a row |
-| `Enter` | Attach to the session. For an interactive session, open a read-only copy of its conversation so far (`q` to go back) |
+| `Enter` | Attach to the session (or show where an interactive session runs) |
 | `n` | Start a new session |
 | `Ctrl+X` | Stop the session; press again within 2s to delete it |
 | `h` | Put the session on hold (or bring it back) |
