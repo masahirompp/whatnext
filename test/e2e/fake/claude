@@ -164,6 +164,18 @@ if (cmd === 'attach') {
     line += s;
     process.stdout.write(s);
   });
+} else if (cmd === '--resume') {
+  // 対話セッションを複製で開く(見る画面)。届いたキーをそのまま画面に出し、渡ったかを確かめられるようにする。
+  if (behavior('resume') === 'fail') {
+    process.stdout.write(`No conversation found with session ID: ${rest[0]}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`fake view of ${rest[0]} ${rest.slice(1).join(' ')}\r\n`);
+  process.stdin.setRawMode(true);
+  process.stdin.on('data', buf => {
+    const keys = [...buf.toString('utf8')].map(c => (c.charCodeAt(0) < 32 ? `^${String.fromCharCode(c.charCodeAt(0) + 64)}` : c));
+    process.stdout.write(`got ${keys.join('')}\r\n`);
+  });
 } else if (cmd === undefined || cmd === '--model') {
   // 対話モード(信頼の確認)
   process.stdout.write('Do you trust the files in this folder?\r\n 1. Yes, I trust this folder\r\n 2. No, exit\r\n');

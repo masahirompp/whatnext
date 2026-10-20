@@ -118,6 +118,14 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - クラウドのセッションから手元のセッションに `SendMessage` できない。routine のセッションの `ListAgents` に手元のセッションは出ず、名前を指定して送っても届かない。逆向き（手元からクラウド）は届く。
 - 過去のセッションの一覧を機械で読む口はない。選べるのは `claude --resume` の対話式のピッカーだけ。`claude agents --json --all` は、`--all` なしの結果に `done` と `stopped` の `background` の行を足す（2.1.283。2.1.282 で試したときは同じ行しか返らなかったが、そのとき該当する行がなかった可能性がある）。
 
+### 対話セッションの複製（`--resume <sessionId> --fork-session`、2.1.302）
+
+- `claude attach` と `claude logs` は `background` のセッションだけを受け付け、対話セッションの `sessionId` や名前は `No job matching …` で断る。`claude -p` の中では `/export` は使えない（`/export isn't available in this environment.`）。
+- `claude --resume <sessionId> --fork-session` を対話モードで開くと、その時点までの会話が描かれる。開いている間は別の `sessionId` と名前（例 `whatnext-2f`）の `interactive` の `idle` の行として `--json` に出る。何も送らずに閉じると、`~/.claude/projects/` にファイルは増えなかった。
+- 元のセッションがターンの途中なら、複製ではそのターンが `Interrupted · What should Claude do instead?` と出る。
+- Claude Code の中で動いているシェルから開くと、環境変数 `CLAUDE_CODE_CHILD_SESSION` を引き継ぎ、`Transcript saving is off` の注意が出る（記録はもとより残さない）。
+- `CLAUDE_CODE_NO_FLICKER`（利用者の `settings.json` の `env`）では代替画面に描くので、さかのぼるには `PgUp` などのキーを Claude Code に渡す必要がある。`ctrl+o` で詳細の表示（`↑↓ scroll`）に切り替わる。
+
 ## OTel（2.1.282）
 
 - logs と metrics の属性 `session.id` は、`--json` の `sessionId`（UUID の全体）と一致する。

@@ -21,7 +21,7 @@ import {type AgentRow, dedupe, rowName} from '../ladder/classify.js';
 import {frame, type Panel, render, type ScreenModel, type ScreenRow} from '../screen/render.js';
 import type {Relations} from '../state/store.js';
 import type {KeyAction} from '../tmux/keys.js';
-import {GUIDE, LIST} from '../tmux/tmux.js';
+import {GUIDE, LIST, VIEW} from '../tmux/tmux.js';
 import {displayNames, expandHome, filterIndexes, tildify} from './pick.js';
 import type {Observed, Ports} from './ports.js';
 
@@ -785,12 +785,34 @@ export class App {
   private async enter(sid: string): Promise<void> {
     const row = this.rowOf(sid);
     if (!row || this.isDeleting(sid)) return;
-    if (row.kind === 'interactive' || !row.id) {
-      this.flash(`${rowName(row)} is an interactive session (no attach). pid ${row.pid ?? '-'} · ${row.cwd}`);
+    if (row.kind === 'interactive') {
+      await this.view(sid);
+      return;
+    }
+    if (!row.id) {
+      this.flash(`${rowName(row)} cannot be attached. pid ${row.pid ?? '-'} · ${row.cwd}`);
       return;
     }
     await this.attach(sid);
   }
+
+  /** 対話セッションを、複製で開いて見る(PRODUCT.md「Enter(interactive の行)」)。 */
+  private async view(sid: string): Promise<void> {
+    const row = this.rowOf(sid);
+    const tty = await this.mainTty();
+    if (!row || !tty) return;
+    const where = `${tildify(row.cwd, this.p.home)} · pid ${row.pid ?? '-'}`;
+    const title = `${rowName(row)} (tty) · ${where} · read-only copy`;
+    if (!(await this.p.tmux.newViewSession(sid, row.cwd, this.p.size(), title))) {
+      this.flash(`Could not open ${rowName(row)}. ${where}`);
+      return;
+    }
+    this.viewing = sid;
+    await this.p.tmux.switchClient(tty, VIEW);
+  }
+
+  /** 見る画面で見ているセッション。 */
+  private viewing: string | null = null;
 
   private async mainTty(): Promise<string | undefined> {
     return (await this.p.tmux.option('@wn_main_tty')) || undefined;
@@ -1092,6 +1114,7 @@ export class App {
       const main = clients.find(c => c.tty === mainTty);
       if (!main) return;
       if (main.session === LIST) sid = this.cursor;
+      else if (main.session === VIEW) sid = this.viewing;
       else if (main.session.startsWith('trust-')) return;
       else id = main.session;
     }
