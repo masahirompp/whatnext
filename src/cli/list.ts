@@ -130,7 +130,7 @@ export async function runList(s: Settings, version: string, distDir: string, cli
   const ports: Ports = {
     now: () => Date.now(),
     readAgents: () => readAgents(run),
-    parents: () => readParents(run),
+    parentPids: () => readParents(run),
     observe: async rows => {
       const out = new Map<string, Observed>();
       await Promise.all(

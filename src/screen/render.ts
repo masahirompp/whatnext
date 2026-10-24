@@ -18,7 +18,7 @@ export interface ScreenRow {
   name: string;
   tty: boolean;
   /** 起動された行。`(tty)` の代わりに `(sub)` を添える。 */
-  sub?: boolean;
+  sub: boolean;
   midHold: boolean;
   depth: number;
   lastChain: boolean[];

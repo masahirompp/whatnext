@@ -403,7 +403,17 @@ describe('起動された行', () => {
     const parent = sh.pid as number;
     for (let i = 0; i < 50; i++) {
       const out = spawnSync('pgrep', ['-P', String(parent)], {encoding: 'utf8'}).stdout.trim();
-      if (out) return {parent, child: Number(out.split('\n')[0]), kill: () => sh.kill('SIGKILL')};
+      if (out) {
+        const child = Number(out.split('\n')[0]);
+        const kill = () => {
+          // sh だけを止めると、子の sleep が孤児として残る。
+          for (const pid of [child, parent])
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch {}
+        };
+        return {parent, child, kill};
+      }
       await sleep(20);
     }
     throw new Error('no child process');

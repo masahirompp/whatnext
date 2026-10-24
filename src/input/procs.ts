@@ -2,7 +2,11 @@
 
 import type {Run} from './exec.js';
 
-/** `ps` で pid から親の pid を引く表を読む。読めなければ空の表。 */
+/**
+ * `ps` で pid から親の pid を引く表を読む。読めなければ空の表。
+ * 作業台の `⚙` も `ps -A` を読むが(tmux のモジュール)、まとめない。境界をまたいで表を渡す口が要るわりに、`ps` 1回は軽い。
+ * 同じ理由で、起動元がありえない更新(`pid` を持つ行が2つ未満)でも省かない。
+ */
 export async function readParents(run: Run): Promise<Map<number, number>> {
   const r = await run('ps', ['-A', '-o', 'pid=,ppid='], {timeout: 5000});
   return r.code === 0 ? parseParents(r.stdout) : new Map();

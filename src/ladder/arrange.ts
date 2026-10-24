@@ -93,7 +93,7 @@ export interface ArrangeInput {
   holds: ReadonlyMap<string, string>;
   waits: ReadonlyMap<string, readonly string[]>;
   /** 起動された行から起動元への表(`sessionId` どうし)。 */
-  spawnedBy?: ReadonlyMap<string, string>;
+  spawnedBy: ReadonlyMap<string, string>;
   lastAttached: string | null;
   waitSince: ReadonlyMap<string, number | null>;
   sups: ReadonlyMap<string, Supplement>;
@@ -137,22 +137,30 @@ export interface Arranged {
   doneMemo: DoneMemo;
   /** 段の判定(対象外の行は含まない)。待ちの段を導いたあとの値。 */
   tiers: Map<string, Tier>;
+  /** 起動元の下に入れ子で並べた、起動された行。 */
+  subs: Set<string>;
 }
 
 /**
- * 待ち先の関係に、起動元から起動された行への辺を足す。利用者が待ち先に結んだ行は、結んだ関係を優先する。
+ * 待ち先の関係に、起動元から起動された行への辺を足す。
+ * 利用者が結んだ関係を持つ行(自分の待ち先を持つ行、一覧に出ている待ち元に結ばれた行)には辺を足さず、普通の行として扱う。
+ * こうすると、起動された行からたどれるのは起動された行だけになり(プロセスの木)、関係は一周しない。
  * 返す `subs` は、起動元の下に並べることにした行。
  */
-export function withSpawned(
+export function linksWithSpawned(
   waits: ReadonlyMap<string, readonly string[]>,
-  spawnedBy: ReadonlyMap<string, string> | undefined,
+  spawnedBy: ReadonlyMap<string, string>,
+  shown: ReadonlySet<string>,
 ): {links: Map<string, readonly string[]>; subs: Set<string>} {
   const links = new Map<string, readonly string[]>(waits);
   const subs = new Set<string>();
-  if (!spawnedBy) return {links, subs};
-  const waited = new Set([...waits.values()].flat());
+  const bound = new Set<string>();
+  for (const [waiter, targets] of waits) {
+    if (targets.length > 0) bound.add(waiter);
+    if (shown.has(waiter)) for (const t of targets) bound.add(t);
+  }
   for (const [child, parent] of spawnedBy) {
-    if (waited.has(child)) continue;
+    if (bound.has(child)) continue;
     links.set(parent, [...(links.get(parent) ?? []), child]);
     subs.add(child);
   }
@@ -211,19 +219,27 @@ function compareKeys(a: [number, number, number, string], b: [number, number, nu
 /** 一覧を組に分けて並べる。 */
 export function arrange(input: ArrangeInput): Arranged {
   const {rows, holds, waits, lastAttached, waitSince, sups} = input;
+  const shown = new Set(rows.filter(r => classify(r).tier !== null).map(r => r.sessionId));
   // 段と入れ子は起動された行を含めて決める。`↳ done` は利用者が結んだ待ち先だけで決める。
-  const {links, subs} = withSpawned(waits, input.spawnedBy);
+  const {links, subs} = linksWithSpawned(waits, input.spawnedBy, shown);
   const {tiers, reasons} = effectiveTiers(rows, links);
+  const waitedTiers = effectiveTiers(rows, waits).tiers;
   const rowBySid = new Map(rows.map(r => [r.sessionId, r]));
   const visible = (sid: string) => tiers.has(sid);
 
-  // `↳ done` の更新
+  // `↳ done` の更新。待ち先を待っていたかは、利用者が結んだ待ち先だけで導いた段で決める。
+  // 起動された行だけが理由で待ちの段にいる間は、前回までの記録をそのまま持ち越す(出すのは待ちの段を出てから)。
   const nowWaiting = new Set<string>();
   const done = new Set<string>();
   for (const [sid, targets] of waits) {
     if (!visible(sid) || targets.length === 0) continue;
-    if (tiers.get(sid) === 'waiting') {
+    if (waitedTiers.get(sid) === 'waiting') {
       nowWaiting.add(sid);
+      continue;
+    }
+    if (tiers.get(sid) === 'waiting') {
+      if (input.doneMemo.waiting.has(sid)) nowWaiting.add(sid);
+      if (input.doneMemo.done.has(sid)) done.add(sid);
       continue;
     }
     const allDone = targets.every(t => {
@@ -240,6 +256,8 @@ export function arrange(input: ArrangeInput): Arranged {
     if (!visible(waiter)) continue;
     for (const t of targets) if (visible(t)) waiterOf.set(t, waiter);
   }
+  // 起動元の下に並ぶ起動された行(起動元が見えていないものは、トップレベルの普通の行になる)。
+  const subRows = new Set([...subs].filter(sid => waiterOf.has(sid)));
 
   const keyOf = (sid: string) => {
     const row = rowBySid.get(sid) as AgentRow;
@@ -273,11 +291,12 @@ export function arrange(input: ArrangeInput): Arranged {
         ctx: sup?.ctx,
         depth,
         lastChain,
-        sub: subs.has(sid) && depth > 0,
+        sub: subRows.has(sid),
         midHold,
         holdReason: holds.get(sid) || undefined,
       };
-      if (done.has(sid) && targets.length > 0) entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
+      if (done.has(sid) && tier !== 'waiting' && targets.length > 0)
+        entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
       entries.push(entry);
       if (!midHold || rootHeld) {
         const k = keyOf(sid);
@@ -308,7 +327,7 @@ export function arrange(input: ArrangeInput): Arranged {
     else if (lastAttached !== null && lastGroup === null && g.entries.some(e => e.sid === lastAttached)) lastGroup = g;
     else upNext.push(g);
   }
-  return {lastAttached: lastGroup, upNext, onHold, doneMemo, tiers};
+  return {lastAttached: lastGroup, upNext, onHold, doneMemo, tiers, subs: subRows};
 }
 
 /** 組を上から順に並べた行の一覧。 */

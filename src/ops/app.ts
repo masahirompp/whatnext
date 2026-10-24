@@ -185,7 +185,7 @@ export class App {
         const [observed, running, parents] = await Promise.all([
           this.p.observe(rows),
           this.p.tmux.running(),
-          this.p.parents(),
+          this.p.parentPids(),
         ]);
         await this.loadPlaces(rows);
         this.observed = observed;
@@ -1319,7 +1319,7 @@ export class App {
     const mine = this.waits.get(waiter) ?? [];
     // 起動された行は、すぐに終わって消えるので並べない。
     const cands = this.entries().filter(e => {
-      if (e.sid === waiter || anc.has(e.sid) || e.sub) return false;
+      if (e.sid === waiter || anc.has(e.sid) || this.arranged?.subs.has(e.sid)) return false;
       const w = this.waiterOf(e.sid);
       return w === undefined || w === waiter;
     });
@@ -1341,8 +1341,8 @@ export class App {
 
   private openWait(waiter: string): void {
     if (this.isDeleting(waiter)) return;
-    // 起動された行に待ち先を結ぶと、起動元を待ち先に選べて関係が一周しうる。すぐに消える行なので結ばせない。
-    if (this.entries().some(e => e.sid === waiter && e.sub)) {
+    // 起動された行は数秒から数分で消え、結んだ関係もそのときに切れるので、結ばせない。
+    if (this.arranged?.subs.has(waiter)) {
       this.flash(`${this.nameOf(waiter)} was started by another session. It cannot wait for sessions.`);
       return;
     }
@@ -1557,15 +1557,12 @@ export class App {
 
   private async deleteFlow(sid: string): Promise<void> {
     // 起動された行は削除できない(`id` がない)ので、巻き込む対象に数えない。
-    const subs = new Set(
-      this.entries()
-        .filter(e => e.sub)
-        .map(e => e.sid),
-    );
-    const targets = this.arranged
-      ? subtreeOf(this.arranged, sid)
+    // 起動された行の下には起動された行しか並ばない(利用者が結んだ関係を持つ行は起動された行にならない)。
+    const a = this.arranged;
+    const targets = a
+      ? subtreeOf(a, sid)
           .slice(1)
-          .filter(t => !subs.has(t))
+          .filter(t => !a.subs.has(t))
       : [];
     let cascade = false;
     if (targets.length > 0) {
