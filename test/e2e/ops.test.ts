@@ -449,6 +449,26 @@ describe('起動された行', () => {
       pp.kill();
     }
   });
+
+  it('62: 起動された行が終わって消えると、起動元はレビュー待ちに戻り、done は出ない', async () => {
+    const pp = await processPair();
+    try {
+      h = new Harness();
+      const parent = h.row(1, {name: 'parent', pid: pp.parent});
+      const {id: _id, state: _state, ...child} = h.row(2, {name: 'sub-review', pid: pp.child, status: 'busy'});
+      h.setAgents([parent, {...child, kind: 'interactive'}]);
+      h.open('t');
+      await h.waitFor('t', /parent +Waiting/);
+      pp.kill();
+      h.setAgents([parent]);
+      await h.keys('t', 'r');
+      const s = await h.waitFor('t', /parent +Review/);
+      expect(s).not.toContain('sub-review');
+      expect(s).not.toContain('done');
+    } finally {
+      pp.kill();
+    }
+  });
 });
 
 describe('新しいセッション', () => {

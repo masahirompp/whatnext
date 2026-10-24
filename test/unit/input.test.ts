@@ -322,4 +322,19 @@ describe('起動元 (シナリオ 61)', () => {
     ]);
     expect(spawners([{sessionId: 'a', pid: 10}], parents).size).toBe(0);
   });
+
+  it('表に pid がない行は、起動元が残っていれば前回の関係を持ち越す', () => {
+    const rows = [
+      {sessionId: 'p', pid: 10},
+      {sessionId: 'c', pid: 20},
+      {sessionId: 'orphan', pid: 30},
+    ];
+    const prev = new Map([
+      ['c', 'p'],
+      ['orphan', 'gone'],
+    ]);
+    // ps が読めなかった回(空の表)と、--json のあとに c が終わった回
+    expect(spawners(rows, new Map(), prev)).toEqual(new Map([['c', 'p']]));
+    expect(spawners(rows, new Map([[10, 1]]), prev)).toEqual(new Map([['c', 'p']]));
+  });
 });

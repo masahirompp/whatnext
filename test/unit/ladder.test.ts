@@ -443,4 +443,20 @@ describe('起動された行 (シナリオ 61、62)', () => {
     const after = arrange(input([P, T], {waits, doneMemo: during.doneMemo}));
     expect(flatten(after).find(e => e.name === 'P')?.doneNames).toEqual(['T']);
   });
+
+  it('待ち先が自分の起動した行のせいで待ちの段にいる間も、待ち元は待っていたことになり、終わると done が出る', () => {
+    const W = bg('W');
+    const T = bg('T');
+    const C = tty('C');
+    const waits = new Map([[W.sessionId, [T.sessionId]]]);
+    const during = arrange(input([W, T, C], {waits, spawnedBy: new Map([[C.sessionId, T.sessionId]])}));
+    expect(flatten(during).map(e => [e.name, e.status])).toEqual([
+      ['W', 'Waiting'],
+      ['T', 'Waiting'],
+      ['C', 'Working'],
+    ]);
+    expect(during.doneMemo.waiting.has(W.sessionId)).toBe(true);
+    const after = arrange(input([W, T], {waits, doneMemo: during.doneMemo}));
+    expect(flatten(after).find(e => e.name === 'W')?.doneNames).toEqual(['T']);
+  });
 });

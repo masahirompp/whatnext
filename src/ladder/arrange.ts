@@ -219,34 +219,30 @@ function compareKeys(a: [number, number, number, string], b: [number, number, nu
 /** 一覧を組に分けて並べる。 */
 export function arrange(input: ArrangeInput): Arranged {
   const {rows, holds, waits, lastAttached, waitSince, sups} = input;
-  const shown = new Set(rows.filter(r => classify(r).tier !== null).map(r => r.sessionId));
-  // 段と入れ子は起動された行を含めて決める。`↳ done` は利用者が結んだ待ち先だけで決める。
+  const ownTier = new Map(rows.map(r => [r.sessionId, classify(r).tier]));
+  const shown = new Set([...ownTier].filter(([, t]) => t !== null).map(([sid]) => sid));
+  // 段と入れ子は起動された行を含めて決める。
   const {links, subs} = linksWithSpawned(waits, input.spawnedBy, shown);
   const {tiers, reasons} = effectiveTiers(rows, links);
-  const waitedTiers = effectiveTiers(rows, waits).tiers;
   const rowBySid = new Map(rows.map(r => [r.sessionId, r]));
   const visible = (sid: string) => tiers.has(sid);
 
-  // `↳ done` の更新。待ち先を待っていたかは、利用者が結んだ待ち先だけで導いた段で決める。
-  // 起動された行だけが理由で待ちの段にいる間は、前回までの記録をそのまま持ち越す(出すのは待ちの段を出てから)。
+  // `↳ done` の更新。利用者が結んだ待ち先だけを見る。
+  // 待ち先を待っているとは、自分がレビュー待ちに当たり、待ち先のどれかが終わっていないこと(待ち先の段は起動された行を含めて導いたもの)。
+  // 起動元が起動された行だけを理由に待ちの段にいる間は、待ち先がすべて終わっていれば記録を持ち越し、表示はしない(下の doneNames)。
   const nowWaiting = new Set<string>();
   const done = new Set<string>();
   for (const [sid, targets] of waits) {
     if (!visible(sid) || targets.length === 0) continue;
-    if (waitedTiers.get(sid) === 'waiting') {
-      nowWaiting.add(sid);
-      continue;
-    }
-    if (tiers.get(sid) === 'waiting') {
-      if (input.doneMemo.waiting.has(sid)) nowWaiting.add(sid);
-      if (input.doneMemo.done.has(sid)) done.add(sid);
-      continue;
-    }
-    const allDone = targets.every(t => {
+    const pending = targets.some(t => {
       const tt = tiers.get(t);
-      return tt === undefined || tt === 'review' || tt === 'stopped';
+      return tt !== undefined && tt !== 'review' && tt !== 'stopped';
     });
-    if (allDone && (input.doneMemo.done.has(sid) || input.doneMemo.waiting.has(sid))) done.add(sid);
+    if (pending) {
+      if (ownTier.get(sid) === 'review') nowWaiting.add(sid);
+      continue;
+    }
+    if (input.doneMemo.done.has(sid) || input.doneMemo.waiting.has(sid)) done.add(sid);
   }
   const doneMemo: DoneMemo = {waiting: nowWaiting, done};
 

@@ -24,16 +24,25 @@ export function parseParents(text: string): Map<number, number> {
 /**
  * 各行の pid の祖先をたどり、最初に当たった別の行を起動元とする。
  * `sessionId` から起動元の `sessionId` への表を返す。
+ * 表に pid がない行(`--json` と `ps` を読む間に終わった行、`ps` が読めなかった回)は、
+ * 起動元がまだ行に残っていれば前回の関係を持ち越す。持ち越さないと、その1回だけトップレベルに出て、起動元も待ちの段から落ちる。
  */
 export function spawners(
   rows: readonly {sessionId: string; pid?: number}[],
   parents: ReadonlyMap<number, number>,
+  prev: ReadonlyMap<string, string> = new Map(),
 ): Map<string, string> {
   const byPid = new Map<number, string>();
   for (const r of rows) if (r.pid !== undefined) byPid.set(r.pid, r.sessionId);
+  const present = new Set(rows.map(r => r.sessionId));
   const out = new Map<string, string>();
   for (const r of rows) {
     if (r.pid === undefined) continue;
+    if (!parents.has(r.pid)) {
+      const before = prev.get(r.sessionId);
+      if (before !== undefined && present.has(before)) out.set(r.sessionId, before);
+      continue;
+    }
     const seen = new Set<number>([r.pid]);
     let p = parents.get(r.pid);
     while (p !== undefined && p > 1 && !seen.has(p)) {

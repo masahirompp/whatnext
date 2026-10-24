@@ -190,7 +190,7 @@ export class App {
         await this.loadPlaces(rows);
         this.observed = observed;
         this.running = running;
-        this.spawnedBy = spawners(rows, parents);
+        this.spawnedBy = spawners(rows, parents, this.spawnedBy);
         this.rows = rows;
         this.prune(rows);
         this.resolvePendingLinks(rows);
