@@ -364,3 +364,19 @@ export function subtreeOf(a: Arranged, sid: string): string[] {
   }
   return [sid];
 }
+
+/** 入れ子で `sid` のすぐ上に並ぶ行(待ち元か起動元)。根なら null。 */
+export function parentOf(a: Arranged, sid: string): string | null {
+  const all = [a.lastAttached, ...a.upNext, ...a.onHold].filter((g): g is Group => g !== null);
+  for (const g of all) {
+    const i = g.entries.findIndex(e => e.sid === sid);
+    if (i < 0) continue;
+    const depth = g.entries[i]?.depth ?? 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const e = g.entries[j] as Entry;
+      if (e.depth < depth) return e.sid;
+    }
+    return null;
+  }
+  return null;
+}

@@ -13,6 +13,7 @@ import {
   emptyDoneMemo,
   emptyWaitMemo,
   flatten,
+  parentOf,
   type Supplement,
   subtreeOf,
   trackWaits,
@@ -323,10 +324,12 @@ export class App {
       this.rearrange(now, false);
       return;
     }
+    // 選んでいた起動された行が消えたときは、その起動元に移る(並べ直す前の組から引いておく)。
+    const spawner = this.cursor && this.arranged?.subs.has(this.cursor) ? parentOf(this.arranged, this.cursor) : null;
     this.arranged = a;
     for (const e of flatten(a)) this.shownNames.set(e.sid, e.name);
     if (this.lastAttached && !visible.has(this.lastAttached)) this.lastAttached = null;
-    this.fixCursor();
+    this.fixCursor(spawner);
     this.save();
   }
 
@@ -345,11 +348,14 @@ export class App {
     return this.arranged?.subs.has(sid) ?? false;
   }
 
-  private fixCursor(): void {
+  private fixCursor(spawner: string | null = null): void {
     const list = this.entries();
     if (this.cursor && list.some(e => e.sid === this.cursor)) return;
     const prev = this.cursor;
-    const top = this.arranged?.upNext[0]?.positionSid ?? list[0]?.sid ?? null;
+    // 移った直後の Ctrl+X の守り(moved)は、起動元に移るときも同じに立てる。起動された行を消すつもりの Ctrl+X で起動元を消さない。
+    const fallback =
+      spawner && list.some(e => e.sid === spawner) ? spawner : (this.arranged?.upNext[0]?.positionSid ?? null);
+    const top = fallback ?? list[0]?.sid ?? null;
     if (prev && top !== prev) {
       const name = this.shownNames.get(prev) ?? this.nameOf(prev);
       if (top) this.moved = {name, until: this.p.now() + MOVED_MS};
@@ -1260,6 +1266,11 @@ export class App {
 
   private hold(sid: string): void {
     if (this.isDeleting(sid)) return;
+    // 起動された行は数秒から数分で消え、保留もそのときに外れるので、保留にさせない(f と同じ)。
+    if (this.isSub(sid)) {
+      this.flash(`${this.nameOf(sid)} was started by another session. It cannot be put on hold.`);
+      return;
+    }
     const reason = this.holds.get(sid);
     this.mode = {kind: 'hold', sid, value: reason ?? '', editing: reason !== undefined, error: undefined};
     this.draw();
