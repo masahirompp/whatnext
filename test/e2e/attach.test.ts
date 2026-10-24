@@ -1,5 +1,5 @@
 // 画面の通し: attach と一覧に戻る経路、ステータス行、終了と端末を閉じたとき
-// (シナリオ 5、6、16 の2つ目の起動、27、31、32、46、49、50、56)。
+// (シナリオ 5、6、16 の2つ目の起動、27、31、32、46、49、50)。
 
 import {cpSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -99,6 +99,28 @@ describe('attach', () => {
     await h.keys('t', 'C-q', 'C-l');
     await h.waitFor('t', 'Last attached');
     expect(h.screen('t')).not.toContain('^Q^W workbench');
+  });
+
+  it('5: 戻ると離脱したセッションが Last attached に出てカーソルが付き、↓ で Up next の最上位へ移る', async () => {
+    h = new Harness();
+    h.setAgents([
+      h.row(1, {name: 'alpha', state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'}),
+      h.row(2, {name: 'beta', state: 'blocked', status: 'waiting', waitingFor: 'input needed'}),
+      h.row(3, {name: 'gamma'}),
+    ]);
+    h.open('t', [], {cols: 140});
+    await h.waitFor('t', 'gamma');
+    await h.select('t', 'gamma');
+    await h.keys('t', 'Enter');
+    await h.waitFor('t', 'FAKE CLAUDE SCREEN a0000003');
+    await h.keys('t', 'C-q', 'C-l');
+    const s = await h.waitFor('t', 'Last attached');
+    const lines = s.split('\n');
+    const at = (n: string) => lines.findIndex(l => new RegExp(`^[> ] ${n} `).test(l));
+    expect(at('gamma')).toBeLessThan(lines.findIndex(l => l.trim() === 'Up next'));
+    expect(h.selected('t')).toMatch(/^> gamma/);
+    await h.keys('t', 'Down');
+    expect(h.selected('t')).toMatch(/^> alpha/);
   });
 });
 

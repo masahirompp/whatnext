@@ -17,7 +17,7 @@ import {
   trackWaits,
   type WaitMemo,
 } from '../ladder/arrange.js';
-import {type AgentRow, dedupe, rowName} from '../ladder/classify.js';
+import {type AgentRow, classify, dedupe, rowName} from '../ladder/classify.js';
 import {displayNames} from '../ladder/paths.js';
 import {frame, type Panel, render, type ScreenModel, type ScreenRow} from '../screen/render.js';
 import type {Seen, State, View} from '../state/store.js';
@@ -199,7 +199,9 @@ export class App {
         this.running = running;
         this.rows = rows;
         this.prune(rows);
-        for (const r of rows) if (!this.seen.has(r.sessionId)) this.seen.set(r.sessionId, {first: now});
+        // 初めて見た時刻は、一覧に初めて出たときに書く。対象外だった対話セッションが後から出ても、区切りの先頭に来る。
+        for (const r of rows)
+          if (!this.seen.has(r.sessionId) && classify(r).tier !== null) this.seen.set(r.sessionId, {first: now});
         this.resolvePendingLinks(rows);
         if (this.attached && !this.attached.sid) {
           const att = this.attached;
@@ -224,7 +226,7 @@ export class App {
         this.refreshQueued = false;
         const waiters = this.queuedWaiters;
         this.queuedWaiters = [];
-        void this.refresh().then(() => {
+        void this.refresh().finally(() => {
           for (const w of waiters) w();
         });
       }
@@ -377,7 +379,10 @@ export class App {
     return {view: this.view, touched, attachedAt, repoOf};
   }
 
-  /** リポジトリのビューの区切り。元のリポジトリの根で、リポジトリでなければ `cwd`。 */
+  /**
+   * リポジトリのビューの区切り。元のリポジトリの根で、リポジトリでなければ `cwd`。
+   * 根より下の `cwd` も根に寄せる(作業ディレクトリの候補の repoPathOf は、worktree でなければ `cwd` を残す)。
+   */
   private repoKeyOf(cwd: string): string {
     return this.places.get(cwd)?.mainRoot ?? cwd;
   }
@@ -1067,7 +1072,7 @@ export class App {
       }
     }
     // Last attached が出ないとき(対象外になったとき)は、ラダーの最上位を選ぶ。
-    // リポジトリのビューでは、消えた行と同じ区切りの次の行を選ぶ。
+    // リポジトリのビューでは、消えた行の近くの行を並べ直しのときに選んでいるので、ここに来るのは選ぶ行がないときだけ。
     if (this.cursor === null || !this.entries().some(e => e.sid === this.cursor)) {
       this.cursor = this.arranged?.repos
         ? this.fallbackCursor(this.cursor)

@@ -11,7 +11,7 @@ export interface Relations {
 
 export type View = 'ladder' | 'repo';
 
-/** whatnext が初めて見た時刻と、whatnext から最後に attach した時刻。 */
+/** 一覧に初めて出た時刻と、whatnext から最後に attach した時刻。 */
 export interface Seen {
   first: number;
   attached?: number;

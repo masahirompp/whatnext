@@ -19,5 +19,5 @@ export function displayNames(paths: readonly string[]): string[] {
     });
     if (!changed) return names;
   }
-  return parts.map((ps, i) => ps.slice(-(depth[i] as number)).join('/'));
+  return parts.map((ps, i) => ps.slice(-(depth[i] as number)).join('/') || '/');
 }

@@ -79,6 +79,44 @@ describe('リポジトリのビュー', () => {
     expect(s).toContain('  repo');
   });
 
+  it('62: 対象外だった対話セッションが後から一覧に出ると、そのときに区切りの先頭に出る', async () => {
+    h = new Harness();
+    const tty = {
+      kind: 'interactive',
+      sessionId: 'ffff0000-0000-4000-8000-000000000001',
+      cwd: h.repo,
+      name: 'tty-x',
+      pid: 4242,
+    };
+    h.setAgents([h.row(1, {name: 'alpha'}), {...tty, status: 'idle'}]);
+    h.open('t', [], {cols: 140});
+    await h.waitFor('t', 'alpha');
+    await h.keys('t', 'g');
+    await h.waitFor('t', 'g ladder view');
+    expect(h.screen('t')).not.toContain('tty-x');
+    h.setAgents([h.row(1, {name: 'alpha'}), {...tty, status: 'waiting', waitingFor: 'permission prompt'}]);
+    await h.keys('t', 'r');
+    const s = await h.waitFor('t', 'tty-x (tty)');
+    expect(lineOf(s, /^[> ] tty-x /)).toBeLessThan(lineOf(s, /^[> ] alpha /));
+  });
+
+  it('リポジトリのビューで選んでいた行が消えると、同じ区切りの次の行を選ぶ', async () => {
+    h = new Harness();
+    const {infra} = places();
+    const rows = [h.row(1, {name: 'alpha'}), h.row(2, {name: 'beta'}), h.row(3, {name: 'gamma', cwd: infra})];
+    h.setAgents(rows);
+    h.open('t', [], {cols: 140});
+    await h.waitFor('t', 'gamma');
+    await h.keys('t', 'g');
+    await h.waitFor('t', 'g ladder view');
+    // repo の区切りは alpha、beta の順(名前の順)。alpha を選んで消す
+    await h.select('t', 'alpha');
+    h.setAgents([rows[1] as (typeof rows)[number], rows[2] as (typeof rows)[number]]);
+    await h.keys('t', 'r');
+    await h.waitGone('t', /^[> ] alpha /m);
+    expect(h.selected('t')).toMatch(/^> beta/);
+  });
+
   it('65、66:保留の行は区切りに残ってカーソルも残る。終了して起動し直してもビューと並びが残る', async () => {
     h = new Harness();
     h.setAgents([h.row(1, {name: 'alpha'}), h.row(2, {name: 'beta'})]);
