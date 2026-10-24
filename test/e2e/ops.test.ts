@@ -142,7 +142,7 @@ describe('保留', () => {
     expect(s).toContain('Put alpha on hold. To bring it back, press h on it and clear the reason.');
     expect(s).toMatch(/On hold\n {2}alpha +Permission[^\n]*\n {4}↳ ask Bob/);
     expect(h.selected('t')).toMatch(/^> beta/);
-    expect(h.stateFile()).toMatchObject({version: 1, holds: {[h.row(1).sessionId as string]: 'ask Bob'}});
+    expect(h.stateFile()).toMatchObject({version: 2, holds: {[h.row(1).sessionId as string]: 'ask Bob'}});
     // 再起動しても残る
     await h.keys('t', 'q');
     await h.waitFor('t', /\[exit 0\]/);

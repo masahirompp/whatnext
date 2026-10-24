@@ -1,4 +1,4 @@
-// 状態のファイル: 保留と待ち先の関係を `state.json` に書き、起動し直しても引き継ぐ(ADR-0016)。
+// 状態のファイル: 保留と待ち先の関係(ADR-0016)と、ビューと触った時刻(ADR-0018)を `state.json` に書き、起動し直しても引き継ぐ。
 
 import {mkdir, readFile, rename, writeFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
@@ -9,23 +9,51 @@ export interface Relations {
   waits: Map<string, string[]>;
 }
 
+export type View = 'ladder' | 'repo';
+
+/** 一覧に初めて出た時刻と、whatnext から最後に attach した時刻。 */
+export interface Seen {
+  first: number;
+  attached?: number;
+}
+
+export interface State extends Relations {
+  view: View;
+  seen: Map<string, Seen>;
+}
+
+const VERSION = 2;
+
 export function statePath(env: NodeJS.ProcessEnv, socket: string): string {
   const base = env.XDG_STATE_HOME || join(homedir(), '.local', 'state');
   const file = socket === 'whatnext' ? 'state.json' : `state-${socket}.json`;
   return join(base, 'whatnext', file);
 }
 
-/** 読む。`version` が違う、壊れている、ないときは空として読む。 */
-export async function loadState(path: string): Promise<Relations> {
-  const empty = {holds: new Map<string, string>(), waits: new Map<string, string[]>()};
+/** 読む。版 1 は保留と待ち先の関係だけを読む。ほかの版、壊れている、ないときは空として読む。 */
+export async function loadState(path: string): Promise<State> {
+  return (await readState(path)).state;
+}
+
+/** 読む。`unreadable` は、ファイルはあるが読めなかった(壊れている、知らない版)ことを示す。 */
+export async function readState(path: string): Promise<{state: State; unreadable: boolean}> {
+  const empty: State = {holds: new Map(), waits: new Map(), view: 'ladder', seen: new Map()};
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch (e) {
+    // 権限などで読めないファイルも「ある」ので、置き換えない。
+    return {state: empty, unreadable: (e as NodeJS.ErrnoException).code !== 'ENOENT'};
+  }
   let data: unknown;
   try {
-    data = JSON.parse(await readFile(path, 'utf8'));
+    data = JSON.parse(text);
   } catch {
-    return empty;
+    return {state: empty, unreadable: true};
   }
-  const d = data as {version?: unknown; holds?: unknown; waits?: unknown};
-  if (!d || typeof d !== 'object' || d.version !== 1) return empty;
+  const d = data as {version?: unknown; holds?: unknown; waits?: unknown; view?: unknown; seen?: unknown};
+  if (!d || typeof d !== 'object' || (d.version !== 1 && d.version !== VERSION))
+    return {state: empty, unreadable: true};
   const holds = new Map<string, string>();
   if (d.holds && typeof d.holds === 'object')
     for (const [k, v] of Object.entries(d.holds as Record<string, unknown>)) if (typeof v === 'string') holds.set(k, v);
@@ -36,10 +64,19 @@ export async function loadState(path: string): Promise<Relations> {
         const ts = v.filter((x): x is string => typeof x === 'string');
         if (ts.length > 0) waits.set(k, ts);
       }
-  return {holds, waits};
+  if (d.version === 1) return {state: {...empty, holds, waits}, unreadable: false};
+  const view: View = d.view === 'repo' ? 'repo' : 'ladder';
+  const seen = new Map<string, Seen>();
+  if (d.seen && typeof d.seen === 'object')
+    for (const [k, v] of Object.entries(d.seen as Record<string, unknown>)) {
+      const e = v as {first?: unknown; attached?: unknown} | null;
+      if (!e || typeof e.first !== 'number') continue;
+      seen.set(k, typeof e.attached === 'number' ? {first: e.first, attached: e.attached} : {first: e.first});
+    }
+  return {state: {holds, waits, view, seen}, unreadable: false};
 }
 
-export function serialize(r: Relations): string {
+export function serialize(r: State): string {
   const holds: Record<string, string> = {};
   for (const k of [...r.holds.keys()].sort()) holds[k] = r.holds.get(k) as string;
   const waits: Record<string, string[]> = {};
@@ -47,19 +84,28 @@ export function serialize(r: Relations): string {
     const v = r.waits.get(k) as string[];
     if (v.length > 0) waits[k] = [...v];
   }
-  return `${JSON.stringify({version: 1, holds, waits}, null, 2)}\n`;
+  const seen: Record<string, Seen> = {};
+  for (const k of [...r.seen.keys()].sort()) seen[k] = {...(r.seen.get(k) as Seen)};
+  return `${JSON.stringify({version: VERSION, holds, waits, view: r.view, seen}, null, 2)}\n`;
 }
 
-/** 前に書いたものと違うときだけ、一時ファイルに書いてから置き換える。書けなくても例外を投げない。 */
+/**
+ * 前に書いたものと違うときだけ、一時ファイルに書いてから置き換える。書けなくても例外を投げない。
+ * 読めなかったファイル(`keepUnreadable`)は、利用者が保留、待ち先、ビューを変えるまで置き換えない。
+ * 時刻だけで置き換えると、新しい版のファイルや壊れたファイルにあった保留が、操作なしに消える。
+ */
 export class StateWriter {
   private last: string | undefined;
   private writing: Promise<void> = Promise.resolve();
+  private keepUnreadable: boolean;
 
   constructor(
     private readonly path: string,
-    initial?: Relations,
+    initial?: State,
+    opts: {keepUnreadable?: boolean} = {},
   ) {
     if (initial) this.last = serialize(initial);
+    this.keepUnreadable = opts.keepUnreadable ?? false;
   }
 
   /** 書きかけの分が終わるのを待つ。 */
@@ -67,7 +113,11 @@ export class StateWriter {
     return this.writing;
   }
 
-  save(r: Relations): Promise<void> {
+  save(r: State): Promise<void> {
+    if (this.keepUnreadable) {
+      if (r.holds.size === 0 && r.waits.size === 0 && r.view === 'ladder') return this.writing;
+      this.keepUnreadable = false;
+    }
     const text = serialize(r);
     if (text === this.last) return this.writing;
     this.last = text;

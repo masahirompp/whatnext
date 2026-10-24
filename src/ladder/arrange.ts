@@ -1,6 +1,8 @@
-// 段と並び: 待ちの段、待機時間、一言、組(Last attached、Up next、On hold、待ち先の入れ子)を決める。純粋な関数。
+// 段と並び: 待ちの段、待機時間、一言、組(Last attached、Up next、On hold、待ち先の入れ子)と、
+// リポジトリのビューの区切りを決める。純粋な関数。
 
 import {type AgentRow, classify, rowName, statusLabel, TIERS, type Tier} from './classify.js';
+import {displayNames} from './paths.js';
 
 /** フック、会話記録、OTel から補う値。どれも今のターンのものだけを入れる。 */
 export interface Supplement {
@@ -96,6 +98,14 @@ export interface ArrangeInput {
   waitSince: ReadonlyMap<string, number | null>;
   sups: ReadonlyMap<string, Supplement>;
   doneMemo: DoneMemo;
+  /** 既定はラダーのビュー。 */
+  view?: 'ladder' | 'repo';
+  /** リポジトリのビューで並べる時刻(最後に attach した時刻、なければ初めて見た時刻)。 */
+  touched?: ReadonlyMap<string, number>;
+  /** whatnext から最後に attach した時刻。リポジトリのビューで、待ち先が組の位置を動かすのは attach したときだけにする。 */
+  attachedAt?: ReadonlyMap<string, number>;
+  /** リポジトリのビューの区切り(元のリポジトリの根。リポジトリでなければ `cwd`)。 */
+  repoOf?: ReadonlyMap<string, string>;
 }
 
 export interface Entry {
@@ -114,6 +124,8 @@ export interface Entry {
   lastChain: boolean[];
   /** 組の途中で保留にした行。 */
   midHold: boolean;
+  /** 名前に `(on hold)` を添えるか(組の途中の保留と、リポジトリのビューの保留)。 */
+  holdMark: boolean;
   holdReason?: string;
   /** 待ち先がすべて終わったときに出す名前。 */
   doneNames?: string[];
@@ -124,12 +136,24 @@ export interface Group {
   entries: Entry[];
   /** 組の位置を決めた行(実際に手を付ける行)。 */
   positionSid: string;
+  /** リポジトリのビューで組の位置を決める時刻。 */
+  at?: number;
+}
+
+/** リポジトリのビューの区切り。 */
+export interface RepoSection {
+  key: string;
+  /** 見出し。ディレクトリ名が重なるときだけ、区別できるところまで親のディレクトリ名を足す。 */
+  label: string;
+  groups: Group[];
 }
 
 export interface Arranged {
   lastAttached: Group | null;
   upNext: Group[];
   onHold: Group[];
+  /** リポジトリのビューのときだけ。このとき lastAttached、upNext、onHold は空。 */
+  repos?: RepoSection[];
   doneMemo: DoneMemo;
   /** 段の判定(対象外の行は含まない)。待ちの段を導いたあとの値。 */
   tiers: Map<string, Tier>;
@@ -176,12 +200,16 @@ function rankKey(tier: Tier, since: number | null, name: string): [number, numbe
   return [TIERS.indexOf(tier), since === null ? 0 : 1, since ?? 0, name];
 }
 
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function compareKeys(a: [number, number, number, string], b: [number, number, number, string]): number {
   for (let i = 0; i < 3; i++) {
     const d = (a[i] as number) - (b[i] as number);
     if (d !== 0) return d;
   }
-  return a[3] < b[3] ? -1 : a[3] > b[3] ? 1 : 0;
+  return compareText(a[3], b[3]);
 }
 
 /** 一覧を組に分けて並べる。 */
@@ -220,15 +248,22 @@ export function arrange(input: ArrangeInput): Arranged {
     return rankKey(tiers.get(sid) as Tier, waitSince.get(sid) ?? null, rowName(row));
   };
 
+  const repoView = input.view === 'repo';
+  const touchedOf = (sid: string) => input.touched?.get(sid) ?? 0;
+  // 上に来るほうが負。ラダーのビューは段と待機時間の順、リポジトリのビューは触った時刻の新しい順。
+  const byName = (a: string, b: string): number =>
+    compareText(rowName(rowBySid.get(a) as AgentRow), rowName(rowBySid.get(b) as AgentRow));
+  const cmp = (a: string, b: string): number => {
+    if (!repoView) return compareKeys(keyOf(a), keyOf(b));
+    return touchedOf(b) - touchedOf(a) || byName(a, b);
+  };
+
   const childrenOf = (sid: string): string[] =>
-    (waits.get(sid) ?? [])
-      .filter(t => visible(t) && waiterOf.get(t) === sid)
-      .sort((a, b) => compareKeys(keyOf(a), keyOf(b)));
+    (waits.get(sid) ?? []).filter(t => visible(t) && waiterOf.get(t) === sid).sort(cmp);
 
   const buildGroup = (root: string): Group => {
     const entries: Entry[] = [];
-    let position = root;
-    let positionKey: ReturnType<typeof keyOf> | null = null;
+    let position: string | null = null;
     const rootHeld = holds.has(root);
     const walk = (sid: string, depth: number, lastChain: boolean[]) => {
       const row = rowBySid.get(sid) as AgentRow;
@@ -248,30 +283,50 @@ export function arrange(input: ArrangeInput): Arranged {
         depth,
         lastChain,
         midHold,
+        holdMark: repoView ? holds.has(sid) : midHold,
         holdReason: holds.get(sid) || undefined,
       };
       if (done.has(sid) && targets.length > 0) entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
       entries.push(entry);
-      if (!midHold || rootHeld) {
-        const k = keyOf(sid);
-        if (positionKey === null || compareKeys(k, positionKey) < 0) {
-          positionKey = k;
-          position = sid;
-        }
-      }
+      if (!repoView && (!midHold || rootHeld) && (position === null || cmp(sid, position) < 0)) position = sid;
       const kids = childrenOf(sid);
       kids.forEach((kid, i) => {
         walk(kid, depth + 1, [...lastChain, i === kids.length - 1]);
       });
     };
     walk(root, 0, []);
-    return {rootSid: root, entries, positionSid: position};
+    if (!repoView) return {rootSid: root, entries, positionSid: position ?? root};
+    // 保留にしても、待ち先を結んでも、組は動かない。待ち先が組を動かすのは attach したときだけ。
+    let at = touchedOf(root);
+    let positionSid = root;
+    for (const e of entries.slice(1)) {
+      const t = input.attachedAt?.get(e.sid);
+      if (t !== undefined && t > at) {
+        at = t;
+        positionSid = e.sid;
+      }
+    }
+    return {rootSid: root, entries, positionSid, at};
   };
 
   const roots = rows.map(r => r.sessionId).filter(sid => visible(sid) && !waiterOf.has(sid));
   const groups = roots.map(buildGroup);
-  const groupKey = (g: Group) => keyOf(g.positionSid);
-  groups.sort((a, b) => compareKeys(groupKey(a), groupKey(b)));
+  if (repoView) groups.sort((a, b) => (b.at ?? 0) - (a.at ?? 0) || byName(a.rootSid, b.rootSid));
+  else groups.sort((a, b) => cmp(a.positionSid, b.positionSid));
+
+  if (repoView) {
+    const byKey = new Map<string, Group[]>();
+    for (const g of groups) {
+      const key = input.repoOf?.get(g.rootSid) ?? (rowBySid.get(g.rootSid) as AgentRow).cwd;
+      const list = byKey.get(key);
+      if (list) list.push(g);
+      else byKey.set(key, [g]);
+    }
+    const labels = displayNames([...byKey.keys()]);
+    const repos = [...byKey].map(([key, groups], i) => ({key, label: labels[i] as string, groups}));
+    repos.sort((a, b) => compareText(a.label, b.label) || compareText(a.key, b.key));
+    return {lastAttached: null, upNext: [], onHold: [], repos, doneMemo, tiers};
+  }
 
   let lastGroup: Group | null = null;
   const upNext: Group[] = [];
@@ -284,19 +339,19 @@ export function arrange(input: ArrangeInput): Arranged {
   return {lastAttached: lastGroup, upNext, onHold, doneMemo, tiers};
 }
 
+function allGroups(a: Arranged): Group[] {
+  if (a.repos) return a.repos.flatMap(r => r.groups);
+  return [a.lastAttached, ...a.upNext, ...a.onHold].filter((g): g is Group => g !== null);
+}
+
 /** 組を上から順に並べた行の一覧。 */
 export function flatten(a: Arranged): Entry[] {
-  const out: Entry[] = [];
-  if (a.lastAttached) out.push(...a.lastAttached.entries);
-  for (const g of a.upNext) out.push(...g.entries);
-  for (const g of a.onHold) out.push(...g.entries);
-  return out;
+  return allGroups(a).flatMap(g => g.entries);
 }
 
 /** `sid` を含む組の行(待ち先の待ち先を含む)。 */
 export function subtreeOf(a: Arranged, sid: string): string[] {
-  const all = [a.lastAttached, ...a.upNext, ...a.onHold].filter((g): g is Group => g !== null);
-  for (const g of all) {
+  for (const g of allGroups(a)) {
     const i = g.entries.findIndex(e => e.sid === sid);
     if (i < 0) continue;
     const depth = g.entries[i]?.depth ?? 0;

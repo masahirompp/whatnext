@@ -15,7 +15,7 @@ function row(name: string, extra: Partial<ScreenRow> = {}): ScreenRow {
     key: name,
     name,
     tty: false,
-    midHold: false,
+    holdMark: false,
     depth: 0,
     lastChain: [],
     hasChildren: false,
@@ -84,7 +84,7 @@ describe('一覧の画面', () => {
   });
 
   it('対話セッションには (tty)、途中の保留には (on hold) を添える', () => {
-    const lines = plain(render(model({upNext: [row('a', {tty: true}), row('b', {midHold: true})]})));
+    const lines = plain(render(model({upNext: [row('a', {tty: true}), row('b', {holdMark: true})]})));
     expect(lines.join('\n')).toContain('a (tty)');
     expect(lines.join('\n')).toContain('b (on hold)');
   });
@@ -119,6 +119,29 @@ describe('一覧の画面', () => {
       '  Up next',
       '  On hold',
     ]);
+  });
+
+  it('リポジトリのビューは区切りの見出しの下に行を並べ、区切りの間を1行あける (シナリオ 61)', () => {
+    const lines = plain(
+      render(
+        model({
+          sections: [
+            {title: 'app', rows: [row('a1', {where: {repo: '', branch: 'fix', worktree: false}}), row('a2')]},
+            {title: 'infra', rows: [row('i1')]},
+          ],
+          cursor: 'a1',
+        }),
+      ),
+    );
+    expect(lines.slice(1, 7)).toEqual([
+      '  app',
+      expect.stringMatching(/^> a1 +Review +fix +- +5m$/),
+      expect.stringMatching(/^ {2}a2 /),
+      '',
+      '  infra',
+      expect.stringMatching(/^ {2}i1 /),
+    ]);
+    expect(lines.join('\n')).not.toContain('Up next');
   });
 
   it('どの行も端末の幅に収まり、行数は高さを超えない', () => {
