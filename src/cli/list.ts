@@ -87,8 +87,8 @@ export async function runList(s: Settings, version: string, distDir: string, cli
   const receiver: Receiver | null = await openReceiver(s.port, store);
   const transcripts = new Transcripts(configDir);
   const path = statePath(env, s.socket);
-  const relations = await loadState(path);
-  const writer = new StateWriter(path, relations);
+  const state = await loadState(path);
+  const writer = new StateWriter(path, state);
 
   const write = (str: string) => process.stdout.write(str);
   let app: App;
@@ -207,7 +207,7 @@ export async function runList(s: Settings, version: string, distDir: string, cli
     log: debugLog,
   };
 
-  app = new App(ports, {relations, version, leftovers});
+  app = new App(ports, {state, version, leftovers});
   store.onEvent((sid, ev) => app.onHook(sid, ev));
 
   write(ALT_ON);

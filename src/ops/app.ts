@@ -80,7 +80,7 @@ interface Message {
 }
 
 export interface AppInit {
-  relations: State;
+  state: State;
   version: string;
   /** 前の whatnext が残した、動いているものがある作業台(id → コマンド行)。 */
   leftovers?: Map<string, string[]>;
@@ -143,10 +143,10 @@ export class App {
     private readonly p: Ports,
     init: AppInit,
   ) {
-    this.holds = new Map(init.relations.holds);
-    this.waits = new Map([...init.relations.waits].map(([k, v]) => [k, [...v]]));
-    this.view = init.relations.view;
-    this.seen = new Map([...init.relations.seen].map(([k, v]) => [k, {...v}]));
+    this.holds = new Map(init.state.holds);
+    this.waits = new Map([...init.state.waits].map(([k, v]) => [k, [...v]]));
+    this.view = init.state.view;
+    this.seen = new Map([...init.state.seen].map(([k, v]) => [k, {...v}]));
     this.leftovers = init.leftovers && init.leftovers.size > 0 ? init.leftovers : undefined;
   }
 
@@ -227,7 +227,12 @@ export class App {
     const cwds = [...new Set(rows.map(r => r.cwd).filter(Boolean))];
     const got = await Promise.all(cwds.map(c => this.p.place(c)));
     const next = new Map<string, Place>();
-    for (const [i, c] of cwds.entries()) next.set(c, got[i] as Place);
+    for (const [i, c] of cwds.entries()) {
+      const pl = got[i] as Place;
+      // git の問い合わせが一度失敗しただけで、行が別の区切りへ移らないようにする。
+      const prev = this.places.get(c);
+      next.set(c, !pl.git && prev?.git ? prev : pl);
+    }
     this.places = next;
   }
 
@@ -368,6 +373,8 @@ export class App {
   private toggleView(): void {
     this.view = this.view === 'repo' ? 'ladder' : 'repo';
     this.rearrange(this.p.now(), false);
+    // 一覧を読み込む前や `--json` を読めない間は rearrange が保存しないので、ここでも書く。
+    this.save();
   }
 
   private sinceMap(): Map<string, number | null> {
@@ -535,10 +542,7 @@ export class App {
   private screenRow(e: Entry, next: Entry | undefined, section?: string): ScreenRow {
     const pl = this.places.get(e.row.cwd);
     let repo = pl?.repo ?? '';
-    if (pl && section !== undefined && this.repoKeyOf(e.row.cwd) === section) {
-      const head = basename(pl.mainRoot);
-      repo = repo === head ? '' : repo.startsWith(`${head}/`) ? repo.slice(head.length + 1) : repo;
-    }
+    if (pl && section !== undefined && this.repoKeyOf(e.row.cwd) === section) repo = pl.sub ?? '';
     const pr = this.prOf(e.row.cwd);
     // 保留の理由は行のすぐ下に出す(PRODUCT.md「保留」)。`⚙` は一言の下に出す。
     const notes: string[] = [];
@@ -553,7 +557,7 @@ export class App {
       key: e.sid,
       name: e.name,
       tty: e.row.kind === 'interactive',
-      midHold: e.holdMark,
+      holdMark: e.holdMark,
       depth: e.depth,
       lastChain: e.lastChain,
       hasChildren: next !== undefined && next.depth > e.depth,
@@ -1017,6 +1021,8 @@ export class App {
     if (sid) {
       this.lastAttached = sid;
       this.cursor = sid;
+      // attach している間に見えたセッションより上に来るよう、戻ったときにも書き直す。
+      this.markAttached(sid);
     } else this.pendingReturnId = att.id;
     void this.fetchUsage();
     await this.refresh();

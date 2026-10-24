@@ -1,8 +1,8 @@
 // 段と並び: 待ちの段、待機時間、一言、組(Last attached、Up next、On hold、待ち先の入れ子)と、
 // リポジトリのビューの区切りを決める。純粋な関数。
 
-import {basename, dirname} from 'node:path';
 import {type AgentRow, classify, rowName, statusLabel, TIERS, type Tier} from './classify.js';
+import {displayNames} from './paths.js';
 
 /** フック、会話記録、OTel から補う値。どれも今のターンのものだけを入れる。 */
 export interface Supplement {
@@ -139,7 +139,7 @@ export interface Group {
 /** リポジトリのビューの区切り。 */
 export interface RepoSection {
   key: string;
-  /** 見出し。ディレクトリ名が重なるときだけ親のディレクトリ名を足す。 */
+  /** 見出し。ディレクトリ名が重なるときだけ、区別できるところまで親のディレクトリ名を足す。 */
   label: string;
   groups: Group[];
 }
@@ -304,8 +304,9 @@ export function arrange(input: ArrangeInput): Arranged {
       if (list) list.push(g);
       else byKey.set(key, [g]);
     }
-    const labels = repoLabels([...byKey.keys()]);
-    const repos = [...byKey].map(([key, gs]) => ({key, label: labels.get(key) as string, groups: gs}));
+    const keys = [...byKey.keys()];
+    const labels = displayNames(keys);
+    const repos = [...byKey].map(([key, gs]) => ({key, label: labels[keys.indexOf(key)] as string, groups: gs}));
     repos.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : a.key < b.key ? -1 : 1));
     return {lastAttached: null, upNext: [], onHold: [], repos, doneMemo, tiers};
   }
@@ -321,20 +322,6 @@ export function arrange(input: ArrangeInput): Arranged {
   return {lastAttached: lastGroup, upNext, onHold, doneMemo, tiers};
 }
 
-/** 区切りの見出し。ディレクトリ名が同じリポジトリが2つ以上あるときだけ、親のディレクトリ名を足す。 */
-export function repoLabels(keys: readonly string[]): Map<string, string> {
-  const base = (k: string) => basename(k) || k;
-  const count = new Map<string, number>();
-  for (const k of keys) count.set(base(k), (count.get(base(k)) ?? 0) + 1);
-  const out = new Map<string, string>();
-  for (const k of keys) {
-    const b = base(k);
-    const parent = basename(dirname(k));
-    out.set(k, (count.get(b) ?? 0) > 1 && parent ? `${parent}/${b}` : b);
-  }
-  return out;
-}
-
 function allGroups(a: Arranged): Group[] {
   if (a.repos) return a.repos.flatMap(r => r.groups);
   return [a.lastAttached, ...a.upNext, ...a.onHold].filter((g): g is Group => g !== null);
@@ -342,15 +329,7 @@ function allGroups(a: Arranged): Group[] {
 
 /** 組を上から順に並べた行の一覧。 */
 export function flatten(a: Arranged): Entry[] {
-  const out: Entry[] = [];
-  if (a.repos) {
-    for (const g of allGroups(a)) out.push(...g.entries);
-    return out;
-  }
-  if (a.lastAttached) out.push(...a.lastAttached.entries);
-  for (const g of a.upNext) out.push(...g.entries);
-  for (const g of a.onHold) out.push(...g.entries);
-  return out;
+  return allGroups(a).flatMap(g => g.entries);
 }
 
 /** `sid` を含む組の行(待ち先の待ち先を含む)。 */

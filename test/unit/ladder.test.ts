@@ -361,6 +361,10 @@ describe('リポジトリのビュー (シナリオ 61〜65)', () => {
     const rows = [bg('x', {cwd: '/g/a/foo'}), bg('y', {cwd: '/g/b/foo'}), bg('z', {cwd: '/g/c/bar'})];
     const a = arrange(input(rows, {view: 'repo', repoOf: repoOf(rows)}));
     expect(a.repos?.map(r => r.label)).toEqual(['a/foo', 'b/foo', 'bar']);
+    // 末尾の2段まで同じなら、区別できるところまで親を足す
+    const deep = [bg('p', {cwd: '/g/github.com/acme/foo'}), bg('q', {cwd: '/g/gitlab.com/acme/foo'})];
+    const d = arrange(input(deep, {view: 'repo', repoOf: repoOf(deep)}));
+    expect(d.repos?.map(r => r.label)).toEqual(['github.com/acme/foo', 'gitlab.com/acme/foo']);
   });
 
   it('待ち先の組は根のリポジトリに出て、組の位置は最も新しく触った行で決まる (シナリオ 64)', () => {

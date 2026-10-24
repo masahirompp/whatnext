@@ -15,7 +15,7 @@ function row(name: string, extra: Partial<ScreenRow> = {}): ScreenRow {
     key: name,
     name,
     tty: false,
-    midHold: false,
+    holdMark: false,
     depth: 0,
     lastChain: [],
     hasChildren: false,
@@ -84,7 +84,7 @@ describe('一覧の画面', () => {
   });
 
   it('対話セッションには (tty)、途中の保留には (on hold) を添える', () => {
-    const lines = plain(render(model({upNext: [row('a', {tty: true}), row('b', {midHold: true})]})));
+    const lines = plain(render(model({upNext: [row('a', {tty: true}), row('b', {holdMark: true})]})));
     expect(lines.join('\n')).toContain('a (tty)');
     expect(lines.join('\n')).toContain('b (on hold)');
   });

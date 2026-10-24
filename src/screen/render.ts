@@ -17,7 +17,8 @@ export interface ScreenRow {
   key: string;
   name: string;
   tty: boolean;
-  midHold: boolean;
+  /** 名前に `(on hold)` を添える。 */
+  holdMark: boolean;
   depth: number;
   lastChain: boolean[];
   hasChildren: boolean;
@@ -142,7 +143,7 @@ function notePrefix(r: ScreenRow): string {
 function sessionLabel(r: ScreenRow): string {
   let s = treePrefix(r) + r.name;
   if (r.tty) s += ' (tty)';
-  if (r.midHold) s += ' (on hold)';
+  if (r.holdMark) s += ' (on hold)';
   return s;
 }
 
