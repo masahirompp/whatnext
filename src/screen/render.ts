@@ -329,7 +329,7 @@ export function render(m: ScreenModel): string[] {
       // 区切りの見出しは固定せず、行と一緒にスクロールする。
       m.sections.forEach((sec, i) => {
         if (i > 0) scrollLines.push('');
-        scrollLines.push(color.bold(`  ${sec.title}`));
+        scrollLines.push(color.bold(truncate(`  ${oneLine(sec.title)}`, cols)));
         block(sec.rows, c, m, scrollLines, rowAt, inline);
       });
     } else {

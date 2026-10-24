@@ -125,6 +125,7 @@ export class App {
   private notice: string | undefined;
   private refreshing = false;
   private refreshQueued = false;
+  private queuedWaiters: (() => void)[] = [];
   private refreshTimer: {cancel(): void} | undefined;
   private transient = new Map<string, 'stopping' | 'deleting'>();
   private arm: {sid: string; until: number} | null = null;
@@ -173,11 +174,11 @@ export class App {
     }
   }
 
-  /** `--json` を読み直して並べ直す。 */
+  /** `--json` を読み直して並べ直す。更新の最中に呼ぶと、続けて予約した更新が終わるまで待つ。 */
   async refresh(opts: {flash?: boolean} = {}): Promise<void> {
     if (this.refreshing) {
       this.refreshQueued = true;
-      return;
+      return new Promise(resolve => this.queuedWaiters.push(resolve));
     }
     this.refreshing = true;
     this.refreshTimer?.cancel();
@@ -221,7 +222,11 @@ export class App {
       this.scheduleWbSync();
       if (this.refreshQueued) {
         this.refreshQueued = false;
-        void this.refresh();
+        const waiters = this.queuedWaiters;
+        this.queuedWaiters = [];
+        void this.refresh().then(() => {
+          for (const w of waiters) w();
+        });
       }
     }
   }
@@ -309,6 +314,7 @@ export class App {
     const sups = new Map<string, Supplement>();
     for (const [sid, o] of this.observed) sups.set(sid, o.sup);
     const visible = new Set<string>();
+    const view = this.viewInput();
     let a = arrange({
       rows: this.rows,
       holds: this.holds,
@@ -317,7 +323,7 @@ export class App {
       waitSince: this.waitMemo.entries.size ? this.sinceMap() : new Map(),
       sups,
       doneMemo: this.doneMemo,
-      ...this.viewInput(),
+      ...view,
     });
     if (track) {
       this.waitMemo = trackWaits(this.waitMemo, a.tiers, sups, now);
@@ -329,7 +335,7 @@ export class App {
         waitSince: this.sinceMap(),
         sups,
         doneMemo: this.doneMemo,
-        ...this.viewInput(),
+        ...view,
       });
     }
     this.doneMemo = a.doneMemo;
@@ -1061,8 +1067,11 @@ export class App {
       }
     }
     // Last attached が出ないとき(対象外になったとき)は、ラダーの最上位を選ぶ。
+    // リポジトリのビューでは、消えた行と同じ区切りの次の行を選ぶ。
     if (this.cursor === null || !this.entries().some(e => e.sid === this.cursor)) {
-      this.cursor = this.fallbackCursor(this.cursor);
+      this.cursor = this.arranged?.repos
+        ? this.fallbackCursor(this.cursor)
+        : (this.arranged?.upNext[0]?.positionSid ?? null);
       this.draw();
     }
   }

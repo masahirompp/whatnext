@@ -209,7 +209,7 @@ function compareKeys(a: [number, number, number, string], b: [number, number, nu
     const d = (a[i] as number) - (b[i] as number);
     if (d !== 0) return d;
   }
-  return a[3] < b[3] ? -1 : a[3] > b[3] ? 1 : 0;
+  return compareText(a[3], b[3]);
 }
 
 /** 一覧を組に分けて並べる。 */
@@ -283,12 +283,12 @@ export function arrange(input: ArrangeInput): Arranged {
         depth,
         lastChain,
         midHold,
-        holdMark: midHold || (repoView && holds.has(sid)),
+        holdMark: repoView ? holds.has(sid) : midHold,
         holdReason: holds.get(sid) || undefined,
       };
       if (done.has(sid) && targets.length > 0) entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
       entries.push(entry);
-      if ((!midHold || rootHeld) && (position === null || cmp(sid, position) < 0)) position = sid;
+      if (!repoView && (!midHold || rootHeld) && (position === null || cmp(sid, position) < 0)) position = sid;
       const kids = childrenOf(sid);
       kids.forEach((kid, i) => {
         walk(kid, depth + 1, [...lastChain, i === kids.length - 1]);
