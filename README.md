@@ -40,7 +40,7 @@ Keys in the list:
 | `r` | Refresh |
 | `q` | Quit (asks first if something is still running in a workbench) |
 
-While attached, `ctrl+q` followed by the same letter with ctrl held does the same thing (`ctrl+q ctrl+l` goes back to the list, `ctrl+q ctrl+j` moves to the next session). The keys are shown at the bottom of the session's screen.
+While attached, `ctrl+q` followed by the same letter with ctrl held does the same thing (`ctrl+q ctrl+l` goes back to the list, `ctrl+q ctrl+h` puts the session on hold). The keys are shown at the bottom of the session's screen.
 
 ## Requirements
 
