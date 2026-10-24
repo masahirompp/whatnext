@@ -4,6 +4,7 @@ import {basename} from 'node:path';
 import type {UsageFrame} from '../input/claude.js';
 import {stripControl} from '../input/exec.js';
 import type {Place, PullRequest} from '../input/place.js';
+import {spawners} from '../input/procs.js';
 import {
   type Arranged,
   arrange,
@@ -12,6 +13,7 @@ import {
   emptyDoneMemo,
   emptyWaitMemo,
   flatten,
+  parentOf,
   type Supplement,
   subtreeOf,
   trackWaits,
@@ -21,7 +23,7 @@ import {type AgentRow, dedupe, rowName} from '../ladder/classify.js';
 import {frame, type Panel, render, type ScreenModel, type ScreenRow} from '../screen/render.js';
 import type {Relations} from '../state/store.js';
 import type {KeyAction} from '../tmux/keys.js';
-import {GUIDE, LIST, VIEW} from '../tmux/tmux.js';
+import {GUIDE, LIST} from '../tmux/tmux.js';
 import {displayNames, expandHome, filterIndexes, tildify} from './pick.js';
 import type {Observed, Ports} from './ports.js';
 
@@ -104,6 +106,8 @@ export class App {
   // 利用者の注釈
   private holds: Map<string, string>;
   private waits: Map<string, string[]>;
+  /** 起動された行から起動元への表。更新のたびにプロセス表から導き直す。 */
+  private spawnedBy = new Map<string, string>();
 
   // 画面と操作の状態
   private cursor: string | null = null;
@@ -179,10 +183,15 @@ export class App {
       } else {
         this.error = undefined;
         const rows = dedupe(res.rows);
-        const [observed, running] = await Promise.all([this.p.observe(rows), this.p.tmux.running()]);
+        const [observed, running, parents] = await Promise.all([
+          this.p.observe(rows),
+          this.p.tmux.running(),
+          this.p.parentPids(),
+        ]);
         await this.loadPlaces(rows);
         this.observed = observed;
         this.running = running;
+        this.spawnedBy = spawners(rows, parents, this.spawnedBy);
         this.rows = rows;
         this.prune(rows);
         this.resolvePendingLinks(rows);
@@ -283,6 +292,7 @@ export class App {
       rows: this.rows,
       holds: this.holds,
       waits: this.waits,
+      spawnedBy: this.spawnedBy,
       lastAttached: this.lastAttached,
       waitSince: this.waitMemo.entries.size ? this.sinceMap() : new Map(),
       sups,
@@ -294,6 +304,7 @@ export class App {
         rows: this.rows,
         holds: this.holds,
         waits: this.waits,
+        spawnedBy: this.spawnedBy,
         lastAttached: this.lastAttached,
         waitSince: this.sinceMap(),
         sups,
@@ -313,10 +324,12 @@ export class App {
       this.rearrange(now, false);
       return;
     }
+    // 選んでいた起動された行が消えたときは、その起動元に移る(並べ直す前の組から引いておく)。
+    const spawner = this.cursor && this.arranged?.subs.has(this.cursor) ? parentOf(this.arranged, this.cursor) : null;
     this.arranged = a;
     for (const e of flatten(a)) this.shownNames.set(e.sid, e.name);
     if (this.lastAttached && !visible.has(this.lastAttached)) this.lastAttached = null;
-    this.fixCursor();
+    this.fixCursor(spawner);
     this.save();
   }
 
@@ -330,11 +343,19 @@ export class App {
     return this.arranged ? flatten(this.arranged) : [];
   }
 
-  private fixCursor(): void {
+  /** 起動元の下に入れ子で並べた、起動された行か。 */
+  private isSub(sid: string): boolean {
+    return this.arranged?.subs.has(sid) ?? false;
+  }
+
+  private fixCursor(spawner: string | null = null): void {
     const list = this.entries();
     if (this.cursor && list.some(e => e.sid === this.cursor)) return;
     const prev = this.cursor;
-    const top = this.arranged?.upNext[0]?.positionSid ?? list[0]?.sid ?? null;
+    // 移った直後の Ctrl+X の守り(moved)は、起動元に移るときも同じに立てる。起動された行を消すつもりの Ctrl+X で起動元を消さない。
+    const fallback =
+      spawner && list.some(e => e.sid === spawner) ? spawner : (this.arranged?.upNext[0]?.positionSid ?? null);
+    const top = fallback ?? list[0]?.sid ?? null;
     if (prev && top !== prev) {
       const name = this.shownNames.get(prev) ?? this.nameOf(prev);
       if (top) this.moved = {name, until: this.p.now() + MOVED_MS};
@@ -457,6 +478,7 @@ export class App {
       key: e.sid,
       name: e.name,
       tty: e.row.kind === 'interactive',
+      sub: e.sub,
       midHold: e.midHold,
       depth: e.depth,
       lastChain: e.lastChain,
@@ -785,34 +807,12 @@ export class App {
   private async enter(sid: string): Promise<void> {
     const row = this.rowOf(sid);
     if (!row || this.isDeleting(sid)) return;
-    if (row.kind === 'interactive') {
-      await this.view(sid);
-      return;
-    }
-    if (!row.id) {
-      this.flash(`${rowName(row)} cannot be attached. pid ${row.pid ?? '-'} · ${row.cwd}`);
+    if (row.kind === 'interactive' || !row.id) {
+      this.flash(`${rowName(row)} is an interactive session (no attach). pid ${row.pid ?? '-'} · ${row.cwd}`);
       return;
     }
     await this.attach(sid);
   }
-
-  /** 対話セッションを、複製で開いて見る(PRODUCT.md「Enter(interactive の行)」)。 */
-  private async view(sid: string): Promise<void> {
-    const row = this.rowOf(sid);
-    const tty = await this.mainTty();
-    if (!row || !tty) return;
-    const where = `${tildify(row.cwd, this.p.home)} · pid ${row.pid ?? '-'}`;
-    const title = `${rowName(row)} (tty) · ${where} · read-only copy`;
-    if (!(await this.p.tmux.newViewSession(sid, row.cwd, this.p.size(), title))) {
-      this.flash(`Could not open ${rowName(row)}. ${where}`);
-      return;
-    }
-    this.viewing = sid;
-    await this.p.tmux.switchClient(tty, VIEW);
-  }
-
-  /** 見る画面で見ているセッション。 */
-  private viewing: string | null = null;
 
   private async mainTty(): Promise<string | undefined> {
     return (await this.p.tmux.option('@wn_main_tty')) || undefined;
@@ -1114,7 +1114,6 @@ export class App {
       const main = clients.find(c => c.tty === mainTty);
       if (!main) return;
       if (main.session === LIST) sid = this.cursor;
-      else if (main.session === VIEW) sid = this.viewing;
       else if (main.session.startsWith('trust-')) return;
       else id = main.session;
     }
@@ -1267,6 +1266,11 @@ export class App {
 
   private hold(sid: string): void {
     if (this.isDeleting(sid)) return;
+    // 起動された行は数秒から数分で消え、保留もそのときに外れるので、保留にさせない(f と同じ)。
+    if (this.isSub(sid)) {
+      this.flash(`${this.nameOf(sid)} was started by another session. It cannot be put on hold.`);
+      return;
+    }
     const reason = this.holds.get(sid);
     this.mode = {kind: 'hold', sid, value: reason ?? '', editing: reason !== undefined, error: undefined};
     this.draw();
@@ -1329,8 +1333,9 @@ export class App {
   ): {label: string; detail?: string; marked?: boolean; sid?: string}[] {
     const anc = this.ancestors(waiter);
     const mine = this.waits.get(waiter) ?? [];
+    // 起動された行は、すぐに終わって消えるので並べない。
     const cands = this.entries().filter(e => {
-      if (e.sid === waiter || anc.has(e.sid)) return false;
+      if (e.sid === waiter || anc.has(e.sid) || e.sub) return false;
       const w = this.waiterOf(e.sid);
       return w === undefined || w === waiter;
     });
@@ -1352,6 +1357,11 @@ export class App {
 
   private openWait(waiter: string): void {
     if (this.isDeleting(waiter)) return;
+    // 起動された行は数秒から数分で消え、結んだ関係もそのときに切れるので、結ばせない。
+    if (this.isSub(waiter)) {
+      this.flash(`${this.nameOf(waiter)} was started by another session. It cannot wait for sessions.`);
+      return;
+    }
     this.mode = {kind: 'wait', waiter, filter: '', sel: 0};
   }
 
@@ -1562,7 +1572,13 @@ export class App {
   }
 
   private async deleteFlow(sid: string): Promise<void> {
-    const targets = this.arranged ? subtreeOf(this.arranged, sid).slice(1) : [];
+    // 起動された行は削除できない(`id` がない)ので、巻き込む対象に数えない。
+    // 起動された行の下には起動された行しか並ばない(利用者が結んだ関係を持つ行は起動された行にならない)。
+    const targets = this.arranged
+      ? subtreeOf(this.arranged, sid)
+          .slice(1)
+          .filter(t => !this.isSub(t))
+      : [];
     let cascade = false;
     if (targets.length > 0) {
       const names = targets.map(t => this.nameOf(t)).join(', ');

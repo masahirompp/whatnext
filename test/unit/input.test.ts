@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {parseAgents, parseUsage} from '../../src/input/claude.js';
 import {HookStore, supplement} from '../../src/input/hooks.js';
+import {parseParents, spawners} from '../../src/input/procs.js';
 import {launchSettings} from '../../src/input/receiver.js';
 import {instructionText, leadLine, toolTarget} from '../../src/input/text.js';
 import {Transcripts} from '../../src/input/transcript.js';
@@ -275,5 +276,65 @@ describe('状態のファイル', () => {
     expect((await loadState(path)).holds.size).toBe(0);
     await writeFile(path, JSON.stringify({version: 2, holds: {a: ''}}));
     expect((await loadState(path)).holds.size).toBe(0);
+  });
+});
+
+describe('起動元 (シナリオ 61)', () => {
+  it('ps の出力を読む', () => {
+    expect([...parseParents('    1     0\n  320     1\n 4410   320\n')]).toEqual([
+      [1, 0],
+      [320, 1],
+      [4410, 320],
+    ]);
+  });
+
+  it('pid の祖先をたどり、最初に当たった別の行を起動元とする', () => {
+    // 33192 の行 → zsh → claude -p(43087) → stdio の MCP サーバ → claude -p(44959)
+    const parents = new Map([
+      [44959, 43315],
+      [43315, 43087],
+      [43087, 43085],
+      [43085, 33192],
+      [33192, 33187],
+      [33187, 5671],
+      [5671, 1],
+      [70000, 5671],
+    ]);
+    const rows = [
+      {sessionId: 'me', pid: 33192},
+      {sessionId: 'mid', pid: 43087},
+      {sessionId: 'leaf', pid: 44959},
+      {sessionId: 'other', pid: 70000},
+      {sessionId: 'stopped'},
+    ];
+    expect(spawners(rows, parents)).toEqual(
+      new Map([
+        ['mid', 'me'],
+        ['leaf', 'mid'],
+      ]),
+    );
+  });
+
+  it('親の表が一周していても止まる', () => {
+    const parents = new Map([
+      [10, 11],
+      [11, 10],
+    ]);
+    expect(spawners([{sessionId: 'a', pid: 10}], parents).size).toBe(0);
+  });
+
+  it('表に pid がない行は、起動元が残っていれば前回の関係を持ち越す', () => {
+    const rows = [
+      {sessionId: 'p', pid: 10},
+      {sessionId: 'c', pid: 20},
+      {sessionId: 'orphan', pid: 30},
+    ];
+    const prev = new Map([
+      ['c', 'p'],
+      ['orphan', 'gone'],
+    ]);
+    // ps が読めなかった回(空の表)と、--json のあとに c が終わった回
+    expect(spawners(rows, new Map(), prev)).toEqual(new Map([['c', 'p']]));
+    expect(spawners(rows, new Map([[10, 1]]), prev)).toEqual(new Map([['c', 'p']]));
   });
 });

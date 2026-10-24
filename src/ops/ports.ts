@@ -29,7 +29,6 @@ export interface TmuxPort {
   setSessionName(session: string, name: string): Promise<void>;
   running(): Promise<Map<string, string[]>>;
   newTrustSession(dir: string): Promise<string | undefined>;
-  newViewSession(sid: string, cwd: string, size: {cols: number; rows: number}, title: string): Promise<boolean>;
   /** 案内のセッションのプログラムに描き直しを知らせる。 */
   signalGuide(): Promise<void>;
 }
@@ -37,6 +36,8 @@ export interface TmuxPort {
 export interface Ports {
   now(): number;
   readAgents(): Promise<AgentsResult>;
+  /** pid から親の pid を引く表(OS のプロセス表)。 */
+  parentPids(): Promise<Map<number, number>>;
   observe(rows: readonly {sessionId: string}[]): Promise<Map<string, Observed>>;
   place(cwd: string): Promise<Place>;
   pullRequest(cwd: string, branch: string): Promise<PullRequest | undefined>;

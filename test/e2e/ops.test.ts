@@ -1,6 +1,7 @@
 // 画面の通し: 停止と削除、保留、待ち先、新しいセッション、外のアプリで開く
-// (シナリオ 8、9、14、15、17、18、20、21、22、29、40、43、44、47、48、51、52、53、54、55)。
+// (シナリオ 8、9、14、15、17、18、20、21、22、29、40、43、44、47、48、51、52、53、54、55、61、62、63、64)。
 
+import {spawn, spawnSync} from 'node:child_process';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
@@ -392,6 +393,86 @@ describe('待ち先', () => {
     const s = await h.waitFor('t', /└ new\d+/);
     expect(s).toMatch(/alpha +Question \(blocked\)|alpha +Review|alpha +Waiting/);
     expect(h.stateFile()).toMatchObject({waits: {[h.row(1).sessionId as string]: [expect.stringMatching(/^new/)]}});
+  });
+});
+
+describe('起動された行', () => {
+  /** 本物の親子のプロセス(sh とその子の sleep)を作り、両方の pid を返す。 */
+  async function processPair(): Promise<{parent: number; child: number; kill(): void}> {
+    const sh = spawn('sh', ['-c', 'sleep 60; :'], {stdio: 'ignore'});
+    const parent = sh.pid as number;
+    for (let i = 0; i < 50; i++) {
+      const out = spawnSync('pgrep', ['-P', String(parent)], {encoding: 'utf8'}).stdout.trim();
+      if (out) {
+        const child = Number(out.split('\n')[0]);
+        const kill = () => {
+          // sh だけを止めると、子の sleep が孤児として残る。
+          for (const pid of [child, parent])
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch {}
+        };
+        return {parent, child, kill};
+      }
+      await sleep(20);
+    }
+    throw new Error('no child process');
+  }
+
+  it('61、62、63: 起動された行は起動元の下に (sub) で並び、起動元は Waiting。f と削除の巻き込みの対象にならない', async () => {
+    const pp = await processPair();
+    try {
+      h = new Harness();
+      const {id: _id, state: _state, ...child} = h.row(2, {name: 'sub-review', pid: pp.child, status: 'busy'});
+      h.setAgents([
+        h.row(1, {name: 'parent', pid: pp.parent}),
+        {...child, kind: 'interactive'},
+        h.row(3, {name: 'other'}),
+      ]);
+      h.open('t');
+      const s = await h.waitFor('t', 'sub-review');
+      expect(s).toMatch(/parent +Waiting/);
+      expect(s).toMatch(/└ sub-review \(sub\) +Working/);
+      await h.select('t', 'sub-review');
+      await h.keys('t', 'f');
+      await h.waitFor('t', 'sub-review was started by another session. It cannot wait for sessions.');
+      await h.keys('t', 'h');
+      await h.waitFor('t', 'sub-review was started by another session. It cannot be put on hold.');
+      await h.select('t', 'other');
+      await h.keys('t', 'f');
+      const menu = await h.waitFor('t', 'other waits for:');
+      expect(menu.split('other waits for:')[1]).not.toContain('sub-review');
+      await h.keys('t', 'Escape');
+      await h.select('t', 'parent');
+      await h.keys('t', 'C-x', 'C-x');
+      await h.waitGone('t', /parent +/);
+      expect(h.screen('t')).not.toContain('Also delete');
+    } finally {
+      pp.kill();
+    }
+  });
+
+  it('62、64: 起動された行が終わって消えると、起動元はレビュー待ちに戻り、done は出ない。選んでいたカーソルは起動元に移る', async () => {
+    const pp = await processPair();
+    try {
+      h = new Harness();
+      const parent = h.row(1, {name: 'parent', pid: pp.parent});
+      const {id: _id, state: _state, ...child} = h.row(2, {name: 'sub-review', pid: pp.child, status: 'busy'});
+      const top = h.row(3, {name: 'top-perm', state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'});
+      h.setAgents([parent, {...child, kind: 'interactive'}, top]);
+      h.open('t');
+      await h.waitFor('t', /parent +Waiting/);
+      await h.select('t', 'sub-review');
+      pp.kill();
+      h.setAgents([parent, top]);
+      await h.keys('t', 'r');
+      const s = await h.waitFor('t', /parent +Review/);
+      expect(s).not.toContain('sub-review');
+      expect(s).not.toContain('done');
+      expect(h.selected('t')).toMatch(/^> parent/);
+    } finally {
+      pp.kill();
+    }
   });
 });
 

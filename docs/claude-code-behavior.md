@@ -37,6 +37,15 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 実行時間は約 135 ms（6〜8 行の時点）。
 - ターンを終えて `done` になったはずのセッションが、`blocked` + `idle` + `pid` ありになっていたことが2回ある。1つは sandbox で書き込みを拒まれて終わったターン（「モデルへの指示」の節の `!` を勧めさせる手順）。もう1つは、外で起動したセッションを、whatnext を閉じて（残していた `claude attach` と作業台を畳んで）から見たとき（会話記録の末尾はふつうのターンの終わりで、同じ条件の別のセッションは `done` のままだった）。条件と原因は確かめていない。whatnext では「どの規則にも当たらない行」として、質問待ちの段に `Question (blocked)` と出る（2.1.283）。
 
+### 起動された `claude -p` のプロセスの祖先（2.1.310）
+
+- Agent ツールのサブエージェントは、起動元と同じプロセスの中で動き、`--json` に行として出ない（サブエージェントを使っている `--bg` のセッションで、行が増えなかった）。
+- `--bg` のセッションの `pid` は `claude bg-spare` のプロセスで、その親は `claude bg-pty-host`、さらにその親は `claude daemon run` である。`--bg` のセッションの祖先には、ほかの行の `pid` が出ない。
+- `--bg` のセッションが Bash ツールで起動した `claude -p` の行は、`pid` の祖先に起動元の `pid` を持つ。スキルの Python のスクリプトを経た例では、`claude -p`、`python3 …/review_loop.py`、`/bin/zsh -c …`（Bash ツール）、`claude bg-spare`（起動元の行の `pid`）の順に並んだ。
+- stdio の MCP サーバが起動した `claude -p` も同じである。サーバは、MCP の設定を読んだ `claude` の子プロセスになる。手元で作った最小のサーバ（ツールが呼ばれると `claude -p` を起動するだけのもの）では、`claude -p`（MCP サーバが起動した行）、`node server.mjs`、`claude -p`（サーバを使った行）、`/bin/zsh -c …`、`claude bg-spare`（`--bg` の行）の順に並んだ。一番近い祖先の行を起動元とすると、2段の入れ子になる。
+- `--bg` のセッションが Bash ツールの `run_in_background` で `claude -p` を起動し、すぐにターンを終えた（応答 `STARTED` を返した）ときも、`--json` の行は、バックグラウンドのシェルが終わって知らせを受けたターンが終わるまで、`working` + `busy` のままだった（約80秒。その後 `done` + `idle`）。バックグラウンドのシェルが動いている間は、ターンの区切りが `--json` に出ない。
+- `claude -p` は可変長の値を取るオプション（`--allowedTools` など）の後ろにプロンプトを置くと、プロンプトもその値として取り込み、`Error: Input must be provided either through stdin or as a prompt argument when using --print` で終わる。プロンプトはオプションより前に置く。
+
 ### 起動（`--bg`）
 
 - プロンプトなしで起動すると、終了コード 0 で `backgrounded · <id> · <name> (idle — send a prompt to start)` を返す。`--json` では `state: "blocked"`、`status: "idle"`、`pid` あり、`waitingFor` なしになる（2.1.281）。
@@ -120,10 +129,15 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 
 ### 対話セッションの複製（`--resume <sessionId> --fork-session`、2.1.302）
 
+対話セッションを覗く機能を検討したときに確かめた（#227、#228）。機能は入れていない（[PRODUCT.md](PRODUCT.md)「Out of Scope」）。
+
+
 - `claude attach` と `claude logs` は `background` のセッションだけを受け付け、対話セッションの `sessionId` や名前は `No job matching …` で断る。`claude -p` の中では `/export` は使えない（`/export isn't available in this environment.`）。
 - `claude --resume <sessionId> --fork-session` を対話モードで開くと、その時点までの会話が描かれる。開いている間は別の `sessionId` と名前（例 `whatnext-2f`）の `interactive` の `idle` の行として `--json` に出る。何も送らずに閉じると、`~/.claude/projects/` にファイルは増えなかった。
+- `claude -p "…"` で動いているセッションも `--json` に出る（2.1.304）。`kind` は `interactive`、`status` は `busy`、`pid` があり、名前は自動で付く（例 `whatnext-real-d3`）。`id` はないので attach できない。終わるとプロセスが消え、`--all` を付けても行は残らない。会話記録は1件ずつ書き足される（指示、応答の文、`tool_use` の順に、数秒のうちに出た）。下の複製は開いた時点までを描くので、`-p` のセッションも、動いている間なら複製で見られる。
 - 元のセッションがターンの途中なら、複製ではそのターンが `Interrupted · What should Claude do instead?` と出る。
 - Claude Code の中で動いているシェルから開くと、環境変数 `CLAUDE_CODE_CHILD_SESSION` を引き継ぎ、`Transcript saving is off` の注意が出る（記録はもとより残さない）。
+- `--safe-mode --permission-mode plan` を足しても、会話の描き方と全画面の描き方は変わらず、記録も残らなかった（2.1.304）。フック、MCP、プラグイン、CLAUDE.md、ステータス行は読み込まず、権限のモードは plan になる。起動の画面に safe mode の注意が2行出る。
 - `CLAUDE_CODE_NO_FLICKER`（利用者の `settings.json` の `env`）では代替画面に描くので、さかのぼるには `PgUp` などのキーを Claude Code に渡す必要がある。`ctrl+o` で詳細の表示（`↑↓ scroll`）に切り替わる。
 
 ## OTel（2.1.282）

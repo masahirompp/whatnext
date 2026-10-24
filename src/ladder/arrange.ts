@@ -92,6 +92,8 @@ export interface ArrangeInput {
   rows: readonly AgentRow[];
   holds: ReadonlyMap<string, string>;
   waits: ReadonlyMap<string, readonly string[]>;
+  /** 起動された行から起動元への表(`sessionId` どうし)。 */
+  spawnedBy: ReadonlyMap<string, string>;
   lastAttached: string | null;
   waitSince: ReadonlyMap<string, number | null>;
   sups: ReadonlyMap<string, Supplement>;
@@ -112,6 +114,8 @@ export interface Entry {
   depth: number;
   /** 祖先から自分までの各段で、その行が兄弟の最後かどうか(根を除く)。線を引くのに使う。 */
   lastChain: boolean[];
+  /** 起動元の下に入れ子で並べた、起動された行。 */
+  sub: boolean;
   /** 組の途中で保留にした行。 */
   midHold: boolean;
   holdReason?: string;
@@ -133,21 +137,67 @@ export interface Arranged {
   doneMemo: DoneMemo;
   /** 段の判定(対象外の行は含まない)。待ちの段を導いたあとの値。 */
   tiers: Map<string, Tier>;
+  /** 起動元の下に入れ子で並べた、起動された行。 */
+  subs: Set<string>;
 }
 
-/** 行の段を、待ち先の関係から待ちの段を導いたうえで決める。 */
-export function effectiveTiers(
-  rows: readonly AgentRow[],
+/**
+ * 待ち先の関係に、起動元から起動された行への辺を足す。
+ * 利用者が結んだ関係を持つ行(自分の待ち先を持つ行、一覧に出ている待ち元に結ばれた行)には辺を足さず、普通の行として扱う。
+ * こうすると、起動された行からたどれるのは起動された行だけになり(プロセスの木)、関係は一周しない。
+ * 返す `spawned` は、起動元への辺を足した起動された行(起動元が一覧に出ていなければ、実際には入れ子にならない)。
+ */
+export function linksWithSpawned(
   waits: ReadonlyMap<string, readonly string[]>,
-): {tiers: Map<string, Tier>; reasons: Map<string, string>} {
-  const raw = new Map<string, Tier>();
+  spawnedBy: ReadonlyMap<string, string>,
+  shown: ReadonlySet<string>,
+): {links: Map<string, readonly string[]>; spawned: Set<string>} {
+  const links = new Map<string, readonly string[]>(waits);
+  const spawned = new Set<string>();
+  const bound = new Set<string>();
+  for (const [waiter, targets] of waits) {
+    if (targets.length > 0) bound.add(waiter);
+    if (shown.has(waiter)) for (const t of targets) bound.add(t);
+  }
+  for (const [child, parent] of spawnedBy) {
+    if (bound.has(child)) continue;
+    links.set(parent, [...(links.get(parent) ?? []), child]);
+    spawned.add(child);
+  }
+  return {links, spawned};
+}
+
+/** 待ち先が「終わっていない」か。待ちの段と `↳ done` の記録の両方がこの述語で決まる。 */
+function isUnfinished(tier: Tier | undefined): boolean {
+  return tier !== undefined && tier !== 'review' && tier !== 'stopped';
+}
+
+/** 行ごとの、待ちの段を導く前の段と、添える理由。対象外の行は含まない。 */
+function classifyAll(rows: readonly AgentRow[]): {own: Map<string, Tier>; reasons: Map<string, string>} {
+  const own = new Map<string, Tier>();
   const reasons = new Map<string, string>();
   for (const row of rows) {
     const c = classify(row);
     if (c.tier === null) continue;
-    raw.set(row.sessionId, c.tier);
+    own.set(row.sessionId, c.tier);
     if (c.reason) reasons.set(row.sessionId, c.reason);
   }
+  return {own, reasons};
+}
+
+/** 行の段を、待ち先(と起動された行)の関係から待ちの段を導いたうえで決める。 */
+export function effectiveTiers(
+  rows: readonly AgentRow[],
+  waits: ReadonlyMap<string, readonly string[]>,
+): {tiers: Map<string, Tier>; reasons: Map<string, string>} {
+  const {own, reasons} = classifyAll(rows);
+  return {tiers: resolveTiers(own, waits), reasons};
+}
+
+function resolveTiers(
+  raw: ReadonlyMap<string, Tier>,
+  waits: ReadonlyMap<string, readonly string[]>,
+): Map<string, Tier> {
   const tiers = new Map<string, Tier>();
   const visiting = new Set<string>();
   const resolve = (sid: string): Tier | undefined => {
@@ -158,10 +208,7 @@ export function effectiveTiers(
     let tier = own;
     if (own === 'review' && !visiting.has(sid)) {
       visiting.add(sid);
-      const pending = (waits.get(sid) ?? []).some(t => {
-        const tt = resolve(t);
-        return tt !== undefined && tt !== 'review' && tt !== 'stopped';
-      });
+      const pending = (waits.get(sid) ?? []).some(t => isUnfinished(resolve(t)));
       visiting.delete(sid);
       if (pending) tier = 'waiting';
     }
@@ -169,7 +216,7 @@ export function effectiveTiers(
     return tier;
   };
   for (const sid of raw.keys()) resolve(sid);
-  return {tiers, reasons};
+  return tiers;
 }
 
 function rankKey(tier: Tier, since: number | null, name: string): [number, number, number, string] {
@@ -187,33 +234,37 @@ function compareKeys(a: [number, number, number, string], b: [number, number, nu
 /** 一覧を組に分けて並べる。 */
 export function arrange(input: ArrangeInput): Arranged {
   const {rows, holds, waits, lastAttached, waitSince, sups} = input;
-  const {tiers, reasons} = effectiveTiers(rows, waits);
+  const {own: ownTier, reasons} = classifyAll(rows);
+  // 段と入れ子は起動された行を含めて決める。
+  const {links, spawned} = linksWithSpawned(waits, input.spawnedBy, new Set(ownTier.keys()));
+  const tiers = resolveTiers(ownTier, links);
   const rowBySid = new Map(rows.map(r => [r.sessionId, r]));
   const visible = (sid: string) => tiers.has(sid);
 
-  // `↳ done` の更新
+  // `↳ done` の更新。利用者が結んだ待ち先だけを見る。
+  // 待ち先を待っているとは、自分がレビュー待ちに当たり、待ち先のどれかが終わっていないこと(待ち先の段は起動された行を含めて導いたもの)。
+  // 起動元が起動された行だけを理由に待ちの段にいる間は、待ち先がすべて終わっていれば記録を持ち越し、表示はしない(下の showDone)。
   const nowWaiting = new Set<string>();
   const done = new Set<string>();
   for (const [sid, targets] of waits) {
     if (!visible(sid) || targets.length === 0) continue;
-    if (tiers.get(sid) === 'waiting') {
-      nowWaiting.add(sid);
+    const pending = targets.some(t => isUnfinished(tiers.get(t)));
+    if (pending) {
+      if (ownTier.get(sid) === 'review') nowWaiting.add(sid);
       continue;
     }
-    const allDone = targets.every(t => {
-      const tt = tiers.get(t);
-      return tt === undefined || tt === 'review' || tt === 'stopped';
-    });
-    if (allDone && (input.doneMemo.done.has(sid) || input.doneMemo.waiting.has(sid))) done.add(sid);
+    if (input.doneMemo.done.has(sid) || input.doneMemo.waiting.has(sid)) done.add(sid);
   }
   const doneMemo: DoneMemo = {waiting: nowWaiting, done};
 
   // 待ち元(見えているもの)
   const waiterOf = new Map<string, string>();
-  for (const [waiter, targets] of waits) {
+  for (const [waiter, targets] of links) {
     if (!visible(waiter)) continue;
     for (const t of targets) if (visible(t)) waiterOf.set(t, waiter);
   }
+  // 起動元の下に並ぶ起動された行(起動元が見えていないものは、トップレベルの普通の行になる)。
+  const subRows = new Set([...spawned].filter(sid => waiterOf.has(sid)));
 
   const keyOf = (sid: string) => {
     const row = rowBySid.get(sid) as AgentRow;
@@ -221,7 +272,7 @@ export function arrange(input: ArrangeInput): Arranged {
   };
 
   const childrenOf = (sid: string): string[] =>
-    (waits.get(sid) ?? [])
+    (links.get(sid) ?? [])
       .filter(t => visible(t) && waiterOf.get(t) === sid)
       .sort((a, b) => compareKeys(keyOf(a), keyOf(b)));
 
@@ -247,10 +298,13 @@ export function arrange(input: ArrangeInput): Arranged {
         ctx: sup?.ctx,
         depth,
         lastChain,
+        sub: subRows.has(sid),
         midHold,
         holdReason: holds.get(sid) || undefined,
       };
-      if (done.has(sid) && targets.length > 0) entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
+      // 記録(done)があっても、待ちの段にいる間は出さない。待ちの段の行に done を出すと事実と食い違う。
+      const showDone = done.has(sid) && tier !== 'waiting' && targets.length > 0;
+      if (showDone) entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
       entries.push(entry);
       if (!midHold || rootHeld) {
         const k = keyOf(sid);
@@ -281,7 +335,7 @@ export function arrange(input: ArrangeInput): Arranged {
     else if (lastAttached !== null && lastGroup === null && g.entries.some(e => e.sid === lastAttached)) lastGroup = g;
     else upNext.push(g);
   }
-  return {lastAttached: lastGroup, upNext, onHold, doneMemo, tiers};
+  return {lastAttached: lastGroup, upNext, onHold, doneMemo, tiers, subs: subRows};
 }
 
 /** 組を上から順に並べた行の一覧。 */
@@ -309,4 +363,20 @@ export function subtreeOf(a: Arranged, sid: string): string[] {
     return out;
   }
   return [sid];
+}
+
+/** 入れ子で `sid` のすぐ上に並ぶ行(待ち元か起動元)。根なら null。 */
+export function parentOf(a: Arranged, sid: string): string | null {
+  const all = [a.lastAttached, ...a.upNext, ...a.onHold].filter((g): g is Group => g !== null);
+  for (const g of all) {
+    const i = g.entries.findIndex(e => e.sid === sid);
+    if (i < 0) continue;
+    const depth = g.entries[i]?.depth ?? 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const e = g.entries[j] as Entry;
+      if (e.depth < depth) return e.sid;
+    }
+    return null;
+  }
+  return null;
 }
