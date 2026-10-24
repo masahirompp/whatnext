@@ -43,6 +43,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - `--bg` のセッションの `pid` は `claude bg-spare` のプロセスで、その親は `claude bg-pty-host`、さらにその親は `claude daemon run` である。`--bg` のセッションの祖先には、ほかの行の `pid` が出ない。
 - `--bg` のセッションが Bash ツールで起動した `claude -p` の行は、`pid` の祖先に起動元の `pid` を持つ。スキルの Python のスクリプトを経た例では、`claude -p`、`python3 …/review_loop.py`、`/bin/zsh -c …`（Bash ツール）、`claude bg-spare`（起動元の行の `pid`）の順に並んだ。
 - stdio の MCP サーバが起動した `claude -p` も同じである。サーバは、MCP の設定を読んだ `claude` の子プロセスになる。手元で作った最小のサーバ（ツールが呼ばれると `claude -p` を起動するだけのもの）では、`claude -p`（MCP サーバが起動した行）、`node server.mjs`、`claude -p`（サーバを使った行）、`/bin/zsh -c …`、`claude bg-spare`（`--bg` の行）の順に並んだ。一番近い祖先の行を起動元とすると、2段の入れ子になる。
+- `--bg` のセッションが Bash ツールの `run_in_background` で `claude -p` を起動し、すぐにターンを終えた（応答 `STARTED` を返した）ときも、`--json` の行は、バックグラウンドのシェルが終わって知らせを受けたターンが終わるまで、`working` + `busy` のままだった（約80秒。その後 `done` + `idle`）。バックグラウンドのシェルが動いている間は、ターンの区切りが `--json` に出ない。
 - `claude -p` は可変長の値を取るオプション（`--allowedTools` など）の後ろにプロンプトを置くと、プロンプトもその値として取り込み、`Error: Input must be provided either through stdin or as a prompt argument when using --print` で終わる。プロンプトはオプションより前に置く。
 
 ### 起動（`--bg`）
