@@ -31,6 +31,7 @@ Keys in the list:
 | --- | --- |
 | `↑` `↓` | Select a row |
 | `Enter` | Attach to the session (or show where an interactive session runs) |
+| `g` | Switch between the ladder view and the repo view (sessions grouped by repository, most recently attached first) |
 | `n` | Start a new session |
 | `Ctrl+X` | Stop the session; press again within 2s to delete it |
 | `h` | Put the session on hold (or bring it back) |

@@ -121,6 +121,29 @@ describe('一覧の画面', () => {
     ]);
   });
 
+  it('リポジトリのビューは区切りの見出しの下に行を並べ、区切りの間を1行あける (シナリオ 61)', () => {
+    const lines = plain(
+      render(
+        model({
+          sections: [
+            {title: 'app', rows: [row('a1', {where: {repo: '', branch: 'fix', worktree: false}}), row('a2')]},
+            {title: 'infra', rows: [row('i1')]},
+          ],
+          cursor: 'a1',
+        }),
+      ),
+    );
+    expect(lines.slice(1, 7)).toEqual([
+      '  app',
+      expect.stringMatching(/^> a1 +Review +fix +- +5m$/),
+      expect.stringMatching(/^ {2}a2 /),
+      '',
+      '  infra',
+      expect.stringMatching(/^ {2}i1 /),
+    ]);
+    expect(lines.join('\n')).not.toContain('Up next');
+  });
+
   it('どの行も端末の幅に収まり、行数は高さを超えない', () => {
     const rows = Array.from({length: 40}, (_, i) =>
       row(`session-with-a-long-name-${i}`, {notes: ['とても長い日本語の一言が続きます。'.repeat(5)]}),

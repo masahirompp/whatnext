@@ -267,13 +267,38 @@ describe('状態のファイル', () => {
     expect(path).toBe(join(dir, 'whatnext', 'state-wn-test.json'));
     expect(statePath({XDG_STATE_HOME: dir}, 'whatnext')).toBe(join(dir, 'whatnext', 'state.json'));
     const w = new StateWriter(path);
-    await w.save({holds: new Map([['a', 'later']]), waits: new Map([['b', ['c']]])});
+    await w.save({
+      holds: new Map([['a', 'later']]),
+      waits: new Map([['b', ['c']]]),
+      view: 'repo',
+      seen: new Map([
+        ['a', {first: 1, attached: 5}],
+        ['b', {first: 2}],
+      ]),
+    });
     const back = await loadState(path);
     expect([...back.holds]).toEqual([['a', 'later']]);
     expect([...back.waits]).toEqual([['b', ['c']]]);
+    expect(back.view).toBe('repo');
+    expect([...back.seen]).toEqual([
+      ['a', {first: 1, attached: 5}],
+      ['b', {first: 2}],
+    ]);
     await writeFile(path, '{broken');
     expect((await loadState(path)).holds.size).toBe(0);
-    await writeFile(path, JSON.stringify({version: 2, holds: {a: ''}}));
+    await writeFile(path, JSON.stringify({version: 3, holds: {a: ''}}));
     expect((await loadState(path)).holds.size).toBe(0);
+  });
+
+  it('版 1 のファイルは、保留と待ち先の関係を読み継ぎ、ビューはラダーのビューにする (ADR-0018)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wn-st-'));
+    const path = statePath({XDG_STATE_HOME: dir}, 'wn-test');
+    await mkdir(join(dir, 'whatnext'), {recursive: true});
+    await writeFile(path, JSON.stringify({version: 1, holds: {a: 'later'}, waits: {b: ['c']}}));
+    const back = await loadState(path);
+    expect([...back.holds]).toEqual([['a', 'later']]);
+    expect([...back.waits]).toEqual([['b', ['c']]]);
+    expect(back.view).toBe('ladder');
+    expect(back.seen.size).toBe(0);
   });
 });

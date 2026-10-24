@@ -94,50 +94,11 @@ describe('attach', () => {
     await h.keys('t', 'Enter');
     const s = await h.waitFor('t', 'alpha · fix the login bug');
     const lines = s.replace(/\n$/, '').split('\n');
-    expect(lines.at(-1)).toMatch(/\^Q\^L back · \^Q\^J next · \^Q\^W workbench · \^Q\^V VS Code/);
+    expect(lines.at(-1)).toMatch(/\^Q\^L back · \^Q\^W workbench · \^Q\^V VS Code/);
     expect(lines.at(-2)).toMatch(/^alpha · fix the login bug/);
     await h.keys('t', 'C-q', 'C-l');
     await h.waitFor('t', 'Last attached');
-    expect(h.screen('t')).not.toContain('^Q^J next');
-  });
-
-  it('56、5: ctrl+q ctrl+j で一覧を経由せずに Up next の先頭へ移る。戻ると移った先が Last attached', async () => {
-    h = new Harness();
-    h.setAgents([
-      h.row(1, {name: 'alpha', state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'}),
-      h.row(2, {name: 'beta', state: 'blocked', status: 'waiting', waitingFor: 'input needed'}),
-      h.row(3, {name: 'gamma'}),
-    ]);
-    h.open('t', [], {cols: 140});
-    await h.waitFor('t', 'gamma');
-    await h.keys('t', 'Enter');
-    await h.waitFor('t', 'FAKE CLAUDE SCREEN a0000001');
-    await h.keys('t', 'C-q', 'C-j');
-    await h.waitFor('t', 'FAKE CLAUDE SCREEN a0000002');
-    await h.waitFor('t', /^beta/m);
-    await h.keys('t', 'C-q', 'C-j');
-    await h.waitFor('t', 'FAKE CLAUDE SCREEN a0000001');
-    await h.keys('t', 'C-q', 'C-l');
-    const s = await h.waitFor('t', 'Last attached');
-    const lines = s.split('\n');
-    const at = (n: string) => lines.findIndex(l => new RegExp(`^[> ] ${n} `).test(l));
-    expect(at('alpha')).toBeLessThan(lines.findIndex(l => l.trim() === 'Up next'));
-    expect(at('beta')).toBeGreaterThan(lines.findIndex(l => l.trim() === 'Up next'));
-    expect(h.selected('t')).toMatch(/^> alpha/);
-    await h.keys('t', 'Down');
-    expect(h.selected('t')).toMatch(/^> beta/);
-  });
-
-  it('56: Up next が空なら移らず、No other session in Up next. が出る', async () => {
-    h = new Harness();
-    h.setAgents([h.row(1, {name: 'alpha'})]);
-    h.open('t', [], {cols: 140});
-    await h.waitFor('t', 'alpha');
-    await h.keys('t', 'Enter');
-    await h.waitFor('t', 'FAKE CLAUDE SCREEN');
-    await h.keys('t', 'C-q', 'C-j');
-    await h.waitFor('t', 'No other session in Up next.');
-    expect(h.screen('t')).toContain('FAKE CLAUDE SCREEN');
+    expect(h.screen('t')).not.toContain('^Q^W workbench');
   });
 });
 

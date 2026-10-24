@@ -279,12 +279,12 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 58a | 実機の通し | `ghostty.test.ts` |
 | 59 | 画面の通し | `workbench.test.ts` |
 | 60 | 画面の通し | `workbench.test.ts` |
-| 61 | 単体、画面の通し | 未作成 |
-| 62 | 単体、画面の通し | 未作成 |
-| 63 | 単体 | 未作成 |
-| 64 | 単体 | 未作成 |
-| 65 | 画面の通し | 未作成 |
-| 66 | 画面の通し、単体（状態のファイル） | 未作成 |
+| 61 | 画面の通し、単体 | `repo.test.ts`、`ladder.test.ts`、`render.test.ts` |
+| 62 | 画面の通し、単体 | `repo.test.ts`、`ladder.test.ts` |
+| 63 | 単体 | `ladder.test.ts` |
+| 64 | 単体 | `ladder.test.ts` |
+| 65 | 画面の通し、単体 | `repo.test.ts`、`ladder.test.ts` |
+| 66 | 画面の通し、単体 | `repo.test.ts`、`input.test.ts`（状態のファイル） |
 | 完了条件2(概要の行) | 実機の通し | `real.test.ts` |
 
 画面の通しは、外側の tmux のセッションを端末の代わりにし、偽の claude(`test/e2e/fake/claude`)と偽の `open` を `PATH` の前に置く。偽の claude は状態を一時ディレクトリの `agents.json` に持ち、呼ばれたコマンドを `calls.log` に書く。実機の通しは `/tmp/whatnext-real`(git でない。初回に対話モードの claude で信頼の確認を済ませる)で haiku のセッションを起動し、テストのあとにそのディレクトリのセッションだけを `claude stop` と `claude rm` で消す。Ghostty の通しは、AppleScript で新しいウィンドウを開き、`ctrl+q` の組み合わせだけを Ghostty の `send key` で送る(修飾キーのない文字は `send key` では届かず、`input text` は貼り付けとして届くため、一覧への文字キーは tmux の `send-keys` で一覧のペインに送る)。

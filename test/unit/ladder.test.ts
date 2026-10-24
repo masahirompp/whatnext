@@ -330,3 +330,79 @@ describe('待ち先 (シナリオ 17〜21)', () => {
     expect(flatten(r).map(e => e.lastChain)).toEqual([[], [true], [true, true]]);
   });
 });
+
+describe('リポジトリのビュー (シナリオ 61〜65)', () => {
+  const names = (a: ReturnType<typeof arrange>) => flatten(a).map(e => e.name);
+  const repoOf = (rows: AgentRow[]) => new Map(rows.map(r => [r.sessionId, r.cwd]));
+
+  it('区切りは見出しの順、区切りの中は触った時刻の新しい順で、段では動かない', () => {
+    const a1 = bg('a1', {cwd: '/r/app', state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'});
+    const a2 = bg('a2', {cwd: '/r/app'});
+    const i1 = bg('i1', {cwd: '/r/infra'});
+    const rows = [i1, a1, a2];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        touched: new Map([
+          [a1.sessionId, 1],
+          [a2.sessionId, 5],
+          [i1.sessionId, 9],
+        ]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.repos?.map(r => r.label)).toEqual(['app', 'infra']);
+    expect(names(a)).toEqual(['a2', 'a1', 'i1']);
+    expect(a.upNext).toEqual([]);
+    expect(a.lastAttached).toBeNull();
+  });
+
+  it('ディレクトリ名が重なるときだけ親のディレクトリ名を足す (シナリオ 63)', () => {
+    const rows = [bg('x', {cwd: '/g/a/foo'}), bg('y', {cwd: '/g/b/foo'}), bg('z', {cwd: '/g/c/bar'})];
+    const a = arrange(input(rows, {view: 'repo', repoOf: repoOf(rows)}));
+    expect(a.repos?.map(r => r.label)).toEqual(['a/foo', 'b/foo', 'bar']);
+  });
+
+  it('待ち先の組は根のリポジトリに出て、組の位置は最も新しく触った行で決まる (シナリオ 64)', () => {
+    const w = bg('waiter', {cwd: '/r/app'});
+    const t = bg('target', {cwd: '/r/lib', state: 'working', status: 'busy'});
+    const o = bg('other', {cwd: '/r/app'});
+    const rows = [w, t, o];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        waits: new Map([[w.sessionId, [t.sessionId]]]),
+        touched: new Map([
+          [w.sessionId, 1],
+          [t.sessionId, 9],
+          [o.sessionId, 5],
+        ]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.repos?.map(r => r.label)).toEqual(['app']);
+    expect(names(a)).toEqual(['waiter', 'target', 'other']);
+  });
+
+  it('保留の行は区切りの中に残り、(on hold) の印が付く (シナリオ 65)', () => {
+    const h = bg('held', {cwd: '/r/app'});
+    const k = bg('kept', {cwd: '/r/app'});
+    const rows = [h, k];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        holds: new Map([[h.sessionId, 'later']]),
+        touched: new Map([
+          [h.sessionId, 1],
+          [k.sessionId, 2],
+        ]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.onHold).toEqual([]);
+    expect(flatten(a).map(e => [e.name, e.holdMark, e.holdReason])).toEqual([
+      ['kept', false, undefined],
+      ['held', true, 'later'],
+    ]);
+  });
+});

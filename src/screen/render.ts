@@ -5,7 +5,7 @@ import {color, oneLine, padEnd, padStart, truncate, width} from './text.js';
 export type TierName = 'permission' | 'question' | 'sandbox' | 'failed' | 'review' | 'working' | 'waiting' | 'stopped';
 
 export interface Where {
-  /** リポジトリ名(`repo/sub`)か、git でない場所のパスの末尾。 */
+  /** リポジトリ名(`repo/sub`)か、git でない場所のパスの末尾。リポジトリのビューで区切りと同じなら空か `sub`。 */
   repo: string;
   /** 既定でないブランチ名。 */
   branch?: string;
@@ -61,6 +61,8 @@ export interface ScreenModel {
   upNext: ScreenRow[];
   /** 保留の組の行。 */
   onHold?: ScreenRow[];
+  /** リポジトリのビューの区切り。あるときは lastAttached、upNext、onHold を使わない。 */
+  sections?: {title: string; rows: ScreenRow[]}[];
   cursor: string | null;
   /** 待機時間を数える基準の時刻(最後の更新の時刻)。 */
   asOf: number;
@@ -104,7 +106,7 @@ export function formatCtx(ctx: number | undefined): string {
 
 export function formatWhere(w: Where | undefined, colored: boolean): string {
   if (!w) return '';
-  const parts = [w.repo];
+  const parts = w.repo ? [w.repo] : [];
   if (w.branch) parts.push(w.branch);
   if (w.worktree) parts.push('(wt)');
   if (w.pr) {
@@ -291,7 +293,10 @@ export function render(m: ScreenModel): string[] {
   // メニューの項目は画面の半分ほどに収め、一覧のヘッダと何行かを残す。
   const maxItems = Math.max(3, Math.floor((m.rows - m.messages.length - usage.length) / 2) - 2);
   const pLines = m.panel ? panelLines(m.panel, cols, maxItems) : [];
-  const allKeys = [...(m.lastAttached ?? []), ...m.upNext, ...(m.onHold ?? [])].map(r => r.key);
+  const allRows = m.sections
+    ? m.sections.flatMap(sec => sec.rows)
+    : [...(m.lastAttached ?? []), ...m.upNext, ...(m.onHold ?? [])];
+  const allKeys = allRows.map(r => r.key);
   // 入力欄は視線の近くに出す。行に結びつくもの(保留の理由)はその行の直下、ほかは一覧のすぐ下。
   const inline: Inline | undefined =
     m.panelUnder !== undefined && m.placeholder === undefined && allKeys.includes(m.panelUnder) && pLines.length > 0
@@ -304,7 +309,6 @@ export function render(m: ScreenModel): string[] {
   if (m.placeholder !== undefined) {
     middle = ['', `  ${m.placeholder}`];
   } else {
-    const allRows = [...(m.lastAttached ?? []), ...m.upNext, ...(m.onHold ?? [])];
     const c = columns(allRows, cols);
     top.push(headerLine(c));
     const fixedLines: string[] = [];
@@ -320,10 +324,19 @@ export function render(m: ScreenModel): string[] {
     const scrollLines: string[] = [];
     const rowAt = new Map<string, number>();
     const fixedEnd = inline?.end;
-    block(m.upNext, c, m, scrollLines, rowAt, inline);
-    if (m.onHold) {
-      scrollLines.push('', color.bold('  On hold'));
-      block(m.onHold, c, m, scrollLines, rowAt, inline);
+    if (m.sections) {
+      // 区切りの見出しは固定せず、行と一緒にスクロールする。
+      m.sections.forEach((sec, i) => {
+        if (i > 0) scrollLines.push('');
+        scrollLines.push(color.bold(`  ${sec.title}`));
+        block(sec.rows, c, m, scrollLines, rowAt, inline);
+      });
+    } else {
+      block(m.upNext, c, m, scrollLines, rowAt, inline);
+      if (m.onHold) {
+        scrollLines.push('', color.bold('  On hold'));
+        block(m.onHold, c, m, scrollLines, rowAt, inline);
+      }
     }
     const inlineEnd = inline?.end !== fixedEnd ? inline?.end : undefined;
     const avail = Math.max(1, m.rows - top.length - fixedLines.length - below.length - bottom.length);
