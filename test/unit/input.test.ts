@@ -304,6 +304,8 @@ describe('状態のファイル', () => {
     await w.save({...state, holds: new Map([['b', 'mine']]), seen: new Map([['a', {first: 1}]])});
     expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({version: 2, holds: {b: 'mine'}});
     expect((await readState(join(dir, 'none.json'))).unreadable).toBe(false);
+    // ディレクトリなど、ないのではなく読めないものは置き換えない側に入る
+    expect((await readState(dir)).unreadable).toBe(true);
   });
 
   it('版 1 のファイルは、保留と待ち先の関係を読み継ぎ、ビューはラダーのビューにする (ADR-0018)', async () => {

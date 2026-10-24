@@ -437,15 +437,18 @@ export class App {
   private fallbackCursor(prev: string | null): string | null {
     const list = this.entries();
     if (!this.arranged?.repos) return this.arranged?.upNext[0]?.positionSid ?? list[0]?.sid ?? null;
-    const present = new Set(list.map(e => e.sid));
+    // 消えた行の区切りは前回の並びで、候補の区切りは並べ直したあとの並びで見る(待ち元が消えると待ち先は別の区切りへ移る)。
+    const now = new Map(this.sectionOrder().map(o => [o.sid, o.section]));
     const i = prev ? this.order.findIndex(o => o.sid === prev) : -1;
     if (i >= 0) {
       const section = this.order[i]?.section;
-      const after = this.order.slice(i + 1).filter(o => present.has(o.sid));
+      const after = this.order
+        .slice(i + 1)
+        .flatMap(o => (now.has(o.sid) ? [{sid: o.sid, section: now.get(o.sid)}] : []));
       const before = this.order
         .slice(0, i)
         .reverse()
-        .filter(o => present.has(o.sid));
+        .flatMap(o => (now.has(o.sid) ? [{sid: o.sid, section: now.get(o.sid)}] : []));
       const pick =
         after.find(o => o.section === section) ?? before.find(o => o.section === section) ?? after[0] ?? before[0];
       if (pick) return pick.sid;
@@ -1037,14 +1040,18 @@ export class App {
     // attach から戻ったか
     const att = this.attached;
     if (att && main && main.session !== att.id && !main.session.startsWith('trust-')) {
-      if (main.session === LIST) await this.returned(att);
+      // 続けて処理する頼みごと(ctrl+q ctrl+h など)があれば、その対象を決めるのに更新の結果が要るので待つ。
+      if (main.session === LIST) await this.returned(att, {settle: reqs.length > 0});
     }
     for (const r of reqs) await this.request(r, clients);
     this.scheduleWbSync();
   }
 
-  /** attach から戻ったとき(新しく起動したセッションから戻ったときを含む)。 */
-  private async returned(att: Attached): Promise<void> {
+  /**
+   * attach から戻ったとき(新しく起動したセッションから戻ったときを含む)。`settle` なら、戻ったあとの更新が終わるまで待つ。
+   * キーの操作(ctrl+q ctrl+h など)は対象のセッションを決めるのに更新の結果が要るので待つ。ただ戻っただけなら待たない。
+   */
+  private async returned(att: Attached, opts: {settle?: boolean} = {}): Promise<void> {
     this.p.log?.(`returned ${JSON.stringify(att)}`);
     this.attached = null;
     const sid = att.sid ?? this.sidOfId(att.id);
@@ -1053,7 +1060,13 @@ export class App {
       this.cursor = sid;
     } else this.pendingReturnId = att.id;
     void this.fetchUsage();
-    await this.refresh();
+    // 待つと、tmux からの知らせの処理が、更新2回分ふさがる。
+    const settled = this.refresh().then(() => this.afterReturn(sid));
+    if (opts.settle) await settled;
+  }
+
+  /** 一覧に戻ったあとの更新が終わってから。 */
+  private afterReturn(sid: string | undefined): void {
     // attach している間と、この更新で新しく見えたセッションより上に来るよう、更新のあとに書き直す。
     // 更新を待つ間に別のセッションへ attach していたら、そちらの時刻を古い時刻で上書きしない。
     if (sid && this.rowOf(sid) && !this.attached) {
@@ -1072,12 +1085,9 @@ export class App {
         this.draw();
       }
     }
-    // Last attached が出ないとき(対象外になったとき)は、ラダーの最上位を選ぶ。
-    // リポジトリのビューでは、消えた行の近くの行を並べ直しのときに選んでいるので、ここに来るのは選ぶ行がないときだけ。
+    // Last attached が出ないとき(対象外になったとき)は、ラダーの最上位を選ぶ(Up next が空なら一覧の先頭)。
     if (this.cursor === null || !this.entries().some(e => e.sid === this.cursor)) {
-      this.cursor = this.arranged?.repos
-        ? this.fallbackCursor(this.cursor)
-        : (this.arranged?.upNext[0]?.positionSid ?? null);
+      this.cursor = this.fallbackCursor(this.cursor);
       this.draw();
     }
   }
@@ -1151,7 +1161,7 @@ export class App {
     }
     if (main.session !== LIST && mainTty) {
       await this.p.tmux.switchClient(mainTty, LIST);
-      if (this.attached) await this.returned(this.attached);
+      if (this.attached) await this.returned(this.attached, {settle: true});
     }
     const target = sid ?? (fromWb ? undefined : (this.lastAttached ?? undefined));
     this.mode = {kind: 'list'};

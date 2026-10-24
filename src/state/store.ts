@@ -41,8 +41,9 @@ export async function readState(path: string): Promise<{state: State; unreadable
   let text: string;
   try {
     text = await readFile(path, 'utf8');
-  } catch {
-    return {state: empty, unreadable: false};
+  } catch (e) {
+    // 権限などで読めないファイルも「ある」ので、置き換えない。
+    return {state: empty, unreadable: (e as NodeJS.ErrnoException).code !== 'ENOENT'};
   }
   let data: unknown;
   try {
