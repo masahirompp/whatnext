@@ -145,15 +145,15 @@ export interface Arranged {
  * 待ち先の関係に、起動元から起動された行への辺を足す。
  * 利用者が結んだ関係を持つ行(自分の待ち先を持つ行、一覧に出ている待ち元に結ばれた行)には辺を足さず、普通の行として扱う。
  * こうすると、起動された行からたどれるのは起動された行だけになり(プロセスの木)、関係は一周しない。
- * 返す `subs` は、起動元の下に並べることにした行。
+ * 返す `spawned` は、起動元への辺を足した起動された行(起動元が一覧に出ていなければ、実際には入れ子にならない)。
  */
 export function linksWithSpawned(
   waits: ReadonlyMap<string, readonly string[]>,
   spawnedBy: ReadonlyMap<string, string>,
   shown: ReadonlySet<string>,
-): {links: Map<string, readonly string[]>; subs: Set<string>} {
+): {links: Map<string, readonly string[]>; spawned: Set<string>} {
   const links = new Map<string, readonly string[]>(waits);
-  const subs = new Set<string>();
+  const spawned = new Set<string>();
   const bound = new Set<string>();
   for (const [waiter, targets] of waits) {
     if (targets.length > 0) bound.add(waiter);
@@ -162,9 +162,27 @@ export function linksWithSpawned(
   for (const [child, parent] of spawnedBy) {
     if (bound.has(child)) continue;
     links.set(parent, [...(links.get(parent) ?? []), child]);
-    subs.add(child);
+    spawned.add(child);
   }
-  return {links, subs};
+  return {links, spawned};
+}
+
+/** 待ち先が「終わっていない」か。待ちの段と `↳ done` の記録の両方がこの述語で決まる。 */
+function isUnfinished(tier: Tier | undefined): boolean {
+  return tier !== undefined && tier !== 'review' && tier !== 'stopped';
+}
+
+/** 行ごとの、待ちの段を導く前の段と、添える理由。対象外の行は含まない。 */
+function classifyAll(rows: readonly AgentRow[]): {own: Map<string, Tier>; reasons: Map<string, string>} {
+  const own = new Map<string, Tier>();
+  const reasons = new Map<string, string>();
+  for (const row of rows) {
+    const c = classify(row);
+    if (c.tier === null) continue;
+    own.set(row.sessionId, c.tier);
+    if (c.reason) reasons.set(row.sessionId, c.reason);
+  }
+  return {own, reasons};
 }
 
 /** 行の段を、待ち先(と起動された行)の関係から待ちの段を導いたうえで決める。 */
@@ -172,14 +190,14 @@ export function effectiveTiers(
   rows: readonly AgentRow[],
   waits: ReadonlyMap<string, readonly string[]>,
 ): {tiers: Map<string, Tier>; reasons: Map<string, string>} {
-  const raw = new Map<string, Tier>();
-  const reasons = new Map<string, string>();
-  for (const row of rows) {
-    const c = classify(row);
-    if (c.tier === null) continue;
-    raw.set(row.sessionId, c.tier);
-    if (c.reason) reasons.set(row.sessionId, c.reason);
-  }
+  const {own, reasons} = classifyAll(rows);
+  return {tiers: resolveTiers(own, waits), reasons};
+}
+
+function resolveTiers(
+  raw: ReadonlyMap<string, Tier>,
+  waits: ReadonlyMap<string, readonly string[]>,
+): Map<string, Tier> {
   const tiers = new Map<string, Tier>();
   const visiting = new Set<string>();
   const resolve = (sid: string): Tier | undefined => {
@@ -190,10 +208,7 @@ export function effectiveTiers(
     let tier = own;
     if (own === 'review' && !visiting.has(sid)) {
       visiting.add(sid);
-      const pending = (waits.get(sid) ?? []).some(t => {
-        const tt = resolve(t);
-        return tt !== undefined && tt !== 'review' && tt !== 'stopped';
-      });
+      const pending = (waits.get(sid) ?? []).some(t => isUnfinished(resolve(t)));
       visiting.delete(sid);
       if (pending) tier = 'waiting';
     }
@@ -201,7 +216,7 @@ export function effectiveTiers(
     return tier;
   };
   for (const sid of raw.keys()) resolve(sid);
-  return {tiers, reasons};
+  return tiers;
 }
 
 function rankKey(tier: Tier, since: number | null, name: string): [number, number, number, string] {
@@ -219,25 +234,21 @@ function compareKeys(a: [number, number, number, string], b: [number, number, nu
 /** 一覧を組に分けて並べる。 */
 export function arrange(input: ArrangeInput): Arranged {
   const {rows, holds, waits, lastAttached, waitSince, sups} = input;
-  const ownTier = new Map(rows.map(r => [r.sessionId, classify(r).tier]));
-  const shown = new Set([...ownTier].filter(([, t]) => t !== null).map(([sid]) => sid));
+  const {own: ownTier, reasons} = classifyAll(rows);
   // 段と入れ子は起動された行を含めて決める。
-  const {links, subs} = linksWithSpawned(waits, input.spawnedBy, shown);
-  const {tiers, reasons} = effectiveTiers(rows, links);
+  const {links, spawned} = linksWithSpawned(waits, input.spawnedBy, new Set(ownTier.keys()));
+  const tiers = resolveTiers(ownTier, links);
   const rowBySid = new Map(rows.map(r => [r.sessionId, r]));
   const visible = (sid: string) => tiers.has(sid);
 
   // `↳ done` の更新。利用者が結んだ待ち先だけを見る。
   // 待ち先を待っているとは、自分がレビュー待ちに当たり、待ち先のどれかが終わっていないこと(待ち先の段は起動された行を含めて導いたもの)。
-  // 起動元が起動された行だけを理由に待ちの段にいる間は、待ち先がすべて終わっていれば記録を持ち越し、表示はしない(下の doneNames)。
+  // 起動元が起動された行だけを理由に待ちの段にいる間は、待ち先がすべて終わっていれば記録を持ち越し、表示はしない(下の showDone)。
   const nowWaiting = new Set<string>();
   const done = new Set<string>();
   for (const [sid, targets] of waits) {
     if (!visible(sid) || targets.length === 0) continue;
-    const pending = targets.some(t => {
-      const tt = tiers.get(t);
-      return tt !== undefined && tt !== 'review' && tt !== 'stopped';
-    });
+    const pending = targets.some(t => isUnfinished(tiers.get(t)));
     if (pending) {
       if (ownTier.get(sid) === 'review') nowWaiting.add(sid);
       continue;
@@ -253,7 +264,7 @@ export function arrange(input: ArrangeInput): Arranged {
     for (const t of targets) if (visible(t)) waiterOf.set(t, waiter);
   }
   // 起動元の下に並ぶ起動された行(起動元が見えていないものは、トップレベルの普通の行になる)。
-  const subRows = new Set([...subs].filter(sid => waiterOf.has(sid)));
+  const subRows = new Set([...spawned].filter(sid => waiterOf.has(sid)));
 
   const keyOf = (sid: string) => {
     const row = rowBySid.get(sid) as AgentRow;
@@ -291,8 +302,9 @@ export function arrange(input: ArrangeInput): Arranged {
         midHold,
         holdReason: holds.get(sid) || undefined,
       };
-      if (done.has(sid) && tier !== 'waiting' && targets.length > 0)
-        entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
+      // 記録(done)があっても、待ちの段にいる間は出さない。待ちの段の行に done を出すと事実と食い違う。
+      const showDone = done.has(sid) && tier !== 'waiting' && targets.length > 0;
+      if (showDone) entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
       entries.push(entry);
       if (!midHold || rootHeld) {
         const k = keyOf(sid);

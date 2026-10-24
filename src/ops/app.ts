@@ -340,6 +340,11 @@ export class App {
     return this.arranged ? flatten(this.arranged) : [];
   }
 
+  /** 起動元の下に入れ子で並べた、起動された行か。 */
+  private isSub(sid: string): boolean {
+    return this.arranged?.subs.has(sid) ?? false;
+  }
+
   private fixCursor(): void {
     const list = this.entries();
     if (this.cursor && list.some(e => e.sid === this.cursor)) return;
@@ -1319,7 +1324,7 @@ export class App {
     const mine = this.waits.get(waiter) ?? [];
     // 起動された行は、すぐに終わって消えるので並べない。
     const cands = this.entries().filter(e => {
-      if (e.sid === waiter || anc.has(e.sid) || this.arranged?.subs.has(e.sid)) return false;
+      if (e.sid === waiter || anc.has(e.sid) || e.sub) return false;
       const w = this.waiterOf(e.sid);
       return w === undefined || w === waiter;
     });
@@ -1342,7 +1347,7 @@ export class App {
   private openWait(waiter: string): void {
     if (this.isDeleting(waiter)) return;
     // 起動された行は数秒から数分で消え、結んだ関係もそのときに切れるので、結ばせない。
-    if (this.arranged?.subs.has(waiter)) {
+    if (this.isSub(waiter)) {
       this.flash(`${this.nameOf(waiter)} was started by another session. It cannot wait for sessions.`);
       return;
     }
@@ -1558,11 +1563,10 @@ export class App {
   private async deleteFlow(sid: string): Promise<void> {
     // 起動された行は削除できない(`id` がない)ので、巻き込む対象に数えない。
     // 起動された行の下には起動された行しか並ばない(利用者が結んだ関係を持つ行は起動された行にならない)。
-    const a = this.arranged;
-    const targets = a
-      ? subtreeOf(a, sid)
+    const targets = this.arranged
+      ? subtreeOf(this.arranged, sid)
           .slice(1)
-          .filter(t => !a.subs.has(t))
+          .filter(t => !this.isSub(t))
       : [];
     let cascade = false;
     if (targets.length > 0) {
