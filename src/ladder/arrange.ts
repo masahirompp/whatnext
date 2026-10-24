@@ -102,6 +102,8 @@ export interface ArrangeInput {
   view?: 'ladder' | 'repo';
   /** リポジトリのビューで並べる時刻(最後に attach した時刻、なければ初めて見た時刻)。 */
   touched?: ReadonlyMap<string, number>;
+  /** whatnext から最後に attach した時刻。リポジトリのビューで、待ち先が組の位置を動かすのは attach したときだけにする。 */
+  attachedAt?: ReadonlyMap<string, number>;
   /** リポジトリのビューの区切り(元のリポジトリの根。リポジトリでなければ `cwd`)。 */
   repoOf?: ReadonlyMap<string, string>;
 }
@@ -134,6 +136,8 @@ export interface Group {
   entries: Entry[];
   /** 組の位置を決めた行(実際に手を付ける行)。 */
   positionSid: string;
+  /** リポジトリのビューで組の位置を決める時刻。 */
+  at?: number;
 }
 
 /** リポジトリのビューの区切り。 */
@@ -196,6 +200,10 @@ function rankKey(tier: Tier, since: number | null, name: string): [number, numbe
   return [TIERS.indexOf(tier), since === null ? 0 : 1, since ?? 0, name];
 }
 
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function compareKeys(a: [number, number, number, string], b: [number, number, number, string]): number {
   for (let i = 0; i < 3; i++) {
     const d = (a[i] as number) - (b[i] as number);
@@ -243,13 +251,11 @@ export function arrange(input: ArrangeInput): Arranged {
   const repoView = input.view === 'repo';
   const touchedOf = (sid: string) => input.touched?.get(sid) ?? 0;
   // 上に来るほうが負。ラダーのビューは段と待機時間の順、リポジトリのビューは触った時刻の新しい順。
+  const byName = (a: string, b: string): number =>
+    compareText(rowName(rowBySid.get(a) as AgentRow), rowName(rowBySid.get(b) as AgentRow));
   const cmp = (a: string, b: string): number => {
     if (!repoView) return compareKeys(keyOf(a), keyOf(b));
-    const d = touchedOf(b) - touchedOf(a);
-    if (d !== 0) return d;
-    const na = rowName(rowBySid.get(a) as AgentRow);
-    const nb = rowName(rowBySid.get(b) as AgentRow);
-    return na < nb ? -1 : na > nb ? 1 : 0;
+    return touchedOf(b) - touchedOf(a) || byName(a, b);
   };
 
   const childrenOf = (sid: string): string[] =>
@@ -289,12 +295,24 @@ export function arrange(input: ArrangeInput): Arranged {
       });
     };
     walk(root, 0, []);
-    return {rootSid: root, entries, positionSid: position ?? root};
+    if (!repoView) return {rootSid: root, entries, positionSid: position ?? root};
+    // 保留にしても、待ち先を結んでも、組は動かない。待ち先が組を動かすのは attach したときだけ。
+    let at = touchedOf(root);
+    let positionSid = root;
+    for (const e of entries.slice(1)) {
+      const t = input.attachedAt?.get(e.sid);
+      if (t !== undefined && t > at) {
+        at = t;
+        positionSid = e.sid;
+      }
+    }
+    return {rootSid: root, entries, positionSid, at};
   };
 
   const roots = rows.map(r => r.sessionId).filter(sid => visible(sid) && !waiterOf.has(sid));
   const groups = roots.map(buildGroup);
-  groups.sort((a, b) => cmp(a.positionSid, b.positionSid));
+  if (repoView) groups.sort((a, b) => (b.at ?? 0) - (a.at ?? 0) || byName(a.rootSid, b.rootSid));
+  else groups.sort((a, b) => cmp(a.positionSid, b.positionSid));
 
   if (repoView) {
     const byKey = new Map<string, Group[]>();
@@ -304,10 +322,9 @@ export function arrange(input: ArrangeInput): Arranged {
       if (list) list.push(g);
       else byKey.set(key, [g]);
     }
-    const keys = [...byKey.keys()];
-    const labels = displayNames(keys);
-    const repos = [...byKey].map(([key, gs]) => ({key, label: labels[keys.indexOf(key)] as string, groups: gs}));
-    repos.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : a.key < b.key ? -1 : 1));
+    const labels = displayNames([...byKey.keys()]);
+    const repos = [...byKey].map(([key, groups], i) => ({key, label: labels[i] as string, groups}));
+    repos.sort((a, b) => compareText(a.label, b.label) || compareText(a.key, b.key));
     return {lastAttached: null, upNext: [], onHold: [], repos, doneMemo, tiers};
   }
 

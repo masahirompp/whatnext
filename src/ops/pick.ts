@@ -2,8 +2,6 @@
 
 import {sep} from 'node:path';
 
-export {displayNames} from '../ladder/paths.js';
-
 function subsequence(q: string, s: string): boolean {
   let i = 0;
   for (const ch of s) if (ch === q[i]) i++;

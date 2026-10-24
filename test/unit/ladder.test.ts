@@ -367,7 +367,7 @@ describe('リポジトリのビュー (シナリオ 61〜65)', () => {
     expect(d.repos?.map(r => r.label)).toEqual(['github.com/acme/foo', 'gitlab.com/acme/foo']);
   });
 
-  it('待ち先の組は根のリポジトリに出て、組の位置は最も新しく触った行で決まる (シナリオ 64)', () => {
+  it('待ち先の組は根のリポジトリに出て、待ち先に attach すると組ごと上がる (シナリオ 64)', () => {
     const w = bg('waiter', {cwd: '/r/app'});
     const t = bg('target', {cwd: '/r/lib', state: 'working', status: 'busy'});
     const o = bg('other', {cwd: '/r/app'});
@@ -381,11 +381,47 @@ describe('リポジトリのビュー (シナリオ 61〜65)', () => {
           [t.sessionId, 9],
           [o.sessionId, 5],
         ]),
+        attachedAt: new Map([[t.sessionId, 9]]),
         repoOf: repoOf(rows),
       }),
     );
     expect(a.repos?.map(r => r.label)).toEqual(['app']);
     expect(names(a)).toEqual(['waiter', 'target', 'other']);
+  });
+
+  it('組の位置は根の時刻と attach した時刻で決まり、保留にしても待ち先の初めて見た時刻でも動かない', () => {
+    const w = bg('waiter', {cwd: '/r/app'});
+    const t = bg('target', {cwd: '/r/app'});
+    const o = bg('other', {cwd: '/r/app'});
+    const rows = [w, t, o];
+    const base = {
+      view: 'repo' as const,
+      waits: new Map([[w.sessionId, [t.sessionId]]]),
+      repoOf: repoOf(rows),
+    };
+    // 待ち先は初めて見ただけ(時刻 9)。組は根の時刻 1 の位置に残る
+    const linked = arrange(
+      input(rows, {
+        ...base,
+        touched: new Map([
+          [w.sessionId, 1],
+          [t.sessionId, 9],
+          [o.sessionId, 5],
+        ]),
+      }),
+    );
+    expect(names(linked)).toEqual(['other', 'waiter', 'target']);
+    // 待ち先に attach すると(時刻 9)組が上がり、保留にしても上にとどまる
+    const touched = new Map([
+      [w.sessionId, 1],
+      [t.sessionId, 9],
+      [o.sessionId, 5],
+    ]);
+    const attachedAt = new Map([[t.sessionId, 9]]);
+    const attached = arrange(input(rows, {...base, touched, attachedAt}));
+    expect(names(attached)).toEqual(['waiter', 'target', 'other']);
+    const held = arrange(input(rows, {...base, touched, attachedAt, holds: new Map([[t.sessionId, 'later']])}));
+    expect(names(held)).toEqual(['waiter', 'target', 'other']);
   });
 
   it('保留の行は区切りの中に残り、(on hold) の印が付く (シナリオ 65)', () => {

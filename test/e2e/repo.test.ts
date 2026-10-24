@@ -58,7 +58,28 @@ describe('リポジトリのビュー', () => {
     expect(h.selected('t')).toMatch(/^> beta/);
   });
 
-  it('65、66: 保留の行は区切りに残ってカーソルも残る。終了して起動し直してもビューと並びが残る', async () => {
+  it('62: attach している間に外で起動したセッションは、見えたときに区切りの先頭に出るが、戻ったセッションはその上に来る', async () => {
+    h = new Harness();
+    h.setAgents([h.row(1, {name: 'alpha'}), h.row(2, {name: 'beta'})]);
+    h.open('t', [], {cols: 140});
+    await h.waitFor('t', 'beta');
+    await h.keys('t', 'g');
+    await h.waitFor('t', 'g ladder view');
+    await h.select('t', 'alpha');
+    await h.keys('t', 'Enter');
+    await h.waitFor('t', 'FAKE CLAUDE SCREEN a0000001');
+    // attach している間に、外で gamma が起動する
+    h.setAgents([...h.agents(), h.row(3, {name: 'gamma'})]);
+    await h.keys('t', 'C-q', 'C-l');
+    const s = await h.waitFor('t', /^[> ] gamma /m);
+    await h.waitFor('t', /^> alpha/m);
+    const lines = h.screen('t');
+    expect(lineOf(lines, /^[> ] alpha /)).toBeLessThan(lineOf(lines, /^[> ] gamma /));
+    expect(lineOf(lines, /^[> ] gamma /)).toBeLessThan(lineOf(lines, /^[> ] beta /));
+    expect(s).toContain('  repo');
+  });
+
+  it('65、66:保留の行は区切りに残ってカーソルも残る。終了して起動し直してもビューと並びが残る', async () => {
     h = new Harness();
     h.setAgents([h.row(1, {name: 'alpha'}), h.row(2, {name: 'beta'})]);
     h.open('t', [], {cols: 140});

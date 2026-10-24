@@ -18,11 +18,12 @@ import {
   type WaitMemo,
 } from '../ladder/arrange.js';
 import {type AgentRow, dedupe, rowName} from '../ladder/classify.js';
+import {displayNames} from '../ladder/paths.js';
 import {frame, type Panel, render, type ScreenModel, type ScreenRow} from '../screen/render.js';
 import type {Seen, State, View} from '../state/store.js';
 import type {KeyAction} from '../tmux/keys.js';
 import {GUIDE, LIST} from '../tmux/tmux.js';
-import {displayNames, expandHome, filterIndexes, tildify} from './pick.js';
+import {expandHome, filterIndexes, tildify} from './pick.js';
 import type {Observed, Ports} from './ports.js';
 
 export interface Key {
@@ -92,6 +93,8 @@ export class App {
   private error: string | undefined;
   private observed = new Map<string, Observed>();
   private places = new Map<string, Place>();
+  /** 前回リポジトリだった場所が、続けて何回リポジトリでないと返ったか。 */
+  private placeMisses = new Map<string, number>();
   private prs = new Map<string, PullRequest | null>();
   private running = new Map<string, string[]>();
   private usage: UsageFrame[] | undefined;
@@ -227,13 +230,20 @@ export class App {
     const cwds = [...new Set(rows.map(r => r.cwd).filter(Boolean))];
     const got = await Promise.all(cwds.map(c => this.p.place(c)));
     const next = new Map<string, Place>();
+    const misses = new Map<string, number>();
     for (const [i, c] of cwds.entries()) {
       const pl = got[i] as Place;
       // git の問い合わせが一度失敗しただけで、行が別の区切りへ移らないようにする。
+      // 続けて2回リポジトリでないと返ったら、本当にリポジトリでなくなった(worktree を消したなど)とみなす。
       const prev = this.places.get(c);
-      next.set(c, !pl.git && prev?.git ? prev : pl);
+      const miss = !pl.git && prev?.git ? (this.placeMisses.get(c) ?? 0) + 1 : 0;
+      if (miss === 1) {
+        next.set(c, prev as Place);
+        misses.set(c, miss);
+      } else next.set(c, pl);
     }
     this.places = next;
+    this.placeMisses = misses;
   }
 
   private async loadPullRequests(rows: AgentRow[]): Promise<void> {
@@ -344,12 +354,21 @@ export class App {
   }
 
   /** 並べ替えに渡す、ビューと、リポジトリのビューで使う時刻と区切り。 */
-  private viewInput(): {view: View; touched: Map<string, number>; repoOf: Map<string, string>} {
+  private viewInput(): {
+    view: View;
+    touched: Map<string, number>;
+    attachedAt: Map<string, number>;
+    repoOf: Map<string, string>;
+  } {
     const touched = new Map<string, number>();
-    for (const [sid, e] of this.seen) touched.set(sid, e.attached ?? e.first);
+    const attachedAt = new Map<string, number>();
+    for (const [sid, e] of this.seen) {
+      touched.set(sid, e.attached ?? e.first);
+      if (e.attached !== undefined) attachedAt.set(sid, e.attached);
+    }
     const repoOf = new Map<string, string>();
     for (const r of this.rows ?? []) repoOf.set(r.sessionId, this.repoKeyOf(r.cwd));
-    return {view: this.view, touched, repoOf};
+    return {view: this.view, touched, attachedAt, repoOf};
   }
 
   /** リポジトリのビューの区切り。元のリポジトリの根で、リポジトリでなければ `cwd`。 */
@@ -1021,11 +1040,15 @@ export class App {
     if (sid) {
       this.lastAttached = sid;
       this.cursor = sid;
-      // attach している間に見えたセッションより上に来るよう、戻ったときにも書き直す。
-      this.markAttached(sid);
     } else this.pendingReturnId = att.id;
     void this.fetchUsage();
     await this.refresh();
+    // attach している間と、この更新で新しく見えたセッションより上に来るよう、更新のあとに書き直す。
+    if (sid && this.rowOf(sid)) {
+      this.markAttached(sid);
+      this.rearrange(this.p.now(), false);
+      this.draw();
+    }
     if (!sid && this.pendingReturnId) {
       const s2 = this.sidOfId(this.pendingReturnId);
       this.pendingReturnId = undefined;
