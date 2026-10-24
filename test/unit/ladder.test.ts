@@ -330,3 +330,60 @@ describe('待ち先 (シナリオ 17〜21)', () => {
     expect(flatten(r).map(e => e.lastChain)).toEqual([[], [true], [true, true]]);
   });
 });
+
+describe('起動された行 (シナリオ 61、62)', () => {
+  const tty = (name: string, extra: Partial<AgentRow> = {}): AgentRow => {
+    const {id: _id, state: _state, ...r} = bg(name, {status: 'busy', ...extra});
+    return {...r, kind: 'interactive'};
+  };
+
+  it('起動元の下に入れ子で並び、sub の印が付く。さらに起動した行はもう一段深く並ぶ (61)', () => {
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const G = tty('G');
+    const spawnedBy = new Map([
+      [C.sessionId, P.sessionId],
+      [G.sessionId, C.sessionId],
+    ]);
+    const r = arrange(input([G, C, P], {spawnedBy}));
+    expect(flatten(r).map(e => [e.name, e.depth, e.sub])).toEqual([
+      ['P', 0, false],
+      ['C', 1, true],
+      ['G', 2, true],
+    ]);
+  });
+
+  it('起動元がターンを終えても、起動された行が動いていれば起動元は待ちの段に入る。done は出さない (62)', () => {
+    const P = bg('P');
+    const C = tty('C');
+    const spawnedBy = new Map([[C.sessionId, P.sessionId]]);
+    const r = arrange(input([P, C], {spawnedBy}));
+    expect(flatten(r).map(e => [e.name, e.status])).toEqual([
+      ['P', 'Waiting'],
+      ['C', 'Working'],
+    ]);
+    const after = arrange(input([P], {doneMemo: r.doneMemo}));
+    expect(flatten(after).map(e => [e.name, e.status, e.doneNames])).toEqual([['P', 'Review', undefined]]);
+  });
+
+  it('起動元が一覧に出ていなければ、トップレベルに sub の印なしで並ぶ', () => {
+    const P = tty('P', {status: 'idle'});
+    const C = tty('C');
+    const r = arrange(input([P, C], {spawnedBy: new Map([[C.sessionId, P.sessionId]])}));
+    expect(flatten(r).map(e => [e.name, e.depth, e.sub])).toEqual([['C', 0, false]]);
+  });
+
+  it('利用者が待ち先に結んだ行は、結んだ関係を優先する', () => {
+    const A = bg('A');
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const r = arrange(
+      input([A, P, C], {
+        waits: new Map([[A.sessionId, [C.sessionId]]]),
+        spawnedBy: new Map([[C.sessionId, P.sessionId]]),
+      }),
+    );
+    expect(flatten(r).find(e => e.name === 'C')?.sub).toBe(false);
+    expect(r.upNext.find(g => g.rootSid === A.sessionId)?.entries.map(e => e.name)).toEqual(['A', 'C']);
+  });
+});

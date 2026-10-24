@@ -10,6 +10,7 @@ import {fetchUsage, readAgents} from '../input/claude.js';
 import {run} from '../input/exec.js';
 import {HookStore, supplement} from '../input/hooks.js';
 import {placeOf, pullRequestOf} from '../input/place.js';
+import {readParents} from '../input/procs.js';
 import {launchSettings, openReceiver, type Receiver} from '../input/receiver.js';
 import {Transcripts} from '../input/transcript.js';
 import {App, type Key} from '../ops/app.js';
@@ -129,6 +130,7 @@ export async function runList(s: Settings, version: string, distDir: string, cli
   const ports: Ports = {
     now: () => Date.now(),
     readAgents: () => readAgents(run),
+    parents: () => readParents(run),
     observe: async rows => {
       const out = new Map<string, Observed>();
       await Promise.all(

@@ -92,6 +92,8 @@ export interface ArrangeInput {
   rows: readonly AgentRow[];
   holds: ReadonlyMap<string, string>;
   waits: ReadonlyMap<string, readonly string[]>;
+  /** 起動された行から起動元への表(`sessionId` どうし)。 */
+  spawnedBy?: ReadonlyMap<string, string>;
   lastAttached: string | null;
   waitSince: ReadonlyMap<string, number | null>;
   sups: ReadonlyMap<string, Supplement>;
@@ -112,6 +114,8 @@ export interface Entry {
   depth: number;
   /** 祖先から自分までの各段で、その行が兄弟の最後かどうか(根を除く)。線を引くのに使う。 */
   lastChain: boolean[];
+  /** 起動元の下に入れ子で並べた、起動された行。 */
+  sub: boolean;
   /** 組の途中で保留にした行。 */
   midHold: boolean;
   holdReason?: string;
@@ -135,7 +139,27 @@ export interface Arranged {
   tiers: Map<string, Tier>;
 }
 
-/** 行の段を、待ち先の関係から待ちの段を導いたうえで決める。 */
+/**
+ * 待ち先の関係に、起動元から起動された行への辺を足す。利用者が待ち先に結んだ行は、結んだ関係を優先する。
+ * 返す `subs` は、起動元の下に並べることにした行。
+ */
+export function withSpawned(
+  waits: ReadonlyMap<string, readonly string[]>,
+  spawnedBy: ReadonlyMap<string, string> | undefined,
+): {links: Map<string, readonly string[]>; subs: Set<string>} {
+  const links = new Map<string, readonly string[]>(waits);
+  const subs = new Set<string>();
+  if (!spawnedBy) return {links, subs};
+  const waited = new Set([...waits.values()].flat());
+  for (const [child, parent] of spawnedBy) {
+    if (waited.has(child)) continue;
+    links.set(parent, [...(links.get(parent) ?? []), child]);
+    subs.add(child);
+  }
+  return {links, subs};
+}
+
+/** 行の段を、待ち先(と起動された行)の関係から待ちの段を導いたうえで決める。 */
 export function effectiveTiers(
   rows: readonly AgentRow[],
   waits: ReadonlyMap<string, readonly string[]>,
@@ -187,7 +211,9 @@ function compareKeys(a: [number, number, number, string], b: [number, number, nu
 /** 一覧を組に分けて並べる。 */
 export function arrange(input: ArrangeInput): Arranged {
   const {rows, holds, waits, lastAttached, waitSince, sups} = input;
-  const {tiers, reasons} = effectiveTiers(rows, waits);
+  // 段と入れ子は起動された行を含めて決める。`↳ done` は利用者が結んだ待ち先だけで決める。
+  const {links, subs} = withSpawned(waits, input.spawnedBy);
+  const {tiers, reasons} = effectiveTiers(rows, links);
   const rowBySid = new Map(rows.map(r => [r.sessionId, r]));
   const visible = (sid: string) => tiers.has(sid);
 
@@ -210,7 +236,7 @@ export function arrange(input: ArrangeInput): Arranged {
 
   // 待ち元(見えているもの)
   const waiterOf = new Map<string, string>();
-  for (const [waiter, targets] of waits) {
+  for (const [waiter, targets] of links) {
     if (!visible(waiter)) continue;
     for (const t of targets) if (visible(t)) waiterOf.set(t, waiter);
   }
@@ -221,7 +247,7 @@ export function arrange(input: ArrangeInput): Arranged {
   };
 
   const childrenOf = (sid: string): string[] =>
-    (waits.get(sid) ?? [])
+    (links.get(sid) ?? [])
       .filter(t => visible(t) && waiterOf.get(t) === sid)
       .sort((a, b) => compareKeys(keyOf(a), keyOf(b)));
 
@@ -247,6 +273,7 @@ export function arrange(input: ArrangeInput): Arranged {
         ctx: sup?.ctx,
         depth,
         lastChain,
+        sub: subs.has(sid) && depth > 0,
         midHold,
         holdReason: holds.get(sid) || undefined,
       };

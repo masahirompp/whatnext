@@ -9,7 +9,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 ## 技術と依存
 
 - Node で作る。描画とキー入力は自前で行い、Ink は使わない（「描画とキー入力」）。
-- 本体が依存するコマンドは `claude`、`git`、`tmux` だけで（tmux は作業台のために必須。専用のサーバで使い、利用者の設定には触れない）、URL やエディタを開くときに OS の `open` を、起動したセッションのフックが値を送るときに `curl` を、作業台で動いているもののコマンド行を引くときに `ps` を使う（[ADR-0008](adr/0008-dependencies-and-contact-points-with-tmux.md)）。任意の依存として、作業ディレクトリの候補を増やすためだけに `ghq` を、行に PR を出し、その PR を開くためだけに `gh` を、あれば使う。
+- 本体が依存するコマンドは `claude`、`git`、`tmux` だけで（tmux は作業台のために必須。専用のサーバで使い、利用者の設定には触れない）、URL やエディタを開くときに OS の `open` を、起動したセッションのフックが値を送るときに `curl` を、作業台で動いているもののコマンド行を引くときと、起動された行の起動元を引くときに `ps` を使う（[ADR-0008](adr/0008-dependencies-and-contact-points-with-tmux.md)）。任意の依存として、作業ディレクトリの候補を増やすためだけに `ghq` を、行に PR を出し、その PR を開くためだけに `gh` を、あれば使う。
 - 段を決める状態は `claude agents --json --all` からだけ読む（[ADR-0001](adr/0001-read-state-only-from-agents-json.md)）。アカウントの Usage はセッションの状態ではないので、別に `claude -p "/usage"` から読む（[PRODUCT.md](PRODUCT.md)「Usage の表示」を参照）。
 - whatnext が起動したセッションからは、フックのイベントと OTel も受ける（「フックの受信」「OTel の受信」と [ADR-0009](adr/0009-receive-hooks-and-otel-from-launched-sessions.md) を参照）。フックで取れない値は、Claude Code がセッションごとに残す会話記録から補う（「会話記録の読み取り」と [ADR-0011](adr/0011-fill-in-from-transcripts-when-hooks-are-missing.md) を参照）。フック、OTel、会話記録の値は、行の一言、列の表示、待機時間の推定にだけ使い、段の判定には使わない。どの機能をどの入力から取るかは「機能ごとの入力の出どころ」にまとめる。
 
@@ -24,8 +24,8 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 
 | モジュール | 受け取るもの | 返すもの、行うこと |
 |---|---|---|
-| 段と並び | `--json` の行、保留と待ち先の関係、補う値（一言、待機時間の起点、CTX）、今の時刻 | 段の判定と、組（Last attached、Up next、On hold、待ち先の入れ子）に分けた行の並び。純粋な関数 |
-| 入力 | `claude agents --json --all`、フックと OTel の受け口、会話記録、`claude -p "/usage"`、`git` と `gh` | 1回の更新の観測をまとめたもの（行、補う値、場所、Usage）。取得の失敗は観測の一部として返す |
+| 段と並び | `--json` の行、保留と待ち先の関係、起動された行と起動元の関係、補う値（一言、待機時間の起点、CTX）、今の時刻 | 段の判定と、組（Last attached、Up next、On hold、待ち先の入れ子）に分けた行の並び。純粋な関数 |
+| 入力 | `claude agents --json --all`、フックと OTel の受け口、会話記録、`claude -p "/usage"`、`git` と `gh`、`ps` のプロセス表 | 1回の更新の観測をまとめたもの（行、補う値、場所、Usage、起動元）。取得の失敗は観測の一部として返す |
 | 状態のファイル | 保留と待ち先の関係 | `state.json` の読み書き（「保留と待ち先の関係の保存」） |
 | 画面の組み立て | 並んだ行、カーソル、スクロールの位置、端末の幅と高さ、下に出す知らせ | 画面に書く文字列（幅の計算、切り詰め、色）。純粋な関数 |
 | 操作 | キー入力、tmux からの知らせ、更新の結果、時刻 | 一覧の状態の遷移（カーソルの追従、メニュー、入力欄、`Ctrl+X` の2回押し、確認）と、外部に頼む作業（attach、起動、停止、削除、作業台の操作）の指示 |
@@ -92,9 +92,17 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 一言：それ以外 | | 主：`Stop` | 補：assistant の本文 | |
 | attach した画面の概要の行 | 名前 | きっかけ：`UserPromptSubmit` | 主：最初の指示の行 | 表示：tmux のオプション |
 | `⚙` 作業台で動いているもの | | | | 主：tmux、`ps` |
+| 起動された行の入れ子、`(sub)` | `pid` | | | 主：`ps` |
 | attach している間の ← の検知 | | | | 主：tmux の `pane_title` |
 | `n` の信頼の確認が済んだか | | | | 主：`~/.claude.json`（読むだけ） |
 | Usage | | | | 主：`claude -p "/usage"` |
+
+## 起動元の引き方
+
+- 更新のたびに `ps -A -o pid=,ppid=` を1回動かしてプロセス表を読み、`pid` を持つ各行について親をたどる。最初に当たった、一覧の別の行の `pid` を起動元とする（`src/input/procs.ts`）。表が読めなければ空として扱い、起動された行はトップレベルに並ぶ。
+- 起動元の関係は、段と並びの中で待ち先の関係に辺として足し、待ちの段と入れ子を同じ規則で導く。`↳ <名前> done` は、利用者が結んだ待ち先だけで決める。利用者が待ち先に結んだ行には、辺を足さない。
+- 段の判定には使わない。`--json` の値で決めた段の上に、待ち先と同じく関係から待ちの段を導くだけなので、[ADR-0001](adr/0001-read-state-only-from-agents-json.md) の「状態は `--json` からだけ読む」は変わらない。
+- stdio の MCP サーバは起動元の `claude` の子プロセスなので、祖先をたどれば拾える（[claude-code-behavior.md](claude-code-behavior.md)「起動された `claude -p` のプロセスの祖先」）。HTTP で待ち受ける MCP サーバや、常駐のデーモンを経由する起動は、祖先に起動元が出ないので拾えない。
 
 ## 待機時間の取り方
 
@@ -282,6 +290,8 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 58a | 実機の通し | `ghostty.test.ts` |
 | 59 | 画面の通し | `workbench.test.ts` |
 | 60 | 画面の通し | `workbench.test.ts` |
+| 61、62 | 単体、画面の通し | `ladder.test.ts`、`input.test.ts`、`ops.test.ts` |
+| 63 | 画面の通し | `ops.test.ts` |
 | 完了条件2(概要の行) | 実機の通し | `real.test.ts` |
 
 画面の通しは、外側の tmux のセッションを端末の代わりにし、偽の claude(`test/e2e/fake/claude`)と偽の `open` を `PATH` の前に置く。偽の claude は状態を一時ディレクトリの `agents.json` に持ち、呼ばれたコマンドを `calls.log` に書く。実機の通しは `/tmp/whatnext-real`(git でない。初回に対話モードの claude で信頼の確認を済ませる)で haiku のセッションを起動し、テストのあとにそのディレクトリのセッションだけを `claude stop` と `claude rm` で消す。Ghostty の通しは、AppleScript で新しいウィンドウを開き、`ctrl+q` の組み合わせだけを Ghostty の `send key` で送る(修飾キーのない文字は `send key` では届かず、`input text` は貼り付けとして届くため、一覧への文字キーは tmux の `send-keys` で一覧のペインに送る)。

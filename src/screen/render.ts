@@ -17,6 +17,8 @@ export interface ScreenRow {
   key: string;
   name: string;
   tty: boolean;
+  /** 起動された行。`(tty)` の代わりに `(sub)` を添える。 */
+  sub?: boolean;
   midHold: boolean;
   depth: number;
   lastChain: boolean[];
@@ -139,7 +141,8 @@ function notePrefix(r: ScreenRow): string {
 
 function sessionLabel(r: ScreenRow): string {
   let s = treePrefix(r) + r.name;
-  if (r.tty) s += ' (tty)';
+  if (r.sub) s += ' (sub)';
+  else if (r.tty) s += ' (tty)';
   if (r.midHold) s += ' (on hold)';
   return s;
 }

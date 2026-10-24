@@ -4,6 +4,7 @@ import {basename} from 'node:path';
 import type {UsageFrame} from '../input/claude.js';
 import {stripControl} from '../input/exec.js';
 import type {Place, PullRequest} from '../input/place.js';
+import {spawners} from '../input/procs.js';
 import {
   type Arranged,
   arrange,
@@ -104,6 +105,8 @@ export class App {
   // 利用者の注釈
   private holds: Map<string, string>;
   private waits: Map<string, string[]>;
+  /** 起動された行から起動元への表。更新のたびにプロセス表から導き直す。 */
+  private spawnedBy = new Map<string, string>();
 
   // 画面と操作の状態
   private cursor: string | null = null;
@@ -179,10 +182,15 @@ export class App {
       } else {
         this.error = undefined;
         const rows = dedupe(res.rows);
-        const [observed, running] = await Promise.all([this.p.observe(rows), this.p.tmux.running()]);
+        const [observed, running, parents] = await Promise.all([
+          this.p.observe(rows),
+          this.p.tmux.running(),
+          this.p.parents(),
+        ]);
         await this.loadPlaces(rows);
         this.observed = observed;
         this.running = running;
+        this.spawnedBy = spawners(rows, parents);
         this.rows = rows;
         this.prune(rows);
         this.resolvePendingLinks(rows);
@@ -283,6 +291,7 @@ export class App {
       rows: this.rows,
       holds: this.holds,
       waits: this.waits,
+      spawnedBy: this.spawnedBy,
       lastAttached: this.lastAttached,
       waitSince: this.waitMemo.entries.size ? this.sinceMap() : new Map(),
       sups,
@@ -294,6 +303,7 @@ export class App {
         rows: this.rows,
         holds: this.holds,
         waits: this.waits,
+        spawnedBy: this.spawnedBy,
         lastAttached: this.lastAttached,
         waitSince: this.sinceMap(),
         sups,
@@ -457,6 +467,7 @@ export class App {
       key: e.sid,
       name: e.name,
       tty: e.row.kind === 'interactive',
+      sub: e.sub,
       midHold: e.midHold,
       depth: e.depth,
       lastChain: e.lastChain,
@@ -1306,8 +1317,9 @@ export class App {
   ): {label: string; detail?: string; marked?: boolean; sid?: string}[] {
     const anc = this.ancestors(waiter);
     const mine = this.waits.get(waiter) ?? [];
+    // 起動された行は、すぐに終わって消えるので並べない。
     const cands = this.entries().filter(e => {
-      if (e.sid === waiter || anc.has(e.sid)) return false;
+      if (e.sid === waiter || anc.has(e.sid) || e.sub) return false;
       const w = this.waiterOf(e.sid);
       return w === undefined || w === waiter;
     });
@@ -1329,6 +1341,11 @@ export class App {
 
   private openWait(waiter: string): void {
     if (this.isDeleting(waiter)) return;
+    // 起動された行に待ち先を結ぶと、起動元を待ち先に選べて関係が一周しうる。すぐに消える行なので結ばせない。
+    if (this.entries().some(e => e.sid === waiter && e.sub)) {
+      this.flash(`${this.nameOf(waiter)} was started by another session. It cannot wait for sessions.`);
+      return;
+    }
     this.mode = {kind: 'wait', waiter, filter: '', sel: 0};
   }
 
@@ -1539,7 +1556,17 @@ export class App {
   }
 
   private async deleteFlow(sid: string): Promise<void> {
-    const targets = this.arranged ? subtreeOf(this.arranged, sid).slice(1) : [];
+    // 起動された行は削除できない(`id` がない)ので、巻き込む対象に数えない。
+    const subs = new Set(
+      this.entries()
+        .filter(e => e.sub)
+        .map(e => e.sid),
+    );
+    const targets = this.arranged
+      ? subtreeOf(this.arranged, sid)
+          .slice(1)
+          .filter(t => !subs.has(t))
+      : [];
     let cascade = false;
     if (targets.length > 0) {
       const names = targets.map(t => this.nameOf(t)).join(', ');
