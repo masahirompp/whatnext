@@ -32,15 +32,27 @@ export function statePath(env: NodeJS.ProcessEnv, socket: string): string {
 
 /** 読む。版 1 は保留と待ち先の関係だけを読む。ほかの版、壊れている、ないときは空として読む。 */
 export async function loadState(path: string): Promise<State> {
+  return (await readState(path)).state;
+}
+
+/** 読む。`unreadable` は、ファイルはあるが読めなかった(壊れている、知らない版)ことを示す。 */
+export async function readState(path: string): Promise<{state: State; unreadable: boolean}> {
   const empty: State = {holds: new Map(), waits: new Map(), view: 'ladder', seen: new Map()};
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch {
+    return {state: empty, unreadable: false};
+  }
   let data: unknown;
   try {
-    data = JSON.parse(await readFile(path, 'utf8'));
+    data = JSON.parse(text);
   } catch {
-    return empty;
+    return {state: empty, unreadable: true};
   }
   const d = data as {version?: unknown; holds?: unknown; waits?: unknown; view?: unknown; seen?: unknown};
-  if (!d || typeof d !== 'object' || (d.version !== 1 && d.version !== VERSION)) return empty;
+  if (!d || typeof d !== 'object' || (d.version !== 1 && d.version !== VERSION))
+    return {state: empty, unreadable: true};
   const holds = new Map<string, string>();
   if (d.holds && typeof d.holds === 'object')
     for (const [k, v] of Object.entries(d.holds as Record<string, unknown>)) if (typeof v === 'string') holds.set(k, v);
@@ -51,7 +63,7 @@ export async function loadState(path: string): Promise<State> {
         const ts = v.filter((x): x is string => typeof x === 'string');
         if (ts.length > 0) waits.set(k, ts);
       }
-  if (d.version === 1) return {...empty, holds, waits};
+  if (d.version === 1) return {state: {...empty, holds, waits}, unreadable: false};
   const view: View = d.view === 'repo' ? 'repo' : 'ladder';
   const seen = new Map<string, Seen>();
   if (d.seen && typeof d.seen === 'object')
@@ -60,7 +72,7 @@ export async function loadState(path: string): Promise<State> {
       if (!e || typeof e.first !== 'number') continue;
       seen.set(k, typeof e.attached === 'number' ? {first: e.first, attached: e.attached} : {first: e.first});
     }
-  return {holds, waits, view, seen};
+  return {state: {holds, waits, view, seen}, unreadable: false};
 }
 
 export function serialize(r: State): string {
@@ -76,16 +88,23 @@ export function serialize(r: State): string {
   return `${JSON.stringify({version: VERSION, holds, waits, view: r.view, seen}, null, 2)}\n`;
 }
 
-/** 前に書いたものと違うときだけ、一時ファイルに書いてから置き換える。書けなくても例外を投げない。 */
+/**
+ * 前に書いたものと違うときだけ、一時ファイルに書いてから置き換える。書けなくても例外を投げない。
+ * 読めなかったファイル(`keepUnreadable`)は、利用者が保留、待ち先、ビューを変えるまで置き換えない。
+ * 時刻だけで置き換えると、新しい版のファイルや壊れたファイルにあった保留が、操作なしに消える。
+ */
 export class StateWriter {
   private last: string | undefined;
   private writing: Promise<void> = Promise.resolve();
+  private keepUnreadable: boolean;
 
   constructor(
     private readonly path: string,
     initial?: State,
+    opts: {keepUnreadable?: boolean} = {},
   ) {
     if (initial) this.last = serialize(initial);
+    this.keepUnreadable = opts.keepUnreadable ?? false;
   }
 
   /** 書きかけの分が終わるのを待つ。 */
@@ -94,6 +113,10 @@ export class StateWriter {
   }
 
   save(r: State): Promise<void> {
+    if (this.keepUnreadable) {
+      if (r.holds.size === 0 && r.waits.size === 0 && r.view === 'ladder') return this.writing;
+      this.keepUnreadable = false;
+    }
     const text = serialize(r);
     if (text === this.last) return this.writing;
     this.last = text;

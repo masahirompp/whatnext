@@ -1055,7 +1055,8 @@ export class App {
     void this.fetchUsage();
     await this.refresh();
     // attach している間と、この更新で新しく見えたセッションより上に来るよう、更新のあとに書き直す。
-    if (sid && this.rowOf(sid)) {
+    // 更新を待つ間に別のセッションへ attach していたら、そちらの時刻を古い時刻で上書きしない。
+    if (sid && this.rowOf(sid) && !this.attached) {
       this.markAttached(sid);
       this.rearrange(this.p.now(), false);
       this.draw();

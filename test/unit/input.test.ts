@@ -7,7 +7,7 @@ import {HookStore, supplement} from '../../src/input/hooks.js';
 import {launchSettings} from '../../src/input/receiver.js';
 import {instructionText, leadLine, toolTarget} from '../../src/input/text.js';
 import {Transcripts} from '../../src/input/transcript.js';
-import {loadState, StateWriter, statePath} from '../../src/state/store.js';
+import {loadState, readState, StateWriter, statePath} from '../../src/state/store.js';
 
 describe('最後の応答の冒頭 (シナリオ 39)', () => {
   it('区切り線や箇条書きで始まっても、記号とバッククォートを除いた最初の中身の行', () => {
@@ -288,6 +288,22 @@ describe('状態のファイル', () => {
     expect((await loadState(path)).holds.size).toBe(0);
     await writeFile(path, JSON.stringify({version: 3, holds: {a: ''}}));
     expect((await loadState(path)).holds.size).toBe(0);
+  });
+
+  it('読めなかったファイルは、時刻が変わっただけでは置き換えず、保留を変えたら置き換える', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wn-st-'));
+    const path = statePath({XDG_STATE_HOME: dir}, 'wn-test');
+    await mkdir(join(dir, 'whatnext'), {recursive: true});
+    const newer = JSON.stringify({version: 3, holds: {a: 'later'}});
+    await writeFile(path, newer);
+    const {state, unreadable} = await readState(path);
+    expect(unreadable).toBe(true);
+    const w = new StateWriter(path, state, {keepUnreadable: unreadable});
+    await w.save({...state, seen: new Map([['a', {first: 1}]])});
+    expect(await readFile(path, 'utf8')).toBe(newer);
+    await w.save({...state, holds: new Map([['b', 'mine']]), seen: new Map([['a', {first: 1}]])});
+    expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({version: 2, holds: {b: 'mine'}});
+    expect((await readState(join(dir, 'none.json'))).unreadable).toBe(false);
   });
 
   it('版 1 のファイルは、保留と待ち先の関係を読み継ぎ、ビューはラダーのビューにする (ADR-0018)', async () => {
