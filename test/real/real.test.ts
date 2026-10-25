@@ -1,9 +1,18 @@
-// 実機の通し: 実物の claude(haiku)で確かめる(シナリオ 16、23、33、34、35、41、45、51、完了条件 2)。
+// 実機の通し: 実物の claude(haiku)で確かめる(シナリオ 16、23、33、34、35、41、45、51、67、完了条件 2)。
 // npm run test:real で流す。利用者の whatnext とそのセッションには触れない。
 
 import {spawn} from 'node:child_process';
 import {afterAll, afterEach, beforeAll, describe, expect, it} from 'vitest';
-import {cleanupSessions, launchOutside, PERM_PROMPT, RealHarness, sleep, testSessions, waitState} from './harness.js';
+import {
+  cleanupSessions,
+  launchOutside,
+  PERM_PROMPT,
+  RealHarness,
+  sleep,
+  testSessions,
+  WORKDIR,
+  waitState,
+} from './harness.js';
 
 let h: RealHarness;
 
@@ -161,6 +170,42 @@ describe('whatnext の外で起動したセッション', () => {
     await h.keys('t', 'C-x');
     await h.waitFor('t', `Ctrl+X ignored: wn-real-a-${tag} left the list and the selection moved.`);
     expect(testSessions().some(r => r.name === `wn-real-b-${tag}` && r.state === 'stopped')).toBe(false);
+  });
+});
+
+describe('ほかの行が起動した claude -p', () => {
+  it('67: 外で起動したセッションが Bash で起動した claude -p は、その行の下に (sub) で並ぶ', async () => {
+    h = new RealHarness();
+    const tag = Date.now().toString(36);
+    const {execFileSync} = await import('node:child_process');
+    // 起動元が子の claude -p を前面で待つので、起動元と子が同時に動いている間がある。
+    // 可変長のオプション(--allowedTools)のあとにプロンプトを置くと取り込まれるので、プロンプトは -p の直後に置かせる。
+    const inner = `claude -p 'Run sleep 45 with the Bash tool, then reply DONE.' --model haiku --allowedTools 'Bash(sleep:*)'`;
+    const out = execFileSync(
+      'claude',
+      [
+        '--bg',
+        '--model',
+        'haiku',
+        '--name',
+        `wn-real-spawner-${tag}`,
+        '--allowedTools',
+        'Bash(claude -p:*)',
+        '--',
+        `Use the Bash tool to run exactly this command and wait for it: ${inner}  Then reply with its output.`,
+      ],
+      {cwd: WORKDIR, encoding: 'utf8'},
+    );
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: 色を除く
+    const id = /backgrounded\s*·\s*([^\s·]+)/.exec(out.replace(/\x1b\[[0-9;]*m/g, ''))?.[1];
+    expect(id).toBeDefined();
+    h.open('t');
+    const s = await h.refreshUntil('t', /└ \S+ \(sub\) +Working/, 120000);
+    const lines = s.split('\n');
+    const i = lines.findIndex(l => l.includes(`wn-real-spawner-${tag}`));
+    expect(i).toBeGreaterThanOrEqual(0);
+    const j = lines.findIndex(l => /└ \S+ \(sub\) +Working/.test(l));
+    expect(j).toBeGreaterThan(i);
   });
 });
 

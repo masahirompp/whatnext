@@ -301,7 +301,8 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 64 | 単体 | `ladder.test.ts` |
 | 65 | 画面の通し、単体 | `repo.test.ts`、`ladder.test.ts` |
 | 66 | 画面の通し、単体 | `repo.test.ts`、`input.test.ts`（状態のファイル） |
-| 67、68 | 単体、画面の通し | `ladder.test.ts`、`input.test.ts`、`ops.test.ts` |
+| 67 | 単体、画面の通し、実機の通し | `ladder.test.ts`、`input.test.ts`、`ops.test.ts`、`real.test.ts` |
+| 68 | 単体、画面の通し | `ladder.test.ts`、`ops.test.ts` |
 | 69、70 | 画面の通し | `ops.test.ts` |
 | 完了条件2(概要の行) | 実機の通し | `real.test.ts` |
 
