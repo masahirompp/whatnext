@@ -447,6 +447,10 @@ describe('起動された行', () => {
       await h.keys('t', 'C-x', 'C-x');
       await h.waitGone('t', /parent +/);
       expect(h.screen('t')).not.toContain('Also delete');
+      // 起動元が消えても、動いている起動された行は止めず、トップレベルに (tty) で並ぶ。
+      await h.keys('t', 'r');
+      const after = await h.waitFor('t', /sub-review \(tty\)/);
+      expect(after).not.toContain('└ sub-review');
     } finally {
       pp.kill();
     }
@@ -469,6 +473,33 @@ describe('起動された行', () => {
       const s = await h.waitFor('t', /parent +Review/);
       expect(s).not.toContain('sub-review');
       expect(s).not.toContain('done');
+      expect(h.selected('t')).toMatch(/^> parent/);
+      // 移った直後の Ctrl+X は受け付けない(起動された行を消すつもりで押して、起動元を止めない)。
+      await h.keys('t', 'C-x');
+      await h.waitFor('t', 'Ctrl+X ignored: sub-review left the list and the selection moved.');
+      expect(h.calls()).not.toContain(`stop ${parent.id}`);
+    } finally {
+      pp.kill();
+    }
+  });
+
+  it('70: リポジトリのビューでも、選んでいた起動された行が消えるとカーソルは起動元に移る', async () => {
+    const pp = await processPair();
+    try {
+      h = new Harness();
+      const parent = h.row(1, {name: 'parent', pid: pp.parent, state: 'working', status: 'busy'});
+      const {id: _id, state: _state, ...child} = h.row(2, {name: 'sub-review', pid: pp.child, status: 'busy'});
+      const other = h.row(3, {name: 'zzz-other'});
+      h.setAgents([parent, {...child, kind: 'interactive'}, other]);
+      h.open('t');
+      await h.waitFor('t', 'sub-review');
+      await h.keys('t', 'g');
+      await h.waitFor('t', 'g ladder view');
+      await h.select('t', 'sub-review');
+      pp.kill();
+      h.setAgents([parent, other]);
+      await h.keys('t', 'r');
+      await h.waitGone('t', 'sub-review');
       expect(h.selected('t')).toMatch(/^> parent/);
     } finally {
       pp.kill();

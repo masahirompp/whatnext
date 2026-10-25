@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
   type ArrangeInput,
+  ancestorsOf,
   arrange,
   emptyDoneMemo,
   emptyWaitMemo,
@@ -458,6 +459,45 @@ describe('起動された行 (シナリオ 67、68)', () => {
     expect(during.doneMemo.waiting.has(W.sessionId)).toBe(true);
     const after = arrange(input([W, T], {waits, doneMemo: during.doneMemo}));
     expect(flatten(after).find(e => e.name === 'W')?.doneNames).toEqual(['T']);
+  });
+
+  it('保留の行は起動された行にならず、普通の行のまま並ぶ', () => {
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const r = arrange(
+      input([P, C], {holds: new Map([[C.sessionId, 'later']]), spawnedBy: new Map([[C.sessionId, P.sessionId]])}),
+    );
+    expect(r.subs.size).toBe(0);
+    expect(r.onHold.flatMap(g => g.entries.map(e => [e.name, e.depth, e.sub]))).toEqual([['C', 0, false]]);
+  });
+
+  it('組の位置は起動された行を数えずに決める(起動された行のほうが上の段でも)', () => {
+    const P = bg('P');
+    const C = tty('C', {status: 'waiting', waitingFor: 'permission prompt'});
+    const R = bg('R', {state: 'working', status: 'busy'});
+    const r = arrange(input([P, C, R], {spawnedBy: new Map([[C.sessionId, P.sessionId]])}));
+    expect(flatten(r).map(e => [e.name, e.status])).toEqual([
+      ['R', 'Working'],
+      ['P', 'Waiting'],
+      ['C', 'Permission'],
+    ]);
+    expect(r.upNext.find(g => g.rootSid === P.sessionId)?.positionSid).toBe(P.sessionId);
+  });
+
+  it('入れ子の祖先を近い順に根まで返す', () => {
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const G = tty('G');
+    const r = arrange(
+      input([P, C, G], {
+        spawnedBy: new Map([
+          [C.sessionId, P.sessionId],
+          [G.sessionId, C.sessionId],
+        ]),
+      }),
+    );
+    expect(ancestorsOf(r, G.sessionId)).toEqual([C.sessionId, P.sessionId]);
+    expect(ancestorsOf(r, P.sessionId)).toEqual([]);
   });
 
   it('リポジトリのビューでも起動元の組の中に (sub) で並び、別のリポジトリで動いていても起動元の区切りに出る', () => {

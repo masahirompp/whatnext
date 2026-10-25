@@ -167,18 +167,20 @@ export interface Arranged {
 
 /**
  * 待ち先の関係に、起動元から起動された行への辺を足す。
- * 利用者が結んだ関係を持つ行(自分の待ち先を持つ行、一覧に出ている待ち元に結ばれた行)には辺を足さず、普通の行として扱う。
+ * 利用者が注釈を付けた行(自分の待ち先を持つ行、一覧に出ている待ち元に結ばれた行、保留の行)には辺を足さず、普通の行として扱う。
  * こうすると、起動された行からたどれるのは起動された行だけになり(プロセスの木)、関係は一周しない。
- * 返す `spawned` は、起動元への辺を足した起動された行(起動元が一覧に出ていなければ、実際には入れ子にならない)。
+ * 起動された行では `f` も `h` も断るので、注釈を付けたあとに起動された行になると、その注釈を外せなくなることも防ぐ。
+ * 返す `linked` は、起動元への辺を足した行。起動元が一覧に出ていなければ、実際には入れ子にならない(入れ子で並ぶ行は `Arranged.subs`)。
  */
 export function linksWithSpawned(
   waits: ReadonlyMap<string, readonly string[]>,
+  holds: ReadonlyMap<string, string>,
   spawnedBy: ReadonlyMap<string, string>,
   shown: ReadonlySet<string>,
-): {links: Map<string, readonly string[]>; spawned: Set<string>} {
+): {links: Map<string, readonly string[]>; linked: Set<string>} {
   const links = new Map<string, readonly string[]>(waits);
-  const spawned = new Set<string>();
-  const bound = new Set<string>();
+  const linked = new Set<string>();
+  const bound = new Set<string>(holds.keys());
   for (const [waiter, targets] of waits) {
     if (targets.length > 0) bound.add(waiter);
     if (shown.has(waiter)) for (const t of targets) bound.add(t);
@@ -186,9 +188,9 @@ export function linksWithSpawned(
   for (const [child, parent] of spawnedBy) {
     if (bound.has(child)) continue;
     links.set(parent, [...(links.get(parent) ?? []), child]);
-    spawned.add(child);
+    linked.add(child);
   }
-  return {links, spawned};
+  return {links, linked};
 }
 
 /** 待ち先が「終わっていない」か。待ちの段と `↳ done` の記録の両方がこの述語で決まる。 */
@@ -209,15 +211,7 @@ function classifyAll(rows: readonly AgentRow[]): {own: Map<string, Tier>; reason
   return {own, reasons};
 }
 
-/** 行の段を、待ち先(と起動された行)の関係から待ちの段を導いたうえで決める。 */
-export function effectiveTiers(
-  rows: readonly AgentRow[],
-  waits: ReadonlyMap<string, readonly string[]>,
-): {tiers: Map<string, Tier>; reasons: Map<string, string>} {
-  const {own, reasons} = classifyAll(rows);
-  return {tiers: resolveTiers(own, waits), reasons};
-}
-
+/** 待ちの段を導く前の段に、待ち先(と起動された行)の関係から待ちの段を足す。 */
 function resolveTiers(
   raw: ReadonlyMap<string, Tier>,
   waits: ReadonlyMap<string, readonly string[]>,
@@ -264,7 +258,7 @@ export function arrange(input: ArrangeInput): Arranged {
   const {rows, holds, waits, lastAttached, waitSince, sups} = input;
   const {own: ownTier, reasons} = classifyAll(rows);
   // 段と入れ子は起動された行を含めて決める。
-  const {links, spawned} = linksWithSpawned(waits, input.spawnedBy, new Set(ownTier.keys()));
+  const {links, linked} = linksWithSpawned(waits, holds, input.spawnedBy, new Set(ownTier.keys()));
   const tiers = resolveTiers(ownTier, links);
   const rowBySid = new Map(rows.map(r => [r.sessionId, r]));
   const visible = (sid: string) => tiers.has(sid);
@@ -292,7 +286,7 @@ export function arrange(input: ArrangeInput): Arranged {
     for (const t of targets) if (visible(t)) waiterOf.set(t, waiter);
   }
   // 起動元の下に並ぶ起動された行(起動元が見えていないものは、トップレベルの普通の行になる)。
-  const subRows = new Set([...spawned].filter(sid => waiterOf.has(sid)));
+  const subRows = new Set([...linked].filter(sid => waiterOf.has(sid)));
 
   const keyOf = (sid: string) => {
     const row = rowBySid.get(sid) as AgentRow;
@@ -342,7 +336,9 @@ export function arrange(input: ArrangeInput): Arranged {
       const showDone = done.has(sid) && tier !== 'waiting' && targets.length > 0;
       if (showDone) entry.doneNames = targets.map(t => rowName(rowBySid.get(t) as AgentRow));
       entries.push(entry);
-      if (!repoView && (!midHold || rootHeld) && (position === null || cmp(sid, position) < 0)) position = sid;
+      // 起動された行は手を付けられない(attach も f も h も断る)ので、組の位置を決める行に数えない。
+      const candidate = !subRows.has(sid) && (!midHold || rootHeld);
+      if (!repoView && candidate && (position === null || cmp(sid, position) < 0)) position = sid;
       const kids = childrenOf(sid);
       kids.forEach((kid, i) => {
         walk(kid, depth + 1, [...lastChain, i === kids.length - 1]);
@@ -403,34 +399,41 @@ export function flatten(a: Arranged): Entry[] {
   return allGroups(a).flatMap(g => g.entries);
 }
 
-/** `sid` を含む組の行(待ち先の待ち先を含む)。 */
-export function subtreeOf(a: Arranged, sid: string): string[] {
+/** `sid` を含む組と、その中の位置。 */
+function locate(a: Arranged, sid: string): {entries: Entry[]; i: number} | null {
   for (const g of allGroups(a)) {
     const i = g.entries.findIndex(e => e.sid === sid);
-    if (i < 0) continue;
-    const depth = g.entries[i]?.depth ?? 0;
-    const out = [sid];
-    for (let j = i + 1; j < g.entries.length; j++) {
-      const e = g.entries[j] as Entry;
-      if (e.depth <= depth) break;
-      out.push(e.sid);
-    }
-    return out;
-  }
-  return [sid];
-}
-
-/** 入れ子で `sid` のすぐ上に並ぶ行(待ち元か起動元)。根なら null。 */
-export function parentOf(a: Arranged, sid: string): string | null {
-  for (const g of allGroups(a)) {
-    const i = g.entries.findIndex(e => e.sid === sid);
-    if (i < 0) continue;
-    const depth = g.entries[i]?.depth ?? 0;
-    for (let j = i - 1; j >= 0; j--) {
-      const e = g.entries[j] as Entry;
-      if (e.depth < depth) return e.sid;
-    }
-    return null;
+    if (i >= 0) return {entries: g.entries, i};
   }
   return null;
+}
+
+/** `sid` を含む組の行(待ち先の待ち先を含む)。 */
+export function subtreeOf(a: Arranged, sid: string): string[] {
+  const at = locate(a, sid);
+  if (!at) return [sid];
+  const depth = at.entries[at.i]?.depth ?? 0;
+  const out = [sid];
+  for (let j = at.i + 1; j < at.entries.length; j++) {
+    const e = at.entries[j] as Entry;
+    if (e.depth <= depth) break;
+    out.push(e.sid);
+  }
+  return out;
+}
+
+/** 入れ子で `sid` の上に並ぶ行(待ち元か起動元)を、近い順に根まで。 */
+export function ancestorsOf(a: Arranged, sid: string): string[] {
+  const at = locate(a, sid);
+  if (!at) return [];
+  const out: string[] = [];
+  let depth = at.entries[at.i]?.depth ?? 0;
+  for (let j = at.i - 1; j >= 0 && depth > 0; j--) {
+    const e = at.entries[j] as Entry;
+    if (e.depth < depth) {
+      out.push(e.sid);
+      depth = e.depth;
+    }
+  }
+  return out;
 }

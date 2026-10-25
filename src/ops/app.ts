@@ -7,13 +7,13 @@ import type {Place, PullRequest} from '../input/place.js';
 import {spawners} from '../input/procs.js';
 import {
   type Arranged,
+  ancestorsOf,
   arrange,
   type DoneMemo,
   type Entry,
   emptyDoneMemo,
   emptyWaitMemo,
   flatten,
-  parentOf,
   type Supplement,
   subtreeOf,
   trackWaits,
@@ -364,12 +364,14 @@ export class App {
       this.rearrange(now, false);
       return;
     }
-    // 選んでいた起動された行が消えたときは、その起動元に移る(並べ直す前の組から引いておく)。
-    const spawner = this.cursor && this.arranged?.subs.has(this.cursor) ? parentOf(this.arranged, this.cursor) : null;
+    // 選んでいた起動された行が消えたときは、その起動元に移る(並べ直す前の組から、近い順に祖先を引いておく)。
+    // 2段の入れ子で起動元も同じ回に消えたときは、残っている大本の起動元に移る。
+    const spawners =
+      this.cursor && this.arranged && this.isSub(this.cursor) ? ancestorsOf(this.arranged, this.cursor) : [];
     this.arranged = a;
     for (const e of flatten(a)) this.shownNames.set(e.sid, e.name);
     if (this.lastAttached && !visible.has(this.lastAttached)) this.lastAttached = null;
-    this.fixCursor(spawner);
+    this.fixCursor(spawners);
     this.order = this.sectionOrder();
     this.save();
   }
@@ -435,13 +437,14 @@ export class App {
     return this.arranged?.subs.has(sid) ?? false;
   }
 
-  private fixCursor(spawner: string | null = null): void {
+  private fixCursor(spawners: readonly string[] = []): void {
     const list = this.entries();
     if (this.cursor && list.some(e => e.sid === this.cursor)) return;
     const prev = this.cursor;
-    // 消えたのが起動された行なら、どちらのビューでも起動元に移る。
+    // 消えたのが起動された行なら、どちらのビューでも、一覧に残っている一番近い起動元に移る。
     // 移った直後の Ctrl+X の守り(moved)は、起動元に移るときも同じに立てる。起動された行を消すつもりの Ctrl+X で起動元を消さない。
-    const top = spawner && list.some(e => e.sid === spawner) ? spawner : this.fallbackCursor(prev);
+    const spawner = spawners.find(s => list.some(e => e.sid === s));
+    const top = spawner ?? this.fallbackCursor(prev);
     if (prev && top !== prev) {
       const name = this.shownNames.get(prev) ?? this.nameOf(prev);
       if (top) this.moved = {name, until: this.p.now() + MOVED_MS};
