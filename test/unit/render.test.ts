@@ -1,4 +1,5 @@
 import {describe, expect, it} from 'vitest';
+import {stripAnsi, width} from '../../lib/text/text.js';
 import {
   formatCtx,
   formatUsage,
@@ -8,7 +9,6 @@ import {
   type ScreenModel,
   type ScreenRow,
 } from '../../src/screen/render.js';
-import {stripAnsi, width} from '../../src/screen/text.js';
 
 function row(name: string, extra: Partial<ScreenRow> = {}): ScreenRow {
   return {

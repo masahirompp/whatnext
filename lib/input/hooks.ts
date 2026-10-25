@@ -128,20 +128,26 @@ export interface Supplied {
   ctx?: number;
 }
 
-const SLACK = 5000;
+/** 会話記録の指示の時刻を、フックの指示の時刻より前にどこまで認めるか(DESIGN.md「機能ごとの入力の出どころ」)。 */
+const SLACK = 2000;
 
 export function supplement(
   hook: HookFacts | undefined,
   tr: TranscriptFacts | undefined,
   ctx: number | undefined,
 ): Supplied {
-  const turn = Math.max(hook?.prompt?.at ?? -Infinity, tr?.prompt?.at ?? -Infinity);
-  const fresh = (at: number | undefined) => at !== undefined && at >= turn - SLACK;
-  const trCurrent = tr !== undefined && (turn === -Infinity || fresh(tr.prompt?.at));
+  const hp = hook?.prompt?.at;
+  const tp = tr?.prompt?.at;
+  // フックの値は今のターンの指示より後のものだけ。今のターンの始まりはフックの指示で、
+  // 会話記録にそれより新しい指示があれば(フックを受けていない指示)、そちらで引く。
+  const floor = Math.max(hp ?? -Infinity, tp === undefined ? -Infinity : tp - SLACK);
+  const fresh = (at: number | undefined) => at !== undefined && at >= floor;
+  // 会話記録の値は、その指示がフックの指示の2秒前以降のときだけ使う。
+  const trCurrent = tr !== undefined && (hp === undefined ? true : tp !== undefined && tp >= hp - SLACK);
   const out: Supplied = {};
   if (ctx !== undefined) out.ctx = ctx;
 
-  if (hook?.prompt && fresh(hook.prompt.at)) out.prompt = hook.prompt;
+  if (hook?.prompt && (tp === undefined || hook.prompt.at >= tp - SLACK)) out.prompt = hook.prompt;
   else if (tr?.prompt) out.prompt = tr.prompt;
 
   const hookHalt = [hook?.stop?.at, hook?.failure?.at, hook?.permission?.at, hook?.question?.at].filter(fresh);

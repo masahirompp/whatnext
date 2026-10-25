@@ -80,7 +80,7 @@ export function classify(row: AgentRow): Classified {
   }
 }
 
-/** 同じ `sessionId` の行を1行にまとめる。`pid` のある行を採り、どちらもなければ `background` を採る。 */
+/** 同じ `sessionId` の行を1行にまとめる。`pid` のある行を採り、どちらもなければ、またはどちらもあれば `background` を採る。 */
 export function dedupe(rows: readonly AgentRow[]): AgentRow[] {
   const bySid = new Map<string, AgentRow>();
   for (const row of rows) {
@@ -94,8 +94,7 @@ function prefer(a: AgentRow, b: AgentRow): boolean {
   const aLive = a.pid !== undefined;
   const bLive = b.pid !== undefined;
   if (aLive !== bLive) return aLive;
-  if (!aLive) return a.kind === 'background' && b.kind !== 'background';
-  return false;
+  return a.kind === 'background' && b.kind !== 'background';
 }
 
 /** 行の名前。`name` がなければ `id`、それもなければ `sessionId` の先頭。 */

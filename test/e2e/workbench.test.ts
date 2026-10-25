@@ -175,7 +175,7 @@ describe('作業台', () => {
     await h.waitFor('wb2', /workbench: alpha {2}0:/);
     await h.keys('t2', 'q');
     await h.waitFor('wb2', /\[exit 0\]/);
-    const r = spawnSync('node', [join(ROOT, 'dist', 'cli.js'), 'workbench'], {
+    const r = spawnSync('node', [join(ROOT, 'dist', 'src', 'cli.js'), 'workbench'], {
       encoding: 'utf8',
       env: {...process.env, ...h.env()},
     });
@@ -295,7 +295,7 @@ describe('作業台', () => {
 describe('tmux がない環境', () => {
   it('29: tmux がない環境で起動すると、英語で示して終了する', () => {
     h = new Harness();
-    const r = spawnSync('node', [join(ROOT, 'dist', 'cli.js')], {
+    const r = spawnSync('node', [join(ROOT, 'dist', 'src', 'cli.js')], {
       encoding: 'utf8',
       env: {...h.env(), PATH: `${process.execPath.replace(/\/node$/, '')}:/usr/bin:/bin`},
     });

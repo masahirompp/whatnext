@@ -943,7 +943,7 @@ M1 を1週間使ったあと、利用者本人が定性的に判断する。
 
 **結果（サイクル5）**：5項目とも、満たせないものは見つからなかった。Ink の描画、キー入力、貼り付けと作業台の popup は、利用者がふだんの端末でざっと触って違和感がなかった。kitty キーボードでしか区別できない修飾キー（Shift+Enter など）と複数行の貼り付けは、個別には試していない。困ったら capture する。
 
-**言語を替える案**：言語を替えたい動機は、ほぼ明け渡しにある。この構成が成り立ったので、動機はほぼ消えた。Python（`termios`、Textual の `App.suspend()`）には tmux に代わる成熟した部品がなく（pyte は保守が止まり、ghostty-textual は v0.0.4）、配布と起動でも Node より不利である。Rust（crossterm、alacritty_terminal、portable-pty、tui-term）は単一のバイナリで起動も速いが、作り直す費用が大きい。どの言語でも、作業台を whatnext より長生きさせるには常駐するサーバが要る。この構成が破綻したとき、または whatnext の中で claude の画面を直接描く要件が出たときに再検討し、Rust（ratatui と alacritty_terminal）を第一候補として比べる。`lib/` に最初のモジュールを昇格させる前に判断する。
+**言語を替える案**：言語を替えたい動機は、ほぼ明け渡しにある。この構成が成り立ったので、動機はほぼ消えた。Python（`termios`、Textual の `App.suspend()`）には tmux に代わる成熟した部品がなく（pyte は保守が止まり、ghostty-textual は v0.0.4）、配布と起動でも Node より不利である。Rust（crossterm、alacritty_terminal、portable-pty、tui-term）は単一のバイナリで起動も速いが、作り直す費用が大きい。どの言語でも、作業台を whatnext より長生きさせるには常駐するサーバが要る。この構成が破綻したとき、または whatnext の中で claude の画面を直接描く要件が出たときに再検討し、Rust（ratatui と alacritty_terminal）を第一候補として比べる。`lib/` に最初のモジュールを昇格させる前に判断することにしていた。サイクル8の cycle-end で、どちらの条件も起きていないとして Node のまま昇格した（[ADR-0021](adr/0021-promote-leaf-modules-to-lib.md)）。
 
 ### ラダーのビューをやめた理由（サイクル8の終わり）
 

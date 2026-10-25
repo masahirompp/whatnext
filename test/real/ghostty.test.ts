@@ -92,7 +92,7 @@ describe('Ghostty の分割', () => {
       .filter(([k]) => k.startsWith('WHATNEXT_') || k === 'XDG_STATE_HOME')
       .map(([k, v]) => `${k}='${v}'`)
       .join(' ');
-    windowId = openWindow(` cd ${WORKDIR} && env ${env} node ${join(ROOT, 'dist', 'cli.js')}`, true);
+    windowId = openWindow(` cd ${WORKDIR} && env ${env} node ${join(ROOT, 'dist', 'src', 'cli.js')}`, true);
     expect(terminalNames()).toHaveLength(2);
     // 一覧が出るまで待ち、自分のセッションの行を選んで attach する
     for (let i = 0; i < 60 && !h.tmux('capture-pane', '-p', '-t', '=list:').includes(name); i++) await sleep(500);
@@ -140,7 +140,7 @@ describe('Ghostty の分割', () => {
       .filter(([k]) => k.startsWith('WHATNEXT_') || k === 'XDG_STATE_HOME')
       .map(([k, v]) => `${k}='${v}'`)
       .join(' ');
-    windowId = openWindow(` cd ${WORKDIR} && env ${env} node ${join(ROOT, 'dist', 'cli.js')}`, false);
+    windowId = openWindow(` cd ${WORKDIR} && env ${env} node ${join(ROOT, 'dist', 'src', 'cli.js')}`, false);
     for (let i = 0; i < 60 && !h.tmux('capture-pane', '-p', '-t', '=list:').includes(name); i++) await sleep(500);
     for (let i = 0; i < 40 && !/^> .*wn-real-gw/m.test(h.tmux('capture-pane', '-p', '-t', '=list:')); i++) {
       h.tmux('send-keys', '-t', '=list:', 'Down');

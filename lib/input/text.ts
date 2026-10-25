@@ -55,7 +55,7 @@ export function firstLine(text: string): string | undefined {
   return undefined;
 }
 
-/** 道具と対象(`Bash: <コマンド>`、`Edit: <ファイル>`)。 */
+/** 道具と対象(`Bash: <コマンド>`、`Edit: <ファイル>`)。決めた項目がなければ入力の最初の文字列、それもなければ道具の名前だけ。 */
 export function toolTarget(name: string, input: unknown): string {
   const o = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const pick = (...keys: string[]) => {
@@ -77,7 +77,9 @@ export function toolTarget(name: string, input: unknown): string {
       'skill',
       'description',
       'prompt',
-    ) ?? '';
+    ) ??
+    Object.values(o).find((v): v is string => typeof v === 'string' && v !== '') ??
+    '';
   const one = firstLine(target) ?? '';
   return one ? `${name}: ${one}` : name;
 }

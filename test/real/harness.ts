@@ -8,7 +8,7 @@ import {homedir} from 'node:os';
 import {join, resolve} from 'node:path';
 
 export const ROOT = resolve(import.meta.dirname, '..', '..');
-const CLI = join(ROOT, 'dist', 'cli.js');
+const CLI = join(ROOT, 'dist', 'src', 'cli.js');
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** テスト用の作業ディレクトリ(git でない)。信頼の確認は初回だけ行う。 */

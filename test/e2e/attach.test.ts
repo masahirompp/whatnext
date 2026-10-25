@@ -245,7 +245,7 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     cpSync(join(ROOT, 'node_modules'), join(other, 'node_modules'), {recursive: true, dereference: false});
     writeFileSync(join(other, 'package.json'), JSON.stringify({version: '9.9.9', type: 'module'}));
     // 別の場所の版で起動する
-    const cmd = `node ${join(other, 'dist', 'cli.js')}`;
+    const cmd = `node ${join(other, 'dist', 'src', 'cli.js')}`;
     h.open('t2', [], {env: {WN_CLI_OVERRIDE: cmd}});
     await h.waitFor('t2', 'alpha');
     h.closeTerminal('t2');

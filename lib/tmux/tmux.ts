@@ -1,7 +1,6 @@
 // tmux: 専用の tmux サーバの操作(DESIGN.md「一覧と作業台の仕組み」「作業台の画面の仕組み」)。
 
 import type {Run, RunResult} from '../input/exec.js';
-import {ATTACH_KEYS, attachKeysHelp} from './keys.js';
 
 export interface Client {
   tty: string;
@@ -74,11 +73,25 @@ export function scripts(socket: string): Record<string, string> {
 const callScript = (socket: string, name: string, args: string) =>
   `sh -c "$(tmux -L ${socket} show -gv ${name})" wn ${args} >/dev/null 2>&1; true`;
 
+/** attach している間のキー(`ctrl+q` のあと)。どのキーを置くかは使う側が決める。 */
+export interface AttachKeyBinding {
+  /** `ctrl+q` のあとに ctrl を押したまま押す文字。 */
+  letter: string;
+  /** 頼みごととして一覧に渡す名前。 */
+  action: string;
+  /** 文字だけの形(`ctrl+q <文字>`)も同じ動作にする。 */
+  bare: boolean;
+}
+
 export interface ServerConfigInput {
   socket: string;
   listPid: number;
   version: string;
   env: Record<string, string>;
+  /** attach している間のキー。 */
+  keys: readonly AttachKeyBinding[];
+  /** claude の画面のステータス行に出すキーの説明(`@wn_keys`)。 */
+  keysHelp: string;
 }
 
 /** 一覧が `source-file -` で流し込む設定。 */
@@ -93,6 +106,7 @@ export function serverConfig(c: ServerConfigInput): string {
     'set -s extended-keys-format csi-u',
     'set -s focus-events on',
     'set -s set-clipboard on',
+    'set -g allow-passthrough on',
     'set -g history-limit 20000',
     'set -g detach-on-destroy on',
     'set -g remain-on-exit on',
@@ -102,7 +116,7 @@ export function serverConfig(c: ServerConfigInput): string {
     'set -g default-terminal tmux-256color',
     `set -g @wn_pid ${c.listPid}`,
     `set -g @wn_version '${c.version}'`,
-    `set -g @wn_keys '${attachKeysHelp()}'`,
+    `set -g @wn_keys '${c.keysHelp}'`,
   ];
   for (const [k, v] of Object.entries(c.env)) lines.push(`set-environment -g ${k} '${v}'`);
 
@@ -113,7 +127,7 @@ export function serverConfig(c: ServerConfigInput): string {
     'unbind -q -T prefix j',
     'bind -n C-q switch-client -T wnq',
   );
-  for (const k of ATTACH_KEYS) {
+  for (const k of c.keys) {
     const cmd = `run-shell -b '${req(`key ${k.action} "#{session_name}" "#{client_tty}"`)}'`;
     lines.push(`bind -T wnq C-${k.letter} ${cmd}`, `bind -T prefix C-${k.letter} ${cmd}`);
     if (k.bare) lines.push(`bind -T wnq ${k.letter} ${cmd}`, `bind -T prefix ${k.letter} ${cmd}`);

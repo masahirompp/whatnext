@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "whatnext": "dist/cli.js"
+    "whatnext": "dist/src/cli.js"
   },
   "files": [
     "dist"
@@ -20,10 +20,10 @@
     "tui"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc && chmod +x dist/cli.js",
+    "build": "rm -rf dist && tsc && chmod +x dist/src/cli.js",
     "prepack": "npm run build",
-    "start": "node dist/cli.js",
-    "test": "vitest run --dir test/unit",
+    "start": "node dist/src/cli.js",
+    "test": "vitest run lib test/unit",
     "check": "biome check .",
     "format": "biome check --write .",
     "test:e2e": "npm run build && vitest run --dir test/e2e --no-file-parallelism --testTimeout 60000",

@@ -15,7 +15,7 @@ import {
 import {dirname, join, resolve} from 'node:path';
 
 export const ROOT = resolve(import.meta.dirname, '..', '..');
-const CLI = join(ROOT, 'dist', 'cli.js');
+const CLI = join(ROOT, 'dist', 'src', 'cli.js');
 const FAKE = join(import.meta.dirname, 'fake');
 
 const which = (cmd: string) => execFileSync('sh', ['-c', `command -v ${cmd}`], {encoding: 'utf8'}).trim();

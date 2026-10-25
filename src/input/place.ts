@@ -1,7 +1,7 @@
 // 入力: 場所(リポジトリ、ブランチ、worktree)を `git` で、PR を `gh` で取る。
 
 import {basename, dirname, relative} from 'node:path';
-import type {Run} from './exec.js';
+import type {Run} from '../../lib/input/exec.js';
 
 export interface Place {
   /** リポジトリ名(`repo/sub`)か、git でない場所のパスの末尾。 */

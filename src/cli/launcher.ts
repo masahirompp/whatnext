@@ -2,9 +2,9 @@
 
 import {spawnSync} from 'node:child_process';
 import {realpathSync} from 'node:fs';
-import {run} from '../input/exec.js';
-import {probe} from '../input/receiver.js';
-import {GUIDE, LIST, shq, Tmux} from '../tmux/tmux.js';
+import {run} from '../../lib/input/exec.js';
+import {probe} from '../../lib/input/receiver.js';
+import {GUIDE, LIST, shq, Tmux} from '../../lib/tmux/tmux.js';
 import type {Settings} from './args.js';
 
 function ttyName(): string | undefined {

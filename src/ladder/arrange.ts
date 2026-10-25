@@ -1,7 +1,7 @@
 // 段と並び: 待ちの段、待機時間、一言、組(Last attached、Up next、On hold、待ち先の入れ子)と、
 // リポジトリのビューの区切りを決める。純粋な関数。
 
-import {type AgentRow, classify, rowName, statusLabel, TIERS, type Tier} from './classify.js';
+import {type AgentRow, classify, rowName, statusLabel, TIERS, type Tier} from '../../lib/tier/classify.js';
 import {displayNames} from './paths.js';
 
 /** フック、会話記録、OTel から補う値。どれも今のターンのものだけを入れる。 */

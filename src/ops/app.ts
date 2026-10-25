@@ -1,10 +1,12 @@
 // 操作: 一覧の状態の遷移と、外部に頼む作業の指示(DESIGN.md「モジュールの境界」)。
 
 import {basename} from 'node:path';
-import type {UsageFrame} from '../input/claude.js';
-import {stripControl} from '../input/exec.js';
+import type {UsageFrame} from '../../lib/input/claude.js';
+import {stripControl} from '../../lib/input/exec.js';
+import {type AgentRow, classify, dedupe, rowName} from '../../lib/tier/classify.js';
+import {GUIDE, LIST} from '../../lib/tmux/tmux.js';
 import type {Place, PullRequest} from '../input/place.js';
-import {spawners} from '../input/procs.js';
+import {spawners} from '../input/spawners.js';
 import {
   type Arranged,
   ancestorsOf,
@@ -19,12 +21,10 @@ import {
   trackWaits,
   type WaitMemo,
 } from '../ladder/arrange.js';
-import {type AgentRow, classify, dedupe, rowName} from '../ladder/classify.js';
 import {displayNames} from '../ladder/paths.js';
 import {frame, type Panel, render, type ScreenModel, type ScreenRow} from '../screen/render.js';
 import type {Seen, State, View} from '../state/store.js';
 import type {KeyAction} from '../tmux/keys.js';
-import {GUIDE, LIST} from '../tmux/tmux.js';
 import {expandHome, filterIndexes, tildify} from './pick.js';
 import type {Observed, Ports} from './ports.js';
 

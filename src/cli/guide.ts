@@ -3,7 +3,7 @@
 
 import {execFileSync} from 'node:child_process';
 import {emitKeypressEvents} from 'node:readline';
-import {truncate} from '../screen/text.js';
+import {truncate} from '../../lib/text/text.js';
 
 const socket = process.env.WHATNEXT_TMUX_SOCKET || 'whatnext';
 const tmux = (...args: string[]): string => {

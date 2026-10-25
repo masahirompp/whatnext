@@ -2,7 +2,6 @@ import {describe, expect, it} from 'vitest';
 import {parseArgs} from '../../src/cli/args.js';
 import {displayNames} from '../../src/ladder/paths.js';
 import {expandHome, filterIndexes, tildify} from '../../src/ops/pick.js';
-import {foregroundCommand, parsePs} from '../../src/tmux/tmux.js';
 
 describe('作業ディレクトリの候補 (シナリオ 8)', () => {
   it('末尾のディレクトリ名で出し、同じ名前があれば区別できるところまで親を足す', () => {
@@ -29,22 +28,6 @@ describe('作業ディレクトリの候補 (シナリオ 8)', () => {
     expect(expandHome('~/x', '/home/u')).toBe('/home/u/x');
     expect(tildify('/home/u/x', '/home/u')).toBe('~/x');
     expect(tildify('/tmp', '/home/u')).toBe('/tmp');
-  });
-});
-
-describe('作業台で動いているもの (シナリオ 30)', () => {
-  const ps = [
-    '  100     1   100   300 -sh',
-    '  300   100   300   300 npm run e2e',
-    '  301   300   300   300 node e2e.js',
-    '  302   100   300   300 tee e2e.log',
-    '  400     1   400   400 -sh',
-  ].join('\n');
-
-  it('パイプでつないだコマンドは、シェルの子で前面のものを | でつなぐ。シェルだけなら出さない', () => {
-    const procs = parsePs(ps);
-    expect(foregroundCommand(procs, 100)).toBe('npm run e2e | tee e2e.log');
-    expect(foregroundCommand(procs, 400)).toBeUndefined();
   });
 });
 

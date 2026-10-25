@@ -167,7 +167,7 @@ describe('一覧', () => {
 describe('起動', () => {
   it('42: 知らないオプションを付けると使い方を示して終了コード 2', () => {
     const run = (...args: string[]) =>
-      spawnSync('node', [join(ROOT, 'dist', 'cli.js'), ...args], {
+      spawnSync('node', [join(ROOT, 'dist', 'src', 'cli.js'), ...args], {
         encoding: 'utf8',
         env: {...process.env, WHATNEXT_ROLE: ''},
       });
@@ -184,7 +184,7 @@ describe('起動', () => {
   });
 
   it('whatnext の中のシェルで起動すると断る', () => {
-    const r = spawnSync('node', [join(ROOT, 'dist', 'cli.js')], {
+    const r = spawnSync('node', [join(ROOT, 'dist', 'src', 'cli.js')], {
       encoding: 'utf8',
       env: {...process.env, WHATNEXT_ROLE: 'list', TMUX_PANE: ''},
     });

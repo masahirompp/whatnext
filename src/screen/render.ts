@@ -1,6 +1,6 @@
 // 画面の組み立て: 一覧の画面に書く行を組み立てる。純粋な関数。
 
-import {color, oneLine, padEnd, padStart, truncate, width} from './text.js';
+import {color, oneLine, padEnd, padStart, truncate, width} from '../../lib/text/text.js';
 
 export type TierName = 'permission' | 'question' | 'sandbox' | 'failed' | 'review' | 'working' | 'waiting' | 'stopped';
 

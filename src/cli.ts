@@ -13,7 +13,7 @@ const distDir = dirname(cliPath);
 
 function version(): string {
   try {
-    return (JSON.parse(readFileSync(join(distDir, '..', 'package.json'), 'utf8')) as {version: string}).version;
+    return (JSON.parse(readFileSync(join(distDir, '..', '..', 'package.json'), 'utf8')) as {version: string}).version;
   } catch {
     return '0.0.0';
   }

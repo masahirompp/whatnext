@@ -1,12 +1,12 @@
 // 操作: 外部に頼む作業の口。cli が本物を、テストが偽物を差し込む。
 
-import type {AgentsResult, UsageFrame} from '../input/claude.js';
-import type {RunResult} from '../input/exec.js';
-import type {Supplied} from '../input/hooks.js';
+import type {AgentsResult, UsageFrame} from '../../lib/input/claude.js';
+import type {RunResult} from '../../lib/input/exec.js';
+import type {Supplied} from '../../lib/input/hooks.js';
+import type {GhosttyResult} from '../../lib/tmux/ghostty.js';
+import type {Client} from '../../lib/tmux/tmux.js';
 import type {Place, PullRequest} from '../input/place.js';
 import type {State} from '../state/store.js';
-import type {GhosttyResult} from '../tmux/ghostty.js';
-import type {Client} from '../tmux/tmux.js';
 
 export interface Observed {
   sup: Supplied;
