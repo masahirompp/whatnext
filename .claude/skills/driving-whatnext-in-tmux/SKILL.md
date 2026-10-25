@@ -43,7 +43,7 @@ tmux kill-session -t wn                  # 片付け
 
 ## Ghostty で確かめるとき(AppleScript、Ghostty 1.3.1)
 
-実機の通し(`test/real/ghostty.test.ts`)で分かったこと(#211)。
+サイクル7〜8の実機の通し(`cycle-8` のタグの `test/real/ghostty.test.ts`)で分かったこと(#211)。
 
 - `send key` のキー名は camelCase(`arrowDown`、`enter`)。`down`、`arrow_down`、`ArrowDown` は `Unknown key name` で失敗する。
 - `send key "w"` のように修飾キーのない文字は、端末に何も届かない。`modifiers "control"` を付けた文字は届く。

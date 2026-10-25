@@ -319,7 +319,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 69、70 | 画面の通し |
 | 完了条件2(概要の行) | 実機の通し |
 
-画面の通しは、外側の tmux のセッションを端末の代わりにし、偽の claude(`test/e2e/fake/claude`)と偽の `open` を `PATH` の前に置く。偽の claude は状態を一時ディレクトリの `agents.json` に持ち、呼ばれたコマンドを `calls.log` に書く。実機の通しは `/tmp/whatnext-real`(git でない。初回に対話モードの claude で信頼の確認を済ませる)で haiku のセッションを起動し、テストのあとにそのディレクトリのセッションだけを `claude stop` と `claude rm` で消す。Ghostty の通しは、AppleScript で新しいウィンドウを開き、`ctrl+q` の組み合わせだけを Ghostty の `send key` で送る(修飾キーのない文字は `send key` では届かず、`input text` は貼り付けとして届くため、一覧への文字キーは tmux の `send-keys` で一覧のペインに送る)。
+サイクル8の画面の通しは、外側の tmux のセッションを端末の代わりにし、偽の claude(`test/e2e/fake/claude`。`git show cycle-8:test/e2e/fake/claude` で読める)と偽の `open` を `PATH` の前に置く。偽の claude は状態を一時ディレクトリの `agents.json` に持ち、呼ばれたコマンドを `calls.log` に書く。実機の通しは `/tmp/whatnext-real`(git でない。初回に対話モードの claude で信頼の確認を済ませる)で haiku のセッションを起動し、テストのあとにそのディレクトリのセッションだけを `claude stop` と `claude rm` で消す。Ghostty の通しは、AppleScript で新しいウィンドウを開き、`ctrl+q` の組み合わせだけを Ghostty の `send key` で送る(修飾キーのない文字は `send key` では届かず、`input text` は貼り付けとして届くため、一覧への文字キーは tmux の `send-keys` で一覧のペインに送る)。
 
 ### シナリオごとの作り方
 

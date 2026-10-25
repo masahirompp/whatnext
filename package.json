@@ -20,7 +20,7 @@
     "tui"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc && chmod +x dist/src/cli.js",
+    "build": "rm -rf dist && tsc && if [ -f dist/src/cli.js ]; then chmod +x dist/src/cli.js; fi",
     "prepack": "npm run build",
     "start": "node dist/src/cli.js",
     "test": "vitest run lib test/unit",
