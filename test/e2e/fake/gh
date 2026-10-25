@@ -1,0 +1,8 @@
+#!/bin/sh
+# 偽の gh。$FAKE_DIR/pr.json があれば、それを `gh pr list` の結果として返す。
+if [ "$1" = "pr" ] && [ -f "$FAKE_DIR/pr.json" ]; then
+  cat "$FAKE_DIR/pr.json"
+  exit 0
+fi
+echo '[]'
+exit 0
