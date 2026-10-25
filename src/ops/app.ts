@@ -721,6 +721,9 @@ export class App {
           const dir = this.resolveDir(m.text);
           if (typeof dir === 'string') this.mode = {k: 'model', sel: 0, dir, waitFor: m.waitFor, items: m.items};
           else m.error = dir.error;
+        } else if (key.ctrl && name === 'u') {
+          m.text = '';
+          m.error = undefined;
         } else if (name === 'backspace') {
           m.text = dropLast(m.text);
           m.error = undefined;
@@ -744,7 +747,8 @@ export class App {
         else if (name === 'return') {
           const model = m.text.trim();
           if (model) void this.startSession(m.dir, model, m.waitFor);
-        } else if (name === 'backspace') m.text = dropLast(m.text);
+        } else if (key.ctrl && name === 'u') m.text = '';
+        else if (name === 'backspace') m.text = dropLast(m.text);
         else if (printable) m.text += str;
         return;
       }

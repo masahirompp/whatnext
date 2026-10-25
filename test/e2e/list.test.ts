@@ -1,3 +1,6 @@
+import {execFileSync} from 'node:child_process';
+import {mkdirSync, writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
 import {bg, Harness, sid, sleep, tty} from './harness.js';
 
@@ -34,6 +37,43 @@ describe('一覧と並び', () => {
     await h.select('refactor auth');
     await h.keys('Up');
     expect(h.screen()).toMatch(/^> (fix-login|dialog)/m);
+  });
+
+  it('1・61: WHERE には既定でないブランチ、(wt)、PR、根より下のパスが出て、区切りと同じリポジトリ名は出ない', async () => {
+    h = new Harness();
+    const app = h.repo('app');
+    const wt = `${app}/.claude/worktrees/fix`;
+    execFileSync('git', ['-C', app, 'worktree', 'add', '-q', '-b', 'fix-login', wt]);
+    mkdirSync(join(app, 'pkg', 'web'), {recursive: true});
+    writeFileSync(join(h.dir, 'pr.json'), JSON.stringify([{number: 12, state: 'OPEN', isDraft: false}]));
+    h.agents([bg('a', {cwd: wt, name: 'fix-login'}), bg('b', {cwd: join(app, 'pkg', 'web'), name: 'web'})]);
+    await h.start();
+    await h.waitFor(/fix-login +Review +fix-login \(wt\) #12 \(open\)/);
+    expect(h.screen()).toMatch(/web +Review +pkg\/web +-/);
+  });
+
+  it('66: 終了して起動し直すと、区切りの中の並びも同じで、カーソルは最も新しく attach したセッション', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta'}), bg('c', {name: 'gamma'})]);
+    await h.start();
+    for (const n of ['beta', 'gamma', 'alpha', 'beta']) {
+      await h.select(n);
+      await h.keys('Enter');
+      await h.waitFor(/fake claude attached/);
+      await h.keys('C-q', 'C-l');
+      await h.waitFor(new RegExp(`^> ${n}`, 'm'));
+    }
+    await h.select('gamma');
+    const before = h
+      .lines()
+      .filter(l => /alpha|beta|gamma/.test(l))
+      .map(l => l.slice(2));
+    await h.keys('q');
+    await h.waitFor(/\[exit 0\]/);
+    await h.start();
+    const after = h.lines().filter(l => /alpha|beta|gamma/.test(l));
+    expect(after.map(l => l.slice(2))).toEqual(before);
+    expect(after[0]).toMatch(/^> beta/);
   });
 
   it('10: 行がないときはメッセージ、--json を読めないときはエラーを出し古い一覧を出さない', async () => {
