@@ -289,13 +289,15 @@ function panelLines(p: Panel, cols: number, maxItems: number): string[] {
 
 /**
  * リポジトリのビューの区切りの見出し。`── <名前> ───…` と、罫線を端末の幅いっぱいまで伸ばす。
- * 名前を切り詰めても、右の罫線を1本は残す(見出しの形を崩さない)。
+ * 名前は、後ろに空白と罫線1本が入るところまでで切り詰める。こうすると右の罫線が必ず1本は残る。
+ * `─` は曖昧幅の文字だが、幅1と数える。claude の画面も同じ罫線を幅いっぱいに引くので、
+ * 曖昧幅を全角で描く端末では、whatnext だけ避けても attach 先の画面が崩れる。
  */
 function sectionHeading(title: string, cols: number): string {
   const lead = '── ';
-  const name = truncate(oneLine(title), Math.max(1, cols - width(lead) - 2));
-  const rest = Math.max(1, cols - width(lead) - width(name) - 1);
-  return `${color.gray(lead)}${color.bold(name)}${color.gray(` ${'─'.repeat(rest)}`)}`;
+  const name = truncate(oneLine(title), cols - width(lead) - ' ─'.length);
+  const rule = '─'.repeat(cols - width(lead) - width(name) - ' '.length);
+  return `${color.gray(lead)}${color.bold(name)}${color.gray(` ${rule}`)}`;
 }
 
 /** 一覧の画面の行を組み立てる。返す行はどれも端末の幅に収まり、行数は端末の高さを超えない。 */
