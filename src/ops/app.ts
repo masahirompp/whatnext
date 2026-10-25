@@ -85,6 +85,7 @@ export class App {
   private refreshing = false;
   private refreshQueued = false;
   private manualPending = false;
+  private manualQueued = false;
   private refreshTimer?: NodeJS.Timeout;
   private armed?: {sid: string; until: number};
   private guard?: {until: number; name: string};
@@ -164,11 +165,13 @@ export class App {
   // ---- 更新 ----
 
   async refresh(opts: {initial?: boolean; manual?: boolean} = {}): Promise<void> {
-    if (opts.manual) this.manualPending = true;
     if (this.refreshing) {
+      // 更新の途中で押された更新キーの Refreshed. は、押したあとに始まる更新が終わってから出す
+      if (opts.manual) this.manualQueued = true;
       this.refreshQueued = true;
       return;
     }
+    if (opts.manual) this.manualPending = true;
     this.refreshing = true;
     this.draw();
     try {
@@ -188,7 +191,9 @@ export class App {
     }
     if (this.refreshQueued) {
       this.refreshQueued = false;
-      await this.refresh();
+      const manual = this.manualQueued;
+      this.manualQueued = false;
+      await this.refresh({manual});
     }
   }
 
@@ -199,8 +204,9 @@ export class App {
 
   private async apply(obs: Observation, initial: boolean): Promise<void> {
     if (!obs.ok) {
-      this.error = `Could not read claude agents --json: ${obs.error}`;
-      this.lay = {groups: [], order: [], parent: new Map(), tier: new Map()};
+      // 前の並びとカーソルは残す(次に読めた更新で、消えた行の移り先と Ctrl+X の守りに使う)。
+      // エラーを出している間は、行への操作を受け付けない
+      this.error = `Could not read claude agents --json: ${clean(obs.error)}`;
       return;
     }
     // 外への問い合わせを先に済ませ、そのあとで行と並びを同じ時点の組として差し替える(途中で描いても、
@@ -790,6 +796,8 @@ export class App {
       this.notices = [];
       if (name === 'escape') return;
     }
+    // --json を読めずエラーだけを出している間は、画面に出ていない行への操作を受け付けない
+    if (this.error && str !== 'q' && str !== 'r' && str !== 'n') return;
     const order = this.lay.order;
     const i = this.cursor ? order.indexOf(this.cursor) : -1;
     if (name === 'up') {
@@ -1052,7 +1060,7 @@ export class App {
   private async enter(row: ObsRow): Promise<void> {
     if (row.kind !== 'background' || !row.id) {
       this.notify(
-        `${row.name}${this.isSpawned(row.sid) ? ' (sub)' : ''} runs in ${row.cwd} (pid ${row.pid ?? '-'}).`,
+        `${row.name}${this.isSpawned(row.sid) ? ' (sub)' : ''} runs in ${clean(row.cwd)} (pid ${row.pid ?? '-'}).`,
         8000,
       );
       return;
@@ -1250,6 +1258,8 @@ export class App {
       return;
     }
     this.armed = {sid, until: now + ARM_MS};
+    // 止めている途中なら、もう一度は止めない(待ち受けだけを付け直す。次の Ctrl+X は止め終わるのを待って消す)
+    if (this.stopping.has(sid)) return;
     if (row.tier === 'stopped') {
       this.notify('Press Ctrl+X again within 2s to delete.', ARM_MS);
       return;
@@ -1275,7 +1285,7 @@ export class App {
     this.stopping.set(sid, p);
     this.draw();
     await p;
-    this.stopping.delete(sid);
+    if (this.stopping.get(sid) === p) this.stopping.delete(sid);
     this.draw();
     if (!this.deleting.has(sid)) void this.refresh();
   }
@@ -1315,8 +1325,10 @@ export class App {
       this.draw();
       return false;
     };
-    await this.stopping.get(sid);
-    if (stopFirst && row.tier !== 'stopped' && row.pid !== undefined) {
+    // Ctrl+X で止めている途中なら、それが終わるのを待つ(重ねて止めない)
+    const inFlight = this.stopping.get(sid);
+    await inFlight;
+    if (stopFirst && !inFlight && row.tier !== 'stopped' && row.pid !== undefined) {
       await this.p.run('claude', ['stop', id], {timeout: 30000});
     }
     const running = (await this.p.tmux.running()).get(id) ?? [];
@@ -1398,7 +1410,9 @@ export class App {
     const url = `vscode://file${path.split('/').map(encodeURIComponent).join('/')}/?windowId=_blank`;
     const r = await this.p.run('open', [url], {timeout: 15000});
     const msg =
-      r.code === 0 ? `Opened ${this.tilde(path)} in VS Code.` : `open failed: ${(r.stderr || r.stdout).trim()}`;
+      r.code === 0
+        ? `Opened ${clean(this.tilde(path))} in VS Code.`
+        : `open failed: ${clean(stripControl(r.stderr || r.stdout).trim())}`;
     if (via.from === 'list') this.notify(msg);
     else await this.p.tmux.display(via.tty, msg, 3000);
   }
@@ -1498,7 +1512,11 @@ export class App {
     const row = this.rows.get(sid);
     if (row && cwd && cwd !== row.cwd) {
       this.rows.set(sid, {...row, cwd});
+      // 行の cwd と場所の表を同じ時点の組にする(引き直さないと、次の更新まで区切りとブランチがずれる)
+      await this.p.locations.refresh([...this.rows.values()].filter(r => r.tier !== null).map(r => r.cwd));
+      this.relayout();
       this.lastGuide = undefined;
+      this.draw();
       this.follow();
     }
   }

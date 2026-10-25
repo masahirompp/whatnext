@@ -92,6 +92,28 @@ describe('一覧と並び', () => {
     expect(h.screen()).toMatch(/alpha/);
   });
 
+  it('10・51: エラーを出している間は行への操作を受け付けず、読めなかった回のあとも消えた行の Ctrl+X の守りが働く', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta', state: 'working', status: 'busy'})]);
+    await h.start();
+    await h.select('alpha');
+    h.conf({agentsFail: true});
+    await h.keys('r');
+    await h.waitFor(/Could not read claude agents --json/);
+    await h.keys('C-x', 'e', 'Enter');
+    await sleep(500);
+    expect(h.calls().some(c => c.args[0] === 'stop' || c.args[0] === 'attach')).toBe(false);
+    expect(h.screen()).not.toMatch(/Note for/);
+    // 読めない間に選んでいた行が消え、次に読めた
+    h.remove('alpha');
+    h.conf({});
+    await h.refresh();
+    expect(h.screen()).toMatch(/^> beta/m);
+    await h.keys('C-x');
+    await h.waitFor(/Ctrl\+X ignored: alpha left the list and the selection moved\./);
+    expect(h.calls().some(c => c.args[0] === 'stop')).toBe(false);
+  });
+
   it('62・5: attach して戻ると区切りの先頭に上がり、カーソルが付く。段が変わっても並びは変わらない', async () => {
     h = new Harness();
     const app = h.repo('app');

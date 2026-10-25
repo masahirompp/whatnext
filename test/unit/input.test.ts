@@ -222,3 +222,43 @@ describe('PR の引き直し', () => {
     expect(prs.get(d, 'b')).toEqual({number: 7, state: 'draft'});
   });
 });
+
+describe('PR を引けないとき', () => {
+  it('remote が GitHub でないリポジトリの失敗では、ほかのリポジトリの PR を引くのをやめない', async () => {
+    const asked: string[] = [];
+    const fake: typeof run = async (_cmd, args, opts) => {
+      asked.push(`${args[0]} ${opts?.cwd ?? ''}`);
+      if (args[0] === 'auth') return {code: 0, stdout: '', stderr: ''};
+      if (opts?.cwd === '/gitlab')
+        return {
+          code: 1,
+          stdout: '',
+          stderr: 'none of the git remotes point to a known GitHub host; please use gh auth login',
+        };
+      return {code: 0, stdout: JSON.stringify([{number: 3, state: 'MERGED'}]), stderr: ''};
+    };
+    const prs = new Prs(fake, () => 0);
+    const tick = () => new Promise(r => setTimeout(r, 20));
+    prs.refresh([{checkout: '/gitlab', branch: 'b'}], () => {});
+    await tick();
+    prs.refresh([{checkout: '/github', branch: 'b'}], () => {});
+    await tick();
+    expect(prs.get('/github', 'b')).toEqual({number: 3, state: 'merged'});
+    expect(asked.filter(a => a.startsWith('auth')).length).toBe(1);
+  });
+  it('gh auth status が失敗するなら、使えないと覚える', async () => {
+    let calls = 0;
+    const fake: typeof run = async (_cmd, args) => {
+      calls++;
+      if (args[0] === 'auth') return {code: 1, stdout: '', stderr: 'not logged in'};
+      return {code: 1, stdout: '', stderr: 'To get started with GitHub CLI, please run: gh auth login'};
+    };
+    const prs = new Prs(fake, () => 0);
+    const tick = () => new Promise(r => setTimeout(r, 20));
+    prs.refresh([{checkout: '/a', branch: 'b'}], () => {});
+    await tick();
+    prs.refresh([{checkout: '/c', branch: 'd'}], () => {});
+    await tick();
+    expect(calls).toBe(2);
+  });
+});

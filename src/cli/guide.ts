@@ -4,15 +4,15 @@ import {color, truncate} from '../../lib/text/text.js';
 import {Tmux} from '../../lib/tmux/tmux.js';
 import {GUIDE_CREATE} from '../ops/keys.js';
 import {GUIDE_OPTION, type GuideState} from '../ops/names.js';
-import {frame} from '../screen/screen.js';
+import {clean, frame} from '../screen/screen.js';
 import {type Env, tmuxEnv} from './env.js';
 
 // 作業台の画面の案内(案内のセッションの中で動く)。何を出すかは一覧が `@wn_guide` に置く。
 
 export function guideLines(g: GuideState): string[] {
-  if (g.kind === 'tty') return [`${g.name} is an interactive session. It has no workbench.`];
+  if (g.kind === 'tty') return [`${clean(g.name)} is an interactive session. It has no workbench.`];
   if (g.kind === 'empty') return ['No session is selected in the list.'];
-  const lines = [`No workbench for ${g.name} yet.`, `Enter: open a shell in ${g.path}`];
+  const lines = [`No workbench for ${clean(g.name)} yet.`, `Enter: open a shell in ${clean(g.path)}`];
   return g.closed ? ['Workbench closed.', ...lines] : lines;
 }
 

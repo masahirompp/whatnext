@@ -55,6 +55,13 @@ async function until(pred: () => boolean, timeout = 15000, what = 'condition'): 
   throw new Error(`timed out: ${what}; terminals ${JSON.stringify(terms())}`);
 }
 
+/** Ghostty を前面に出し、左の分割にフォーカスを戻す(テストの最中に別のアプリが前に出ると、whatnext は分割を作らない)。 */
+const focusLeft = (left: string) =>
+  osa(`tell application "Ghostty"
+    activate
+    focus (first terminal whose id is "${left}")
+  end tell`);
+
 /** 一覧のペインに直接キーを送る(修飾キーのない文字は Ghostty の send key では届かないため)。 */
 const listKey = (...ks: string[]) => {
   for (const k of ks) h.inner('send-keys', '-t', '=list:', k);
@@ -93,7 +100,7 @@ describe('Ghostty(58a)', () => {
     osa(`tell application "Ghostty" to split (first terminal whose id is "${left}") direction right`);
     await until(() => terms().length === 2, 5000, 'shell split');
     const shell = terms().find(t => t.id !== left)?.id as string;
-    osa(`tell application "Ghostty" to focus (first terminal whose id is "${left}")`);
+    focusLeft(left);
     await sleep(500);
     // claude の画面で ctrl+q ctrl+w
     await selectInList('wn-real-gh');
@@ -102,6 +109,7 @@ describe('Ghostty(58a)', () => {
     await sleep(3000);
     osa(
       `tell application "Ghostty"
+        activate
         set t to first terminal whose id is "${left}"
         send key "q" modifiers "control" to t
         send key "w" modifiers "control" to t
@@ -112,10 +120,11 @@ describe('Ghostty(58a)', () => {
     await until(() => focusedName() === 'whatnext workbench', 5000, 'focus on workbench');
     expect(h.sessions().some(s => s.startsWith('sh-'))).toBe(true);
     // 左に戻ってもう一度押すと、分割は増えずにフォーカスだけが移る
-    osa(`tell application "Ghostty" to focus (first terminal whose id is "${left}")`);
+    focusLeft(left);
     await sleep(500);
     osa(
       `tell application "Ghostty"
+        activate
         set t to first terminal whose id is "${left}"
         send key "q" modifiers "control" to t
         send key "w" modifiers "control" to t
@@ -126,17 +135,18 @@ describe('Ghostty(58a)', () => {
     // ふだんのシェルの分割には何も入力されていない(名前と id がそのまま)
     expect(terms().some(t => t.id === shell)).toBe(true);
     // 一覧に戻って w を押しても同じく移るだけ
-    osa(`tell application "Ghostty" to focus (first terminal whose id is "${left}")`);
+    focusLeft(left);
     await sleep(300);
     osa(
       `tell application "Ghostty"
+        activate
         set t to first terminal whose id is "${left}"
         send key "q" modifiers "control" to t
         send key "l" modifiers "control" to t
       end tell`,
     );
     await until(() => h.clients().some(c => c.session === 'list'), 8000, 'back to list');
-    osa(`tell application "Ghostty" to focus (first terminal whose id is "${left}")`);
+    focusLeft(left);
     await sleep(300);
     listKey('w');
     await until(() => focusedName() === 'whatnext workbench', 8000, 'focus by w');
@@ -149,7 +159,7 @@ describe('Ghostty(58a)', () => {
     osa(`tell application "Ghostty" to input text "sh ${q(script)}" to (first terminal whose id is "${left}")`);
     osa(`tell application "Ghostty" to send key "enter" to (first terminal whose id is "${left}")`);
     await until(() => /SESSION/.test(listScreen()), 20000, 'list again');
-    osa(`tell application "Ghostty" to focus (first terminal whose id is "${left}")`);
+    focusLeft(left);
     await sleep(300);
     await selectInList('wn-real-gh');
     listKey('w');

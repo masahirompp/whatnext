@@ -330,7 +330,7 @@ describe('待ち先', () => {
     expect(rowsOf(s.slice(s.indexOf('── app'), s.indexOf('── lib')))[0]).toMatch(/fix app/);
   });
 
-  it('74: 木にならない関係は結ばれていないものとして出て、起動しただけではファイルは書き換わらない', async () => {
+  it('74: 木にならない関係は結ばれていないものとして出て、起動しても別の行が消えても、ファイルのその関係は書き換わらない', async () => {
     h = new Harness();
     h.agents([
       bg('a', {name: 'alpha'}),

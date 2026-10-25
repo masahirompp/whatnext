@@ -110,6 +110,7 @@ export class Prs {
   private cache = new Map<string, {pr?: Pr; at: number}>();
   private inflight = new Set<string>();
   private unavailable = false;
+  private authOk: boolean | undefined;
   constructor(
     private readonly run: Run,
     private readonly now: () => number = Date.now,
@@ -155,7 +156,13 @@ export class Prs {
       return null;
     }
     if (r.code !== 0) {
-      if (/auth|login/i.test(r.stderr)) this.unavailable = true;
+      // 文言に auth や login が出ても、remote が GitHub でないリポジトリのこともある。
+      // 認証していないかは gh auth status で一度だけ確かめ、そうでなければこのリポジトリだけの失敗として扱う
+      if (/auth|login/i.test(r.stderr) && this.authOk === undefined) {
+        const a = await this.run('gh', ['auth', 'status'], {timeout: 20000});
+        if (a.code !== null) this.authOk = a.code === 0;
+        if (this.authOk === false) this.unavailable = true;
+      }
       return null;
     }
     try {
