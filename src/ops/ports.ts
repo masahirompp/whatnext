@@ -4,7 +4,7 @@ import type {AgentsResult, UsageFrame} from '../input/claude.js';
 import type {RunResult} from '../input/exec.js';
 import type {Supplied} from '../input/hooks.js';
 import type {Place, PullRequest} from '../input/place.js';
-import type {Relations} from '../state/store.js';
+import type {State} from '../state/store.js';
 import type {GhosttyResult} from '../tmux/ghostty.js';
 import type {Client} from '../tmux/tmux.js';
 
@@ -29,7 +29,6 @@ export interface TmuxPort {
   setSessionName(session: string, name: string): Promise<void>;
   running(): Promise<Map<string, string[]>>;
   newTrustSession(dir: string): Promise<string | undefined>;
-  newViewSession(sid: string, cwd: string, size: {cols: number; rows: number}, title: string): Promise<boolean>;
   /** 案内のセッションのプログラムに描き直しを知らせる。 */
   signalGuide(): Promise<void>;
 }
@@ -49,7 +48,7 @@ export interface Ports {
   remove(id: string, discard?: string): Promise<RunResult>;
   launch(dir: string, model?: string): Promise<RunResult>;
   open(target: string): Promise<RunResult>;
-  saveState(r: Relations): void;
+  saveState(r: State): void;
   tmux: TmuxPort;
   ghosttyFocus(): Promise<GhosttyResult>;
   ghosttySplit(): Promise<GhosttyResult>;

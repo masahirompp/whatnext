@@ -12,10 +12,6 @@ export interface Client {
 
 export const LIST = 'list';
 export const GUIDE = 'wbguide';
-/** 対話セッションを見るセッション(一度に1つ)。 */
-export const VIEW = 'view';
-/** 見る画面で claude に渡すキー(スクロールと詳細の切り替え)。ほかのキーは渡さない。 */
-export const VIEW_PASS_KEYS = ['Up', 'Down', 'PageUp', 'PageDown', 'Home', 'End', 'C-o'];
 
 /** 利用者由来の文字列を tmux の書式に置くときは `#` を `##` にする。 */
 export const escapeFormat = (s: string): string => s.replace(/#/g, '##');
@@ -110,7 +106,13 @@ export function serverConfig(c: ServerConfigInput): string {
   ];
   for (const [k, v] of Object.entries(c.env)) lines.push(`set-environment -g ${k} '${v}'`);
 
-  lines.push('unbind -a -T wnq', 'bind -n C-q switch-client -T wnq');
+  // prefix の表は丸ごと消せない(tmux の既定のキーがある)ので、前の版が置いて今はないキーを名指しで外す。
+  lines.push(
+    'unbind -a -T wnq',
+    'unbind -q -T prefix C-j',
+    'unbind -q -T prefix j',
+    'bind -n C-q switch-client -T wnq',
+  );
   for (const k of ATTACH_KEYS) {
     const cmd = `run-shell -b '${req(`key ${k.action} "#{session_name}" "#{client_tty}"`)}'`;
     lines.push(`bind -T wnq C-${k.letter} ${cmd}`, `bind -T prefix C-${k.letter} ${cmd}`);
@@ -126,15 +128,6 @@ export function serverConfig(c: ServerConfigInput): string {
   );
   lines.push(
     `set-hook -g pane-title-changed { if -F '#{&&:#{@wn_claude},#{m:*claude agents*,#{pane_title}}}' { run-shell -b '${req('agentview "#{session_name}"')}' } }`,
-  );
-  // 見る画面: 送信させないため、claude にはスクロールと詳細の切り替えだけを渡す。q で一覧に戻る。
-  lines.push(
-    'unbind -a -T wnview',
-    `bind -T wnview Any { display -d 1500 'Read-only view. Press q to go back to the list.' }`,
-    `bind -T wnview q { switch-client -t '=${LIST}' ; kill-session -t '=${VIEW}' }`,
-    ...VIEW_PASS_KEYS.map(k => `bind -T wnview ${k} { send-keys ${k} }`),
-    'bind -T wnview WheelUpPane { send-keys -M }',
-    'bind -T wnview WheelDownPane { send-keys -M }',
   );
   // 一覧のセッションには root のキー表(C-q)を効かせない。
   lines.push(
@@ -293,62 +286,6 @@ export class Tmux {
         t,
         'status-format[1]',
         '#[align=left]#{T;=/#{e|/:#{client_width},3}/…:status-left}#[align=right]#[fg=colour8]#{=/#{e|-:#{e|-:#{client_width},#{e|/:#{client_width},3}},2}/…:@wn_keys}',
-      ],
-    ]);
-    return true;
-  }
-
-  /**
-   * 対話セッションを見るセッションを作り直す。中で `claude --resume <sessionId> --fork-session` を動かす。
-   * 複製は何も送らなければ記録を残さず、元のセッションにも触れない。キーは wnview の表で絞る。
-   */
-  async newViewSession(sid: string, cwd: string, size: {cols: number; rows: number}, title: string): Promise<boolean> {
-    await this.killSession(VIEW);
-    const T = `tmux -L ${shq(this.socket)}`;
-    const cmd = [
-      `claude --resume ${shq(sid)} --fork-session`,
-      'rc=$?',
-      'if [ "$rc" -ne 0 ]; then',
-      `  printf '\\n[claude exited with code %s. Returning to the list.]' "$rc"`,
-      '  sleep 3',
-      'fi',
-      `${T} switch-client -t '=${LIST}' 2>/dev/null`,
-      'exit 0',
-    ].join('\n');
-    const r = await this.t([
-      'new-session',
-      '-d',
-      '-s',
-      VIEW,
-      '-c',
-      cwd,
-      '-x',
-      String(size.cols),
-      '-y',
-      String(size.rows),
-      `sh -c ${shq(cmd)}`,
-      ';',
-      'set',
-      '-w',
-      '-t',
-      `=${VIEW}:`,
-      'remain-on-exit',
-      'off',
-    ]);
-    if (r.code !== 0) return false;
-    const t = `=${VIEW}:`;
-    await this.t([
-      ...['set', '-t', t, 'key-table', 'wnview', ';'],
-      ...['set', '-t', t, 'mouse', 'on', ';'],
-      ...['set', '-t', t, 'status', 'on', ';'],
-      ...['set', '-t', t, 'status-style', 'default', ';'],
-      ...['set', '-t', t, '@wn_summary', escapeFormat(title), ';'],
-      ...[
-        'set',
-        '-t',
-        t,
-        'status-format[0]',
-        '#[align=left]#{=/#{e|-:#{client_width},44}/…:@wn_summary}#[align=right]#[fg=colour8]q back  PgUp PgDn scroll  ^O details',
       ],
     ]);
     return true;

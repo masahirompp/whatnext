@@ -14,7 +14,7 @@ import {launchSettings, openReceiver, type Receiver} from '../input/receiver.js'
 import {Transcripts} from '../input/transcript.js';
 import {App, type Key} from '../ops/app.js';
 import type {Observed, Ports} from '../ops/ports.js';
-import {loadState, StateWriter, statePath} from '../state/store.js';
+import {readState, StateWriter, statePath} from '../state/store.js';
 import {focusWorkbench, splitWorkbench} from '../tmux/ghostty.js';
 import {GUIDE, LIST, serverConfig, shq, Tmux} from '../tmux/tmux.js';
 import type {Settings} from './args.js';
@@ -87,8 +87,8 @@ export async function runList(s: Settings, version: string, distDir: string, cli
   const receiver: Receiver | null = await openReceiver(s.port, store);
   const transcripts = new Transcripts(configDir);
   const path = statePath(env, s.socket);
-  const relations = await loadState(path);
-  const writer = new StateWriter(path, relations);
+  const {state, unreadable} = await readState(path);
+  const writer = new StateWriter(path, state, {keepUnreadable: unreadable});
 
   const write = (str: string) => process.stdout.write(str);
   let app: App;
@@ -207,7 +207,7 @@ export async function runList(s: Settings, version: string, distDir: string, cli
     log: debugLog,
   };
 
-  app = new App(ports, {relations, version, leftovers});
+  app = new App(ports, {state, version, leftovers});
   store.onEvent((sid, ev) => app.onHook(sid, ev));
 
   write(ALT_ON);

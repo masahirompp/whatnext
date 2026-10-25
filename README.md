@@ -30,7 +30,8 @@ Keys in the list:
 | Key | Action |
 | --- | --- |
 | `↑` `↓` | Select a row |
-| `Enter` | Attach to the session. For an interactive session, open a read-only copy of its conversation so far (`q` to go back) |
+| `Enter` | Attach to the session (or show where an interactive session runs) |
+| `g` | Switch between the ladder view and the repo view (sessions grouped by repository, most recently attached first) |
 | `n` | Start a new session |
 | `Ctrl+X` | Stop the session; press again within 2s to delete it |
 | `h` | Put the session on hold (or bring it back) |
@@ -40,7 +41,7 @@ Keys in the list:
 | `r` | Refresh |
 | `q` | Quit (asks first if something is still running in a workbench) |
 
-While attached, `ctrl+q` followed by the same letter with ctrl held does the same thing (`ctrl+q ctrl+l` goes back to the list, `ctrl+q ctrl+j` moves to the next session). The keys are shown at the bottom of the session's screen.
+While attached, `ctrl+q` followed by the same letter with ctrl held does the same thing (`ctrl+q ctrl+l` goes back to the list, `ctrl+q ctrl+h` puts the session on hold). The keys are shown at the bottom of the session's screen.
 
 ## Requirements
 

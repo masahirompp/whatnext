@@ -330,3 +330,119 @@ describe('待ち先 (シナリオ 17〜21)', () => {
     expect(flatten(r).map(e => e.lastChain)).toEqual([[], [true], [true, true]]);
   });
 });
+
+describe('リポジトリのビュー (シナリオ 61〜65)', () => {
+  const names = (a: ReturnType<typeof arrange>) => flatten(a).map(e => e.name);
+  const repoOf = (rows: AgentRow[]) => new Map(rows.map(r => [r.sessionId, r.cwd]));
+
+  it('区切りは見出しの順、区切りの中は触った時刻の新しい順で、段では動かない', () => {
+    const a1 = bg('a1', {cwd: '/r/app', state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'});
+    const a2 = bg('a2', {cwd: '/r/app'});
+    const i1 = bg('i1', {cwd: '/r/infra'});
+    const rows = [i1, a1, a2];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        touched: new Map([
+          [a1.sessionId, 1],
+          [a2.sessionId, 5],
+          [i1.sessionId, 9],
+        ]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.repos?.map(r => r.label)).toEqual(['app', 'infra']);
+    expect(names(a)).toEqual(['a2', 'a1', 'i1']);
+    expect(a.upNext).toEqual([]);
+    expect(a.lastAttached).toBeNull();
+  });
+
+  it('ディレクトリ名が重なるときだけ親のディレクトリ名を足す (シナリオ 63)', () => {
+    const rows = [bg('x', {cwd: '/g/a/foo'}), bg('y', {cwd: '/g/b/foo'}), bg('z', {cwd: '/g/c/bar'})];
+    const a = arrange(input(rows, {view: 'repo', repoOf: repoOf(rows)}));
+    expect(a.repos?.map(r => r.label)).toEqual(['a/foo', 'b/foo', 'bar']);
+    // 末尾の2段まで同じなら、区別できるところまで親を足す
+    const deep = [bg('p', {cwd: '/g/github.com/acme/foo'}), bg('q', {cwd: '/g/gitlab.com/acme/foo'})];
+    const d = arrange(input(deep, {view: 'repo', repoOf: repoOf(deep)}));
+    expect(d.repos?.map(r => r.label)).toEqual(['github.com/acme/foo', 'gitlab.com/acme/foo']);
+  });
+
+  it('待ち先の組は根のリポジトリに出て、待ち先に attach すると組ごと上がる (シナリオ 64)', () => {
+    const w = bg('waiter', {cwd: '/r/app'});
+    const t = bg('target', {cwd: '/r/lib', state: 'working', status: 'busy'});
+    const o = bg('other', {cwd: '/r/app'});
+    const rows = [w, t, o];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        waits: new Map([[w.sessionId, [t.sessionId]]]),
+        touched: new Map([
+          [w.sessionId, 1],
+          [t.sessionId, 9],
+          [o.sessionId, 5],
+        ]),
+        attachedAt: new Map([[t.sessionId, 9]]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.repos?.map(r => r.label)).toEqual(['app']);
+    expect(names(a)).toEqual(['waiter', 'target', 'other']);
+  });
+
+  it('組の位置は根の時刻と attach した時刻で決まり、保留にしても待ち先の初めて見た時刻でも動かない', () => {
+    const w = bg('waiter', {cwd: '/r/app'});
+    const t = bg('target', {cwd: '/r/app'});
+    const o = bg('other', {cwd: '/r/app'});
+    const rows = [w, t, o];
+    const base = {
+      view: 'repo' as const,
+      waits: new Map([[w.sessionId, [t.sessionId]]]),
+      repoOf: repoOf(rows),
+    };
+    // 待ち先は初めて見ただけ(時刻 9)。組は根の時刻 1 の位置に残る
+    const linked = arrange(
+      input(rows, {
+        ...base,
+        touched: new Map([
+          [w.sessionId, 1],
+          [t.sessionId, 9],
+          [o.sessionId, 5],
+        ]),
+      }),
+    );
+    expect(names(linked)).toEqual(['other', 'waiter', 'target']);
+    // 待ち先に attach すると(時刻 9)組が上がり、保留にしても上にとどまる
+    const touched = new Map([
+      [w.sessionId, 1],
+      [t.sessionId, 9],
+      [o.sessionId, 5],
+    ]);
+    const attachedAt = new Map([[t.sessionId, 9]]);
+    const attached = arrange(input(rows, {...base, touched, attachedAt}));
+    expect(names(attached)).toEqual(['waiter', 'target', 'other']);
+    const held = arrange(input(rows, {...base, touched, attachedAt, holds: new Map([[t.sessionId, 'later']])}));
+    expect(names(held)).toEqual(['waiter', 'target', 'other']);
+  });
+
+  it('保留の行は区切りの中に残り、(on hold) の印が付く (シナリオ 65)', () => {
+    const h = bg('held', {cwd: '/r/app'});
+    const k = bg('kept', {cwd: '/r/app'});
+    const rows = [h, k];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        holds: new Map([[h.sessionId, 'later']]),
+        touched: new Map([
+          [h.sessionId, 1],
+          [k.sessionId, 2],
+        ]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.onHold).toEqual([]);
+    expect(flatten(a).map(e => [e.name, e.holdMark, e.holdReason])).toEqual([
+      ['kept', false, undefined],
+      ['held', true, 'later'],
+    ]);
+  });
+});

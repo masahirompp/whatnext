@@ -69,7 +69,7 @@ describe('一覧', () => {
     );
   });
 
-  it('7: 対話セッションの行で Enter を押すと、複製で開いて見る画面になる。送信に使うキーは届かず、q で一覧に戻る', async () => {
+  it('7: interactive の行で Enter を押すと、attach せずに場所が出る', async () => {
     h = new Harness();
     h.setAgents([
       {
@@ -78,47 +78,16 @@ describe('一覧', () => {
         cwd: '/tmp',
         name: 'tty-x',
         pid: 4242,
-        status: 'busy',
+        status: 'waiting',
+        waitingFor: 'permission prompt',
       },
     ]);
     h.open('t');
     await h.waitFor('t', 'tty-x (tty)');
     await h.keys('t', 'Enter');
-    await h.waitFor('t', 'fake view of ffff0000-0000-4000-8000-000000000001 --fork-session');
-    await h.waitFor('t', /tty-x \(tty\) · \/tmp · pid 4242 · read-only copy.*q back/);
-    expect(h.clients().map(c => c.session)).toContain('view');
-    // 文字と Enter は届かない。スクロールのキーは届く。
-    await h.type('t', 'hi');
-    await h.keys('t', 'Enter');
-    await h.waitFor('t', 'Read-only view. Press q to go back to the list.');
-    await h.keys('t', 'PageUp');
-    await h.waitFor('t', /got \^\[\[5~/);
-    expect(h.screen('t')).not.toMatch(/got (h|i|\^M)/);
-    await h.keys('t', 'q');
-    await h.waitFor('t', 'tty-x (tty)');
-    await h.waitGone('t', 'fake view');
-    await sleep(300);
-    expect(h.sessions()).not.toContain('view');
-  });
-
-  it('7: 複製で開けないときは、一覧に戻る', async () => {
-    h = new Harness();
-    h.setAgents([
-      {
-        kind: 'interactive',
-        sessionId: 'ffff0000-0000-4000-8000-000000000002',
-        cwd: '/tmp',
-        name: 'tty-y',
-        pid: 4243,
-        status: 'busy',
-      },
-    ]);
-    h.behave('resume', 'fail');
-    h.open('t');
-    await h.waitFor('t', 'tty-y (tty)');
-    await h.keys('t', 'Enter');
-    await h.waitFor('t', 'claude exited with code 1. Returning to the list.');
-    await h.waitFor('t', /> .*tty-y \(tty\)/, 8000);
+    const s = await h.waitFor('t', '4242');
+    expect(s).toContain('/tmp');
+    expect(h.clients().map(c => c.session)).toEqual(['list']);
   });
 
   it('10: 対象の行がないときはメッセージ。--json が失敗するとエラーを出し、古い一覧は出さない', async () => {

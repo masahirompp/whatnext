@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {parseArgs} from '../../src/cli/args.js';
-import {displayNames, expandHome, filterIndexes, tildify} from '../../src/ops/pick.js';
+import {displayNames} from '../../src/ladder/paths.js';
+import {expandHome, filterIndexes, tildify} from '../../src/ops/pick.js';
 import {foregroundCommand, parsePs} from '../../src/tmux/tmux.js';
 
 describe('作業ディレクトリの候補 (シナリオ 8)', () => {
