@@ -9,8 +9,6 @@ import {color} from '../../lib/text/text.js';
 import {statusLabel, type Tier} from '../../lib/tier/classify.js';
 import {focusWorkbench, splitWorkbench} from '../../lib/tmux/ghostty.js';
 import {GUIDE, LIST} from '../../lib/tmux/tmux.js';
-import {GUIDE_OPTION, type GuideState} from '../cli/guide.js';
-import {MAIN_TTY, NEWER, WB_TTY} from '../cli/launch.js';
 import type {Observation, ObsRow} from '../input/observe.js';
 import {locate} from '../input/where.js';
 import {followCursor, initialCursor} from '../model/cursor.js';
@@ -24,6 +22,7 @@ import type {Screen, ScreenRow} from '../screen/types.js';
 import {emptyState, type PersistedState} from '../state/state.js';
 import {filterItems} from './filter.js';
 import {ATTACH_KEYS, type AttachAction, GUIDE_CREATE, isAttachAction, LIST_KEYS_HELP} from './keys.js';
+import {GUIDE_OPTION, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
 import type {Ports} from './ports.js';
 
 // 一覧の状態の遷移と、外部に頼む作業(PRODUCT.md「操作」「作業台」「依存（待ち先と起動された行）」)。

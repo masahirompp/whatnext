@@ -71,7 +71,7 @@ export async function locate(run: Run, cwd: string): Promise<Location> {
 
 /**
  * 場所を覚えておく。前回リポジトリだった場所がリポジトリでない場所として返ったときは、1回だけ前回の場所を使う
- * (DESIGN.md「場所の問い合わせが失敗したとき」)。
+ * (DESIGN.md「場所の問い合わせ」の「失敗したとき」)。
  */
 export class Locations {
   private known = new Map<string, Location>();

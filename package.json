@@ -1,7 +1,7 @@
 {
   "name": "@masahirompp/whatnext",
   "version": "0.18.0",
-  "description": "A terminal list of your parallel Claude Code sessions, ordered by which one to touch next.",
+  "description": "A terminal list of your parallel Claude Code sessions, grouped by repository, with dependent sessions nested together.",
   "license": "MIT",
   "type": "module",
   "bin": {

@@ -3,16 +3,10 @@ import {run} from '../../lib/input/exec.js';
 import {color, truncate} from '../../lib/text/text.js';
 import {Tmux} from '../../lib/tmux/tmux.js';
 import {GUIDE_CREATE} from '../ops/keys.js';
+import {GUIDE_OPTION, type GuideState} from '../ops/names.js';
 import {type Env, tmuxEnv} from './env.js';
 
 // 作業台の画面の案内(案内のセッションの中で動く)。何を出すかは一覧が `@wn_guide` に置く。
-
-export const GUIDE_OPTION = '@wn_guide';
-
-export type GuideState =
-  | {kind: 'none'; name: string; path: string; closed?: boolean}
-  | {kind: 'tty'; name: string}
-  | {kind: 'empty'};
 
 export function guideLines(g: GuideState): string[] {
   if (g.kind === 'tty') return [`${g.name} is an interactive session. It has no workbench.`];

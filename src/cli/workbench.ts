@@ -1,8 +1,8 @@
 import {spawnSync} from 'node:child_process';
 import {run} from '../../lib/input/exec.js';
 import {GUIDE, LIST, Tmux} from '../../lib/tmux/tmux.js';
+import {MAIN_TTY, WB_TTY} from '../ops/names.js';
 import {type Env, myTty, tmuxEnv} from './env.js';
-import {MAIN_TTY, WB_TTY} from './launch.js';
 
 // `whatnext workbench`(DESIGN.md「作業台の画面の仕組み」)。専用サーバの2つ目のクライアントとしてつなぐ。
 

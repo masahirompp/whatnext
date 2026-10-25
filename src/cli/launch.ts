@@ -6,9 +6,7 @@ import {type Env, myTty, paneCommand, tmuxEnv} from './env.js';
 
 // `whatnext` の起動(DESIGN.md「一覧と作業台の仕組み」)。専用の tmux サーバの `list` につなぐ。なければ作る。
 
-export const MAIN_TTY = '@wn_main_tty';
-export const WB_TTY = '@wn_wb_tty';
-export const NEWER = '@wn_newer';
+import {MAIN_TTY, NEWER, WB_TTY} from '../ops/names.js';
 
 const tmuxRun: typeof run = (cmd, args, opts) => run(cmd, args, {...opts, env: tmuxEnv(opts?.env ?? process.env)});
 
