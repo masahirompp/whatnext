@@ -4,8 +4,10 @@ import {basename} from 'node:path';
 import type {UsageFrame} from '../input/claude.js';
 import {stripControl} from '../input/exec.js';
 import type {Place, PullRequest} from '../input/place.js';
+import {spawners} from '../input/procs.js';
 import {
   type Arranged,
+  ancestorsOf,
   arrange,
   type DoneMemo,
   type Entry,
@@ -110,6 +112,8 @@ export class App {
   // 利用者の注釈
   private holds: Map<string, string>;
   private waits: Map<string, string[]>;
+  /** 起動された行から起動元への表。更新のたびにプロセス表から導き直す。 */
+  private spawnedBy = new Map<string, string>();
   // リポジトリのビュー
   private view: View;
   private seen: Map<string, Seen>;
@@ -193,10 +197,15 @@ export class App {
       } else {
         this.error = undefined;
         const rows = dedupe(res.rows);
-        const [observed, running] = await Promise.all([this.p.observe(rows), this.p.tmux.running()]);
+        const [observed, running, parents] = await Promise.all([
+          this.p.observe(rows),
+          this.p.tmux.running(),
+          this.p.parentPids(),
+        ]);
         await this.loadPlaces(rows);
         this.observed = observed;
         this.running = running;
+        this.spawnedBy = spawners(rows, parents, this.spawnedBy);
         this.rows = rows;
         this.prune(rows);
         // 初めて見た時刻は、一覧に初めて出たときに書く。対象外だった対話セッションが後から出ても、区切りの先頭に来る。
@@ -321,6 +330,7 @@ export class App {
       rows: this.rows,
       holds: this.holds,
       waits: this.waits,
+      spawnedBy: this.spawnedBy,
       lastAttached: this.lastAttached,
       waitSince: this.waitMemo.entries.size ? this.sinceMap() : new Map(),
       sups,
@@ -333,6 +343,7 @@ export class App {
         rows: this.rows,
         holds: this.holds,
         waits: this.waits,
+        spawnedBy: this.spawnedBy,
         lastAttached: this.lastAttached,
         waitSince: this.sinceMap(),
         sups,
@@ -353,10 +364,14 @@ export class App {
       this.rearrange(now, false);
       return;
     }
+    // 選んでいた起動された行が消えたときは、その起動元に移る(並べ直す前の組から、近い順に引いておく)。
+    // 2段の入れ子で起動元も同じ回に消えたときは、残っている大本の起動元に移る。
+    // たどるのは起動された行の連なりの上の、最初の起動された行でない行(大本の起動元)まで。その上の待ち元には移らない。
+    const spawnerChain = this.cursor ? this.spawnerChainOf(this.cursor) : [];
     this.arranged = a;
     for (const e of flatten(a)) this.shownNames.set(e.sid, e.name);
     if (this.lastAttached && !visible.has(this.lastAttached)) this.lastAttached = null;
-    this.fixCursor();
+    this.fixCursor(spawnerChain);
     this.order = this.sectionOrder();
     this.save();
   }
@@ -417,11 +432,31 @@ export class App {
     return this.arranged ? flatten(this.arranged) : [];
   }
 
-  private fixCursor(): void {
+  /** 起動元の下に入れ子で並べた、起動された行か。 */
+  private isSub(sid: string): boolean {
+    return this.arranged?.subs.has(sid) ?? false;
+  }
+
+  /** 起動された行 `sid` の起動元を近い順に、大本の起動元(起動された行でない最初の行)まで。起動された行でなければ空。 */
+  private spawnerChainOf(sid: string): string[] {
+    if (!this.arranged || !this.isSub(sid)) return [];
+    const out: string[] = [];
+    for (const up of ancestorsOf(this.arranged, sid)) {
+      out.push(up);
+      if (!this.isSub(up)) break;
+    }
+    return out;
+  }
+
+  private fixCursor(spawnerChain: readonly string[] = []): void {
     const list = this.entries();
     if (this.cursor && list.some(e => e.sid === this.cursor)) return;
     const prev = this.cursor;
-    const top = this.fallbackCursor(prev);
+    // 消えたのが起動された行なら、どちらのビューでも、一覧に残っている一番近い起動元に移る。
+    // ただし、残っている起動元がまだ起動された行(2段の入れ子の中間)なら飛ばす。手を付けられない行には自動で移らない。
+    // 移った直後の Ctrl+X の守り(moved)は、起動元に移るときも同じに立てる。起動された行を消すつもりの Ctrl+X で起動元を消さない。
+    const spawner = spawnerChain.find(s => list.some(e => e.sid === s) && !this.isSub(s));
+    const top = spawner ?? this.fallbackCursor(prev);
     if (prev && top !== prev) {
       const name = this.shownNames.get(prev) ?? this.nameOf(prev);
       if (top) this.moved = {name, until: this.p.now() + MOVED_MS};
@@ -438,7 +473,12 @@ export class App {
     const list = this.entries();
     if (!this.arranged?.repos) return this.arranged?.upNext[0]?.positionSid ?? list[0]?.sid ?? null;
     // 消えた行の区切りは前回の並びで、候補の区切りは並べ直したあとの並びで見る(待ち元が消えると待ち先は別の区切りへ移る)。
-    const now = new Map(this.sectionOrder().map(o => [o.sid, o.section]));
+    // 起動された行は手を付けられないので候補にしない。
+    const now = new Map(
+      this.sectionOrder()
+        .filter(o => !this.isSub(o.sid))
+        .map(o => [o.sid, o.section]),
+    );
     const i = prev ? this.order.findIndex(o => o.sid === prev) : -1;
     if (i >= 0) {
       const section = this.order[i]?.section;
@@ -590,6 +630,7 @@ export class App {
       key: e.sid,
       name: e.name,
       tty: e.row.kind === 'interactive',
+      sub: e.sub,
       holdMark: e.holdMark,
       depth: e.depth,
       lastChain: e.lastChain,
@@ -1364,6 +1405,11 @@ export class App {
 
   private hold(sid: string): void {
     if (this.isDeleting(sid)) return;
+    // 起動された行は数秒から数分で消え、保留もそのときに外れるので、保留にさせない(f と同じ)。
+    if (this.isSub(sid)) {
+      this.flash(`${this.nameOf(sid)} was started by another session. It cannot be put on hold.`);
+      return;
+    }
     const reason = this.holds.get(sid);
     this.mode = {kind: 'hold', sid, value: reason ?? '', editing: reason !== undefined, error: undefined};
     this.draw();
@@ -1389,8 +1435,10 @@ export class App {
     const i = list.findIndex(e => e.sid === sid);
     let moving = [sid];
     if (this.arranged && i >= 0 && list[i]?.depth === 0) moving = subtreeOf(this.arranged, sid);
-    const after = list.slice(i + 1).find(e => !moving.includes(e.sid));
-    const before = [...list.slice(0, Math.max(0, i))].reverse().find(e => !moving.includes(e.sid));
+    // 起動された行は手を付けられないので、カーソルの移り先にしない(組の位置を決める行と同じ)。
+    const target = (e: Entry) => !moving.includes(e.sid) && !this.isSub(e.sid);
+    const after = list.slice(i + 1).find(target);
+    const before = [...list.slice(0, Math.max(0, i))].reverse().find(target);
     this.holds.set(sid, reason);
     this.rearrange(this.p.now(), false);
     // リポジトリのビューでは行が動かないので、カーソルはその行に残す。
@@ -1427,8 +1475,9 @@ export class App {
   ): {label: string; detail?: string; marked?: boolean; sid?: string}[] {
     const anc = this.ancestors(waiter);
     const mine = this.waits.get(waiter) ?? [];
+    // 起動された行は、すぐに終わって消えるので並べない。
     const cands = this.entries().filter(e => {
-      if (e.sid === waiter || anc.has(e.sid)) return false;
+      if (e.sid === waiter || anc.has(e.sid) || this.isSub(e.sid)) return false;
       const w = this.waiterOf(e.sid);
       return w === undefined || w === waiter;
     });
@@ -1450,6 +1499,11 @@ export class App {
 
   private openWait(waiter: string): void {
     if (this.isDeleting(waiter)) return;
+    // 起動された行は数秒から数分で消え、結んだ関係もそのときに切れるので、結ばせない。
+    if (this.isSub(waiter)) {
+      this.flash(`${this.nameOf(waiter)} was started by another session. It cannot wait for sessions.`);
+      return;
+    }
     this.mode = {kind: 'wait', waiter, filter: '', sel: 0};
   }
 
@@ -1660,7 +1714,13 @@ export class App {
   }
 
   private async deleteFlow(sid: string): Promise<void> {
-    const targets = this.arranged ? subtreeOf(this.arranged, sid).slice(1) : [];
+    // `id` のない行(対話セッションと起動された行)は `claude rm` が受け付けず消せないので、巻き込む対象に数えない。
+    // 確認に並べると、`y` と答えても消えない行が出る。その下に `id` のある待ち先がいれば、それは数える。
+    const targets = this.arranged
+      ? subtreeOf(this.arranged, sid)
+          .slice(1)
+          .filter(t => this.rowOf(t)?.id !== undefined)
+      : [];
     let cascade = false;
     if (targets.length > 0) {
       const names = targets.map(t => this.nameOf(t)).join(', ');

@@ -36,6 +36,8 @@ export interface TmuxPort {
 export interface Ports {
   now(): number;
   readAgents(): Promise<AgentsResult>;
+  /** pid から親の pid を引く表(OS のプロセス表)。 */
+  parentPids(): Promise<Map<number, number>>;
   observe(rows: readonly {sessionId: string}[]): Promise<Map<string, Observed>>;
   place(cwd: string): Promise<Place>;
   pullRequest(cwd: string, branch: string): Promise<PullRequest | undefined>;

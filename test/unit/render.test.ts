@@ -15,6 +15,7 @@ function row(name: string, extra: Partial<ScreenRow> = {}): ScreenRow {
     key: name,
     name,
     tty: false,
+    sub: false,
     holdMark: false,
     depth: 0,
     lastChain: [],

@@ -1,9 +1,18 @@
-// 実機の通し: 実物の claude(haiku)で確かめる(シナリオ 16、23、33、34、35、41、45、51、完了条件 2)。
+// 実機の通し: 実物の claude(haiku)で確かめる(シナリオ 16、23、33、34、35、41、45、51、67、完了条件 2)。
 // npm run test:real で流す。利用者の whatnext とそのセッションには触れない。
 
 import {spawn} from 'node:child_process';
 import {afterAll, afterEach, beforeAll, describe, expect, it} from 'vitest';
-import {cleanupSessions, launchOutside, PERM_PROMPT, RealHarness, sleep, testSessions, waitState} from './harness.js';
+import {
+  cleanupSessions,
+  launchOutside,
+  PERM_PROMPT,
+  RealHarness,
+  sleep,
+  testSessions,
+  WORKDIR,
+  waitState,
+} from './harness.js';
 
 let h: RealHarness;
 
@@ -68,7 +77,10 @@ describe('whatnext から起動したセッション', () => {
     await sleep(1000);
     await h.keys('t', 'C-q', 'C-l');
     s = await h.refreshUntil('t', /Review +\S+ +\d+k[^\n]*\n\s+All done here\./, 120000);
-    expect(s).not.toMatch(/Review +\S+ +- /);
+    // 確かめるのは、このテストのセッションの行だけ(利用者の別のセッションには CTX が - の行がありうる)。
+    const lines = s.split('\n');
+    const row = lines[lines.findIndex(l => /^\s+All done here\./.test(l)) - 1] ?? '';
+    expect(row).not.toMatch(/Review +\S+ +- /);
   });
 
   it('23、34: 指示を出してすぐ離脱すると → 指示。whatnext を終了している間にターンを終えても、フックのエラーは出ず、起動し直すと最初の一覧から最後の応答の冒頭が出る', async () => {
@@ -161,6 +173,56 @@ describe('whatnext の外で起動したセッション', () => {
     await h.keys('t', 'C-x');
     await h.waitFor('t', `Ctrl+X ignored: wn-real-a-${tag} left the list and the selection moved.`);
     expect(testSessions().some(r => r.name === `wn-real-b-${tag}` && r.state === 'stopped')).toBe(false);
+  });
+});
+
+describe('ほかの行が起動した claude -p', () => {
+  it('67: 外で起動したセッションが Bash で起動した claude -p は、その行の下に (sub) で並ぶ', async () => {
+    h = new RealHarness();
+    const tag = Date.now().toString(36);
+    const {execFileSync} = await import('node:child_process');
+    // 起動元が子の claude -p を前面で待つので、起動元と子が同時に動いている間がある。
+    // 可変長のオプション(--allowedTools)のあとにプロンプトを置くと取り込まれるので、プロンプトは -p の直後に置かせる。
+    const inner = `claude -p 'Run sleep 45 with the Bash tool, then reply DONE.' --model haiku --allowedTools 'Bash(sleep:*)'`;
+    const out = execFileSync(
+      'claude',
+      [
+        '--bg',
+        '--model',
+        'haiku',
+        '--name',
+        `wn-real-spawner-${tag}`,
+        '--allowedTools',
+        'Bash(claude -p:*)',
+        '--',
+        `Use the Bash tool to run exactly this command and wait for it: ${inner}  Then reply with its output.`,
+      ],
+      {cwd: WORKDIR, encoding: 'utf8'},
+    );
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: 色を除く
+    const id = /backgrounded\s*·\s*([^\s·]+)/.exec(out.replace(/\x1b\[[0-9;]*m/g, ''))?.[1];
+    expect(id).toBeDefined();
+    h.open('t');
+    // 利用者の別のセッションも (sub) の行を持ちうるので、起動元の行の組の中だけを見る。
+    // 組の中の行は、入れ子の線か一言の字下げで始まる。
+    const spawnedUnder = (screen: string): boolean => {
+      const lines = screen.split('\n');
+      const i = lines.findIndex(l => l.includes(`wn-real-spawner-${tag}`));
+      if (i < 0) return false;
+      for (const l of lines.slice(i + 1)) {
+        if (!/^ {2}[│├└ ]/.test(l)) return false;
+        if (/[├└] \S+ \(sub\) +Working/.test(l)) return true;
+      }
+      return false;
+    };
+    const end = Date.now() + 120000;
+    let ok = false;
+    while (!ok && Date.now() < end) {
+      await h.keys('t', 'r');
+      await sleep(2500);
+      ok = spawnedUnder(h.screen('t'));
+    }
+    expect(ok, h.screen('t')).toBe(true);
   });
 });
 

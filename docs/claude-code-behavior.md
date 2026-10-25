@@ -37,6 +37,15 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 実行時間は約 135 ms（6〜8 行の時点）。
 - ターンを終えて `done` になったはずのセッションが、`blocked` + `idle` + `pid` ありになっていたことが2回ある。1つは sandbox で書き込みを拒まれて終わったターン（「モデルへの指示」の節の `!` を勧めさせる手順）。もう1つは、外で起動したセッションを、whatnext を閉じて（残していた `claude attach` と作業台を畳んで）から見たとき（会話記録の末尾はふつうのターンの終わりで、同じ条件の別のセッションは `done` のままだった）。条件と原因は確かめていない。whatnext では「どの規則にも当たらない行」として、質問待ちの段に `Question (blocked)` と出る（2.1.283）。
 
+### 起動された `claude -p` のプロセスの祖先（2.1.310）
+
+- Agent ツールのサブエージェントは、起動元と同じプロセスの中で動き、`--json` に行として出ない（サブエージェントを使っている `--bg` のセッションで、行が増えなかった）。
+- `--bg` のセッションの `pid` は `claude bg-spare` のプロセスで、その親は `claude bg-pty-host`、さらにその親は `claude daemon run` である。`--bg` のセッションの祖先には、ほかの行の `pid` が出ない。
+- `--bg` のセッションが Bash ツールで起動した `claude -p` の行は、`pid` の祖先に起動元の `pid` を持つ。スキルの Python のスクリプトを経た例では、`claude -p`、`python3 …/review_loop.py`、`/bin/zsh -c …`（Bash ツール）、`claude bg-spare`（起動元の行の `pid`）の順に並んだ。
+- stdio の MCP サーバが起動した `claude -p` も同じである。サーバは、MCP の設定を読んだ `claude` の子プロセスになる。手元で作った最小のサーバ（ツールが呼ばれると `claude -p` を起動するだけのもの）では、`claude -p`（MCP サーバが起動した行）、`node server.mjs`、`claude -p`（サーバを使った行）、`/bin/zsh -c …`、`claude bg-spare`（`--bg` の行）の順に並んだ。一番近い祖先の行を起動元とすると、2段の入れ子になる。
+- `--bg` のセッションが Bash ツールの `run_in_background` で `claude -p` を起動し、すぐにターンを終えた（応答 `STARTED` を返した）ときも、`--json` の行は、バックグラウンドのシェルが終わって知らせを受けたターンが終わるまで、`working` + `busy` のままだった（約80秒。その後 `done` + `idle`）。バックグラウンドのシェルが動いている間は、ターンの区切りが `--json` に出ない。
+- `claude -p` は可変長の値を取るオプション（`--allowedTools` など）の後ろにプロンプトを置くと、プロンプトもその値として取り込み、`Error: Input must be provided either through stdin or as a prompt argument when using --print` で終わる。プロンプトはオプションより前に置く。
+
 ### 起動（`--bg`）
 
 - プロンプトなしで起動すると、終了コード 0 で `backgrounded · <id> · <name> (idle — send a prompt to start)` を返す。`--json` では `state: "blocked"`、`status: "idle"`、`pid` あり、`waitingFor` なしになる（2.1.281）。

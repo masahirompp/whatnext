@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
   type ArrangeInput,
+  ancestorsOf,
   arrange,
   emptyDoneMemo,
   emptyWaitMemo,
@@ -37,6 +38,7 @@ function input(rows: AgentRow[], extra: Partial<ArrangeInput> = {}): ArrangeInpu
     waitSince: new Map(),
     sups: new Map(),
     doneMemo: emptyDoneMemo,
+    spawnedBy: new Map(),
     ...extra,
   };
 }
@@ -328,6 +330,199 @@ describe('待ち先 (シナリオ 17〜21)', () => {
     expect(subtreeOf(r, A.sessionId)).toEqual([A.sessionId, B.sessionId, C.sessionId]);
     expect(subtreeOf(r, B.sessionId)).toEqual([B.sessionId, C.sessionId]);
     expect(flatten(r).map(e => e.lastChain)).toEqual([[], [true], [true, true]]);
+  });
+});
+
+describe('起動された行 (シナリオ 67、68)', () => {
+  const tty = (name: string, extra: Partial<AgentRow> = {}): AgentRow => {
+    const {id: _id, state: _state, ...r} = bg(name, {status: 'busy', ...extra});
+    return {...r, kind: 'interactive'};
+  };
+
+  it('起動元の下に入れ子で並び、sub の印が付く。さらに起動した行はもう一段深く並ぶ (67)', () => {
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const G = tty('G');
+    const spawnedBy = new Map([
+      [C.sessionId, P.sessionId],
+      [G.sessionId, C.sessionId],
+    ]);
+    const r = arrange(input([G, C, P], {spawnedBy}));
+    expect(flatten(r).map(e => [e.name, e.depth, e.sub])).toEqual([
+      ['P', 0, false],
+      ['C', 1, true],
+      ['G', 2, true],
+    ]);
+  });
+
+  it('起動元がターンを終えても、起動された行が動いていれば起動元は待ちの段に入る。done は出さない (68)', () => {
+    const P = bg('P');
+    const C = tty('C');
+    const spawnedBy = new Map([[C.sessionId, P.sessionId]]);
+    const r = arrange(input([P, C], {spawnedBy}));
+    expect(flatten(r).map(e => [e.name, e.status])).toEqual([
+      ['P', 'Waiting'],
+      ['C', 'Working'],
+    ]);
+    const after = arrange(input([P], {doneMemo: r.doneMemo}));
+    expect(flatten(after).map(e => [e.name, e.status, e.doneNames])).toEqual([['P', 'Review', undefined]]);
+  });
+
+  it('起動元が一覧に出ていなければ、トップレベルに sub の印なしで並ぶ', () => {
+    const P = tty('P', {status: 'idle'});
+    const C = tty('C');
+    const r = arrange(input([P, C], {spawnedBy: new Map([[C.sessionId, P.sessionId]])}));
+    expect(flatten(r).map(e => [e.name, e.depth, e.sub])).toEqual([['C', 0, false]]);
+  });
+
+  it('利用者が待ち先に結んだ行は、結んだ関係を優先する', () => {
+    const A = bg('A');
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const r = arrange(
+      input([A, P, C], {
+        waits: new Map([[A.sessionId, [C.sessionId]]]),
+        spawnedBy: new Map([[C.sessionId, P.sessionId]]),
+      }),
+    );
+    expect(flatten(r).find(e => e.name === 'C')?.sub).toBe(false);
+    expect(r.upNext.find(g => g.rootSid === A.sessionId)?.entries.map(e => e.name)).toEqual(['A', 'C']);
+  });
+
+  it('自分の待ち先を持つ行は起動された行にならず、起動元を待っていても一周しない', () => {
+    const P = bg('P');
+    const C = tty('C');
+    const r = arrange(
+      input([P, C], {
+        waits: new Map([[C.sessionId, [P.sessionId]]]),
+        spawnedBy: new Map([[C.sessionId, P.sessionId]]),
+      }),
+    );
+    expect(flatten(r).map(e => [e.name, e.depth, e.sub])).toEqual([
+      ['C', 0, false],
+      ['P', 1, false],
+    ]);
+    expect(r.subs.size).toBe(0);
+  });
+
+  it('一覧に出ない待ち元に結ばれた行は、起動元の下に並ぶ', () => {
+    const H = tty('H', {status: 'idle'});
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const r = arrange(
+      input([H, P, C], {
+        waits: new Map([[H.sessionId, [C.sessionId]]]),
+        spawnedBy: new Map([[C.sessionId, P.sessionId]]),
+      }),
+    );
+    expect(flatten(r).map(e => [e.name, e.depth, e.sub])).toEqual([
+      ['P', 0, false],
+      ['C', 1, true],
+    ]);
+  });
+
+  it('起動された行だけが理由で待ちの段にいる起動元は、待ち先を待っていたことに数えず、done も出さない', () => {
+    const P = bg('P');
+    const T = bg('T');
+    const C = tty('C');
+    const waits = new Map([[P.sessionId, [T.sessionId]]]);
+    const during = arrange(input([P, T, C], {waits, spawnedBy: new Map([[C.sessionId, P.sessionId]])}));
+    expect(flatten(during).find(e => e.name === 'P')?.status).toBe('Waiting');
+    expect(during.doneMemo.waiting.has(P.sessionId)).toBe(false);
+    const after = arrange(input([P, T], {waits, doneMemo: during.doneMemo}));
+    expect(flatten(after).find(e => e.name === 'P')?.doneNames).toBeUndefined();
+  });
+
+  it('done を出している待ち元が起動された行で待ちの段に入っても、出ている間は隠し、待ちの段を出るとまた出す', () => {
+    const P = bg('P');
+    const T = bg('T');
+    const C = tty('C');
+    const waits = new Map([[P.sessionId, [T.sessionId]]]);
+    const memo = {waiting: new Set<string>(), done: new Set([P.sessionId])};
+    const during = arrange(input([P, T, C], {waits, doneMemo: memo, spawnedBy: new Map([[C.sessionId, P.sessionId]])}));
+    expect(flatten(during).find(e => e.name === 'P')?.doneNames).toBeUndefined();
+    const after = arrange(input([P, T], {waits, doneMemo: during.doneMemo}));
+    expect(flatten(after).find(e => e.name === 'P')?.doneNames).toEqual(['T']);
+  });
+
+  it('待ち先が自分の起動した行のせいで待ちの段にいる間も、待ち元は待っていたことになり、終わると done が出る', () => {
+    const W = bg('W');
+    const T = bg('T');
+    const C = tty('C');
+    const waits = new Map([[W.sessionId, [T.sessionId]]]);
+    const during = arrange(input([W, T, C], {waits, spawnedBy: new Map([[C.sessionId, T.sessionId]])}));
+    expect(flatten(during).map(e => [e.name, e.status])).toEqual([
+      ['W', 'Waiting'],
+      ['T', 'Waiting'],
+      ['C', 'Working'],
+    ]);
+    expect(during.doneMemo.waiting.has(W.sessionId)).toBe(true);
+    const after = arrange(input([W, T], {waits, doneMemo: during.doneMemo}));
+    expect(flatten(after).find(e => e.name === 'W')?.doneNames).toEqual(['T']);
+  });
+
+  it('保留の行は起動された行にならず、普通の行のまま並ぶ', () => {
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const r = arrange(
+      input([P, C], {holds: new Map([[C.sessionId, 'later']]), spawnedBy: new Map([[C.sessionId, P.sessionId]])}),
+    );
+    expect(r.subs.size).toBe(0);
+    expect(r.onHold.flatMap(g => g.entries.map(e => [e.name, e.depth, e.sub]))).toEqual([['C', 0, false]]);
+  });
+
+  it('組の位置は起動された行を数えずに決める(起動された行のほうが上の段でも)', () => {
+    const P = bg('P');
+    const C = tty('C', {status: 'waiting', waitingFor: 'permission prompt'});
+    const R = bg('R', {state: 'working', status: 'busy'});
+    const r = arrange(input([P, C, R], {spawnedBy: new Map([[C.sessionId, P.sessionId]])}));
+    expect(flatten(r).map(e => [e.name, e.status])).toEqual([
+      ['R', 'Working'],
+      ['P', 'Waiting'],
+      ['C', 'Permission'],
+    ]);
+    expect(r.upNext.find(g => g.rootSid === P.sessionId)?.positionSid).toBe(P.sessionId);
+  });
+
+  it('入れ子の祖先を近い順に根まで返す', () => {
+    const P = bg('P', {state: 'working', status: 'busy'});
+    const C = tty('C');
+    const G = tty('G');
+    const r = arrange(
+      input([P, C, G], {
+        spawnedBy: new Map([
+          [C.sessionId, P.sessionId],
+          [G.sessionId, C.sessionId],
+        ]),
+      }),
+    );
+    expect(ancestorsOf(r, G.sessionId)).toEqual([C.sessionId, P.sessionId]);
+    expect(ancestorsOf(r, P.sessionId)).toEqual([]);
+  });
+
+  it('リポジトリのビューでも起動元の組の中に (sub) で並び、別のリポジトリで動いていても起動元の区切りに出る', () => {
+    const P = bg('P', {state: 'working', status: 'busy', cwd: '/app'});
+    const C = tty('C', {cwd: '/lib'});
+    const r = arrange(
+      input([P, C], {
+        view: 'repo',
+        spawnedBy: new Map([[C.sessionId, P.sessionId]]),
+        repoOf: new Map([
+          [P.sessionId, '/app'],
+          [C.sessionId, '/lib'],
+        ]),
+      }),
+    );
+    expect(r.repos?.map(s => [s.label, s.groups.flatMap(g => g.entries.map(e => [e.name, e.depth, e.sub]))])).toEqual([
+      [
+        'app',
+        [
+          ['P', 0, false],
+          ['C', 1, true],
+        ],
+      ],
+    ]);
+    expect(r.subs.has(C.sessionId)).toBe(true);
   });
 });
 
