@@ -52,6 +52,7 @@ description: whatnext の作業台(専用の tmux サーバ、作業台の画面
 - `detach-on-destroy` はセッションのオプションで、消えるセッション自身の値が使われる。見ているセッションが消える前に別のセッションへ切り替えるには、`remain-on-exit on` でペインを残し、`pane-died` のフックで処理する。`pane-died` は `remain-on-exit` のときだけ発火し、`set-hook -g` で効いた。
 - 全体を `remain-on-exit on` にすると、`claude attach` や一覧のペインも残ってセッションが閉じなくなる。それらのウィンドウは `set -w -t =<名前>: remain-on-exit off` にする(設定を流し込むより前にできているウィンドウは、流し込む設定の中で off にする)。
 - `client-focus-in` のフックがある(`focus-events on` のとき)。
+- `allow-passthrough` の既定は off で、ペインのアプリが `ESC Ptmux; … ESC \` で包んだ制御列は捨てられる(tmux 3.8)。Claude Code は tmux の中では、通知(OSC 9 / 99 / 777)や進み具合(OSC 9;4)をこの形で包むので、専用サーバでは on にする。包まない OSC 777 は on でも off でも外側に届かない。確かめるときは、外側の端末の代わりに pty を立てて、届いたバイト列を見る(#268)。
 - 一覧のプロセスは、設定(フック)を流し込む前に SIGUSR2 の受け手を付ける。設定を入れた直後から、フック(client-attached など)が一覧に SIGUSR2 を送り始める。受け手を付ける前に届くと、Node の既定の動作でプロセスが黙って終わる(終了の処理も走らない)。異常終了のあとに起動し直したとき(作業台の後始末をしている間にランチャーが attach する)に起きた(#209)。
 
 ## マウス
@@ -62,6 +63,7 @@ description: whatnext の作業台(専用の tmux サーバ、作業台の画面
 - セッションを作るときに入れる設定なので、入れる前に作ったセッションには効かない。
 
 ## 確かめるときの罠
+- ペインの中のアプリへの入力を絞るには、`bind -T <表> Any` で残りのキーを受けて捨て、要るキーだけ `send-keys` で渡す。代替画面のアプリ(`CLAUDE_CODE_NO_FLICKER=1` の claude など)で `select-pane -d` を使うと、入力と一緒にスクロールも止まる。この形なら送信を防ぎつつスクロールできた(#228)。
 - `pkill -f 'sleep 1001'` は、それを包む `sh -c 'sleep 1001; ...'` まで殺し、後ろのコマンドが走らない。`pkill -x -f` で完全一致にする。
 - zsh はパイプの中の `while` を Ctrl+Z で停止できない(`job can't be suspended`)。ジョブ停止を確かめるときは `sleep` などの単純なコマンドを使う。
 - unix socket のパスには長さの上限(macOS で 104 バイト)がある。scratchpad の深いパスでは socket を作れない。

@@ -33,7 +33,11 @@ tmux kill-session -t wn                  # 片付け
 - **偽の `claude` に実行の権限がないと、黙って本物が使われる。** Node の `execFile('claude')` は PATH の中の実行できないファイルを飛ばす。一覧に利用者の本物のセッションが並び、attach して文字を送ると利用者のセッションに入力される。偽の `claude` を置いたら、そのパスで直接 `claude agents --json` を実行して出力を確かめ、起動したら一覧の行が偽のセッションだけかを確かめてから操作する。
 - **作業台に文字を送る前に、送り先が作業台の画面で、作業台ができているかを確かめる。** 送り先を取り違えると、文字は claude の画面の入力欄に入り、`Enter` で指示として送られる。`list-clients -F '#{client_tty} #{session_name}'` で、送り先の端末のクライアントが `sh-<id>` を映していることを確かめ、なければ止める(サイクル6までは popup の中のクライアントで確かめていた)。実物のセッションで試すときは `Enter` を送る操作を最小にする。
 - 外側の tmux の中では、外側の tmux が端末の問い合わせに答えるので、端末の機能の差が出ない。端末の機能(`terminal-features` など)を確かめるときは、問い合わせに答えない pty(Python の `pty.fork`)からランチャーを動かし、端末に届いたバイト列(OSC 8 なら `ESC ]8;`)を見る。
-- Claude Code のセッションが worktree に隔離されている(EnterWorktree)と、Bash で `tmux -L ... new-session ... "env ... node dist/cli.js"` のような複合コマンドや、シェル関数を含むコマンドは「worktree の外に出ないか確かめられない」として拒否された。起動とキー送信(1キーずつ send-keys して capture-pane)は `$CLAUDE_JOB_DIR/tmp` のスクリプトファイルに書いて実行する。中で `cd <worktree>` して worktree の dist を動かす。
+- Claude Code のセッションが worktree に隔離されている(EnterWorktree)と、Bash で `tmux -L ... new-session ... "env ... node dist/cli.js"` のような複合コマンドや、シェル関数を含むコマンドは「worktree の外に出ないか確かめられない」として拒否された。起動とキー送信(1キーずつ send-keys して capture-pane)は `$CLAUDE_JOB_DIR/tmp` のスクリプトファイルに書いて実行する。中で `cd <worktree>` して worktree の dist を動かす。ほかに拒否された形: heredoc や python に渡す文字列に `git` という語が入る、`claude --bg "<プロンプト>"`、heredoc のあとに `;` で別のコマンドをつなぐ、`for` の中で `zsh <スクリプト>` や `gh … --jq "…"` を呼ぶ、変数で渡したパスを `sed -i` の引数にする、git の出力をループに渡して続けて git を呼ぶ。どれも、スクリプトを Write で置いて単独で実行するか、コマンドを分けると通った(#241)。
+- worktree には `node_modules` がなく、パッケージは親の checkout の `node_modules` から解決される。`dist` と `node_modules` を一時ディレクトリに写して起動するテスト(版の違う whatnext)は、写した先でパッケージが見つからず `ERR_MODULE_NOT_FOUND` で落ちる。worktree で画面の通しを流すときは、最初に `npm ci` する(#240、#258)。
+- 縦の間隔(入力欄と知らせの間の空行など)を確かめるときは、capture をそのまま(`cat -A` など)見る。`grep` で絞ると空行が消える(#226)。
+- vitest は、テストが通ると `console.log` の出力を出さない。テストの中で取った画面を見るときは、ファイルに書き出すか `--reporter=verbose` を付ける(#226、#243)。
+- 入力欄と知らせが同時に出る画面は、実機の capture では作りにくい。描画の単体テストで確かめる(#226)。
 - 状態のファイル(保留と待ち先)を確かめるときは、`XDG_STATE_HOME` を一時ディレクトリに向け、`WHATNEXT_TMUX_SOCKET` も変える(ソケット名が既定でないとファイル名が `state-<ソケット名>.json` になる)。利用者の `~/.local/state/whatnext/state.json` に触れない。
 - 利用者に実機で比べてもらうときは、先に `type whatnext` で実際に動く版を確かめ、フルパスで揃える。利用者の PATH に古い npx のキャッシュ(`~/.npm/_npx/<hash>/node_modules/.bin`)が入っていて、`whatnext` と打つと古い版が動いたことがある。`exec` を付けて起動すると、すぐ終わったときにエラーの表示ごと分割が消えて理由が見えない。
 

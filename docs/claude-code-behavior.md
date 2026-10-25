@@ -45,6 +45,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - stdio の MCP サーバが起動した `claude -p` も同じである。サーバは、MCP の設定を読んだ `claude` の子プロセスになる。手元で作った最小のサーバ（ツールが呼ばれると `claude -p` を起動するだけのもの）では、`claude -p`（MCP サーバが起動した行）、`node server.mjs`、`claude -p`（サーバを使った行）、`/bin/zsh -c …`、`claude bg-spare`（`--bg` の行）の順に並んだ。一番近い祖先の行を起動元とすると、2段の入れ子になる。
 - `--bg` のセッションが Bash ツールの `run_in_background` で `claude -p` を起動し、すぐにターンを終えた（応答 `STARTED` を返した）ときも、`--json` の行は、バックグラウンドのシェルが終わって知らせを受けたターンが終わるまで、`working` + `busy` のままだった（約80秒。その後 `done` + `idle`）。バックグラウンドのシェルが動いている間は、ターンの区切りが `--json` に出ない。
 - `claude -p` は可変長の値を取るオプション（`--allowedTools` など）の後ろにプロンプトを置くと、プロンプトもその値として取り込み、`Error: Input must be provided either through stdin or as a prompt argument when using --print` で終わる。プロンプトはオプションより前に置く。
+- review-loop のスキルが起動した `claude -p` の3行（`kind: interactive`、`status: busy`、同じ worktree）のうち1行だけ、一言がなく WAITING が `-` だった。ほかの2行には指示の一言と `<1m` が出た。会話記録がまだない、別の場所にある、指示の行の形が違う、などが考えられるが、確かめていない（#244）。
 
 ### 起動（`--bg`）
 
