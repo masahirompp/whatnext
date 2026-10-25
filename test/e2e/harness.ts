@@ -1,14 +1,13 @@
 import {execFileSync} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
-import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 
 // 画面の通しの口。外側の tmux のセッションを端末の代わりにし、偽の claude を PATH の前に置いて whatnext を動かす
 // (driving-whatnext-in-tmux スキル)。テストごとに一時ディレクトリ、ソケット、ポートを分ける。
 
 export const REPO = resolve(import.meta.dirname, '..', '..');
-const CLI = join(REPO, 'dist', 'src', 'cli.js');
+export const CLI = join(REPO, 'dist', 'src', 'cli.js');
 const FAKE = join(REPO, 'test', 'e2e', 'fake');
 
 export interface FakeRow {
@@ -84,7 +83,7 @@ export class Harness {
   private started = false;
 
   constructor() {
-    this.dir = realpathSync(mkdtempSync(join(tmpdir(), 'wne-')));
+    this.dir = realpathSync(mkdtempSync('/tmp/wne-'));
     const tag = this.dir.slice(-6).replace(/[^a-zA-Z0-9]/g, 'x');
     this.outer = `wno-${tag}`;
     this.socket = `wnx-${tag}`;
@@ -226,6 +225,7 @@ export class Harness {
         full,
       );
       this.tmux('set', '-g', 'status', 'off');
+      this.tmux('set', '-s', 'escape-time', '10');
       this.started = true;
     } else {
       try {
@@ -262,7 +262,8 @@ export class Harness {
   async keysTo(session: string, ...ks: string[]): Promise<void> {
     for (const k of ks) {
       this.tmux('send-keys', '-t', `=${session}:`, k);
-      await sleep(150);
+      // Esc は外側の tmux を挟むと約 500ms 遅れて届き、その前に次のキーが来るとまとめて届く(#278)
+      await sleep(k === 'Escape' ? 700 : 150);
     }
   }
 
@@ -276,7 +277,7 @@ export class Harness {
   }
 
   lines(session = 'main'): string[] {
-    return this.screen(session).split('\n');
+    return this.screen(session).replace(/\n$/, '').split('\n');
   }
 
   async waitFor(pred: RegExp | ((s: string) => boolean), timeout = 8000, session = 'main'): Promise<string> {
@@ -348,6 +349,10 @@ export class Harness {
   }
 
   cleanup(): void {
+    if (process.env.WN_KEEP) return;
+    try {
+      rmSync(join(REPO, 'test', 'e2e', '.tmp', this.socket), {recursive: true, force: true});
+    } catch {}
     try {
       execFileSync('tmux', ['-L', this.socket, 'kill-server'], {stdio: 'ignore'});
     } catch {}

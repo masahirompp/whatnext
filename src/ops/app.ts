@@ -615,6 +615,7 @@ export class App {
 
   onKey(str: string | undefined, key: Key | undefined): void {
     const name = key?.name;
+    this.p.log(`key ${JSON.stringify({str, name, ctrl: key?.ctrl, meta: key?.meta})}`);
     if (name === 'paste-start') {
       this.paste = '';
       return;

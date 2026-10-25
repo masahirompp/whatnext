@@ -99,6 +99,7 @@ export async function startList(env: Env): Promise<number> {
   emitKeypressEvents(process.stdin, {escapeCodeTimeout: 30} as never);
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.on('keypress', (s, k) => app_.onKey(s, k));
+  if (logPath) process.stdin.on('data', b => log(`stdin ${Buffer.from(b).toString('hex')}`));
   process.stdout.on('resize', () => app_.draw());
 
   let ending = false;

@@ -28,6 +28,7 @@ const strip = r => {
 const cmd = args[0];
 if (cmd === 'agents') {
   const c = conf();
+  if (c.agentsDelay) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, c.agentsDelay);
   if (c.agentsFail) {
     process.stderr.write('agents failed\n');
     process.exit(1);
@@ -41,6 +42,10 @@ if (cmd === 'agents') {
 }
 
 if (cmd === '-p') {
+  if (conf().usageFail) {
+    process.stderr.write('usage failed\n');
+    process.exit(1);
+  }
   // /usage
   process.stdout.write(
     JSON.stringify({
@@ -55,6 +60,7 @@ if (cmd === '-p') {
 
 if (cmd === '--bg') {
   const c = conf();
+  if (c.bgDelay) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, c.bgDelay);
   if ((c.untrusted ?? []).includes(process.cwd())) {
     process.stdout.write(`Workspace not trusted. Run claude in ${process.cwd()} once and accept the trust prompt, then retry.\n`);
     process.exit(1);
