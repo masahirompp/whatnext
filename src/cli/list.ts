@@ -7,13 +7,13 @@ import {run} from '../../lib/input/exec.js';
 import {HookStore} from '../../lib/input/hooks.js';
 import {launchSettings, openReceiver, probe} from '../../lib/input/receiver.js';
 import {Transcripts} from '../../lib/input/transcript.js';
-import {GUIDE, LIST, serverConfig, Tmux} from '../../lib/tmux/tmux.js';
+import {GUIDE, LIST, serverConfig, shq, Tmux} from '../../lib/tmux/tmux.js';
 import {Observer} from '../input/observe.js';
 import {Locations, Prs} from '../input/where.js';
 import {App} from '../ops/app.js';
 import {ATTACH_KEYS, ATTACH_KEYS_HELP} from '../ops/keys.js';
 import {StateFile, statePath} from '../state/state.js';
-import {type Env, paneCommand, shq, tmuxEnv} from './env.js';
+import {type Env, paneCommand, tmuxEnv} from './env.js';
 
 // 一覧の役(専用の tmux サーバのセッション `list` の中で動く)。本物の口を差し込んで App を動かす。
 

@@ -2,6 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {existsSync, readFileSync, realpathSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {shq} from '../../lib/tmux/tmux.js';
 
 // 起動の口が共有する値(ソケット、ポート、版、自分を動かすコマンド)。
 
@@ -82,8 +83,6 @@ export function insideWhatnext(env: Env, pe: NodeJS.ProcessEnv = process.env): b
   const sockPath = t.split(',')[0] ?? '';
   return sockPath.endsWith(`/${env.socket}`);
 }
-
-export const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /** 一覧と案内のペインのコマンド(`env` で環境を渡す。ペインのシェルの起動処理で PATH が組み直されても効くように)。 */
 export function paneCommand(env: Env, role: 'list' | 'guide', pe: NodeJS.ProcessEnv = process.env): string {

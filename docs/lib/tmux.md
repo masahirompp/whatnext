@@ -24,6 +24,7 @@
 
 `new Tmux(socket, run)`。どの操作も、失敗を例外にせず、真偽値か空の値で返す。
 
+- 生のコマンド：`t(args, input?)`（専用サーバに tmux のコマンドをそのまま送り、`RunResult` を返す。下の操作にない設定やセッションの作成に使う。サイクル9で契約に書き足した。#275）。
 - 問い合わせ：`hasSession`、`sessions`、`clients`（`tty`、`session`、`termname`、`pid`）、`option`。
 - 設定：`setOption`、`unsetOption`、`sourceConfig(text)`（新しいサーバに初めて流し込むと、`table wnq doesn't exist` で 0 以外を返すが、キー、フック、オプションは入る。サイクル9で確かめた。#275）、`takeRequests()`（頼みごとを書かれた順に取り出して消す）。
 - クライアント：`switchClient(tty, target)`、`detachClient(tty)`、`display(tty, text, ms?)`（短い知らせ。`#` は書式にならないよう直す）。

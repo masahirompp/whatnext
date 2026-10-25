@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {run} from '../../lib/input/exec.js';
 import {deriveSpawners, parseCallerPids} from '../../src/input/spawners.js';
-import {Locations, locate} from '../../src/input/where.js';
+import {Locations, locate, Prs} from '../../src/input/where.js';
 
 const sh = (cwd: string, cmd: string, ...args: string[]) =>
   execFileSync(cmd, args, {
@@ -191,5 +191,34 @@ describe('起動元の導き方(67、71、77)', () => {
       [302, null],
       [303, null],
     ]);
+  });
+});
+
+describe('PR の引き直し', () => {
+  it('gh の一時的な失敗では使えないと覚えず、次の回に引き直す。60秒に1回まで', async () => {
+    let now = 0;
+    let calls = 0;
+    let fail = true;
+    const fake: typeof run = async () => {
+      calls++;
+      if (fail) return {code: null, stdout: '', stderr: '', error: 'ETIMEDOUT'};
+      return {code: 0, stdout: JSON.stringify([{number: 7, state: 'OPEN', isDraft: true}]), stderr: ''};
+    };
+    const prs = new Prs(fake, () => now);
+    const d = tmp();
+    const tick = () => new Promise(r => setTimeout(r, 10));
+    prs.refresh([{checkout: d, branch: 'b'}], () => {});
+    await tick();
+    prs.refresh([{checkout: d, branch: 'b'}], () => {});
+    await tick();
+    expect(calls).toBe(1);
+    now = 60_000;
+    fail = false;
+    let changed = 0;
+    prs.refresh([{checkout: d, branch: 'b'}], () => changed++);
+    await tick();
+    expect(calls).toBe(2);
+    expect(changed).toBe(1);
+    expect(prs.get(d, 'b')).toEqual({number: 7, state: 'draft'});
   });
 });

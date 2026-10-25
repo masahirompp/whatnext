@@ -17,7 +17,7 @@ import {groupTitles, layout, waitView} from '../model/layout.js';
 import {canLink, cascade, waitCandidates} from '../model/relations.js';
 import type {Inputs, Layout, Row} from '../model/types.js';
 import {validWaits} from '../model/waits.js';
-import {frame, menuLines, render} from '../screen/screen.js';
+import {clean, frame, menuLines, render} from '../screen/screen.js';
 import type {Screen, ScreenRow} from '../screen/types.js';
 import {emptyState, type PersistedState} from '../state/state.js';
 import {filterItems} from './filter.js';
@@ -121,7 +121,7 @@ export class App {
     await this.refresh({initial: true});
     this.initialized = true;
     this.fetchUsage(true);
-    // 起動中に届いた知らせと同時に走らないよう、列を通す
+    // 起動中に届いた知らせは保留してあるので、ここで1回読む
     this.signal();
     await this.queue;
   }
@@ -135,12 +135,12 @@ export class App {
       if (s === LIST || s === GUIDE) continue;
       if (CLAUDE_SESSION.test(s) || s.startsWith('trust-')) await this.p.tmux.killSession(s);
       else if (s.startsWith('sh-')) {
-        if ((this.runningOf(running, s.slice(3)) ?? []).length > 0) keep.push(s);
+        if ((running.get(s.slice(3)) ?? []).length > 0) keep.push(s);
         else await this.killSafely(s);
       }
     }
     if (keep.length === 0) return;
-    const list = keep.map(s => `${s.slice(3)}: ${(this.runningOf(running, s.slice(3)) ?? []).join(', ')}`);
+    const list = keep.map(s => `${s.slice(3)}: ${(running.get(s.slice(3)) ?? []).join(', ')}`);
     const n = keep.length;
     const yes = await this.ask(
       `${n} ${n === 1 ? 'command is' : 'commands are'} still running from a previous whatnext: ${list.join(', ')}. Keep them? [Y/n]`,
@@ -161,13 +161,9 @@ export class App {
     await t.killSession(session);
   }
 
-  private runningOf(m: Map<string, string[]>, id: string): string[] | undefined {
-    return m.get(id);
-  }
-
   // ---- 更新 ----
 
-  async refresh(opts: {initial?: boolean; manual?: boolean; returned?: boolean} = {}): Promise<void> {
+  async refresh(opts: {initial?: boolean; manual?: boolean} = {}): Promise<void> {
     if (opts.manual) this.manualPending = true;
     if (this.refreshing) {
       this.refreshQueued = true;
@@ -207,6 +203,10 @@ export class App {
       this.lay = {groups: [], order: [], parent: new Map(), tier: new Map()};
       return;
     }
+    // 外への問い合わせを先に済ませ、そのあとで行と並びを同じ時点の組として差し替える(途中で描いても、
+    // 消えた行を古い並びから引かないように)
+    await this.p.locations.refresh(obs.rows.filter(r => r.tier !== null).map(r => r.cwd));
+    const running = await this.p.tmux.running();
     this.error = undefined;
     const prevLayout = this.lay;
     const prevAt = this.lastAt;
@@ -230,7 +230,7 @@ export class App {
       }
     }
     for (const s of [...this.deleting]) if (!present.has(s)) this.deleting.delete(s);
-    this.rows = new Map(obs.rows.map(r => [r.sid, r]));
+    this.rows = new Map(obs.rows.map(r => [r.sid, {...r, name: clean(r.name)}]));
     this.spawner = obs.spawner;
     this.supplied = obs.supplied;
     for (const r of obs.rows) {
@@ -246,8 +246,7 @@ export class App {
         linked = true;
       }
     }
-    await this.p.locations.refresh(obs.rows.filter(r => r.tier !== null).map(r => r.cwd));
-    this.running = await this.p.tmux.running();
+    this.running = running;
     // 待機時間(悲観的に数え、更新の間は止める)
     const nextSince = new Map<string, {tier: Tier; observed?: number}>();
     this.waitingMs.clear();
@@ -345,7 +344,11 @@ export class App {
     if (!r.id) return;
     const first = await this.p.transcripts.firstPrompt(r.sid, force).catch(() => undefined);
     if (first) this.firstKnown.add(r.sid);
-    await this.p.tmux.setSummary(r.id, first ? `${r.name} · ${first}` : r.name);
+    // 前に置いたものと同じなら tmux を呼ばない
+    const text = first ? `${r.name} · ${first}` : r.name;
+    if (this.summaries.get(r.id) === text) return;
+    this.summaries.set(r.id, text);
+    await this.p.tmux.setSummary(r.id, text);
   }
 
   private onHook(sid: string, event: string): void {
@@ -361,6 +364,7 @@ export class App {
         const first = await this.p.transcripts.firstPrompt(sid, true).catch(() => undefined);
         if (first) {
           this.firstKnown.add(sid);
+          this.summaries.set(id, `${name} · ${first}`);
           await this.p.tmux.setSummary(id, `${name} · ${first}`);
           return;
         }
@@ -464,7 +468,7 @@ export class App {
       ctx: this.supplied.get(sid)?.ctx,
       waiting: this.waitingMs.get(sid),
       line: this.lineOf(r, tier === 'waiting' ? tierOf(r.tier) : tier),
-      running: r.id ? this.runningOf(this.running, r.id) : undefined,
+      running: r.id ? this.running.get(r.id) : undefined,
       done: doneNames,
       note: n.spawned ? undefined : this.persisted.notes.get(sid),
       deleting: this.deleting.has(sid),
@@ -590,20 +594,22 @@ export class App {
   private waitItems(waiter: string, filter: string): {label: string; sid?: string; linked?: boolean}[] {
     const inp = this.inputs();
     const titles = this.titles();
-    const cands = waitCandidates(inp, this.lay, waiter).map(c => {
-      const r = this.rows.get(c.sid) as ObsRow;
-      const root = this.p.locations.get(r.cwd)?.root ?? r.cwd;
-      const tier = this.lay.tier.get(c.sid) ?? tierOf(r.tier);
-      const status = tier === 'waiting' ? statusLabel('waiting') : statusLabel(tier, r.reason);
-      const tag = r.kind === 'interactive' ? ' (tty)' : '';
-      return {
-        label: `${c.linked ? '✓ ' : '  '}${r.name}${tag}  ${status} · ${titles.get(root) ?? basename(root)}`,
-        name: r.name,
-        path: root,
-        sid: c.sid,
-        linked: c.linked,
-      };
-    });
+    const cands = waitCandidates(inp, this.lay, waiter)
+      .filter(c => this.rows.has(c.sid))
+      .map(c => {
+        const r = this.rows.get(c.sid) as ObsRow;
+        const root = this.p.locations.get(r.cwd)?.root ?? r.cwd;
+        const tier = this.lay.tier.get(c.sid) ?? tierOf(r.tier);
+        const status = tier === 'waiting' ? statusLabel('waiting') : statusLabel(tier, r.reason);
+        const tag = r.kind === 'interactive' ? ' (tty)' : '';
+        return {
+          label: `${c.linked ? '✓ ' : '  '}${r.name}${tag}  ${status} · ${titles.get(root) ?? basename(root)}`,
+          name: r.name,
+          path: root,
+          sid: c.sid,
+          linked: c.linked,
+        };
+      });
     const filtered = filter
       ? filterItems(
           cands.map(c => ({...c, label: c.name, full: c.label})),
@@ -637,7 +643,7 @@ export class App {
       return;
     }
     if (name === 'paste-end') {
-      const text = (this.paste ?? '').replace(/[\r\n]+/g, ' ');
+      const text = clean((this.paste ?? '').replace(/[\r\n]+/g, ' '));
       this.paste = undefined;
       this.typeText(text);
       return;
@@ -976,7 +982,7 @@ export class App {
       if (!m) {
         this.mode = {
           k: 'output',
-          lines: ['claude --bg did not start a session:', ...out.trim().split('\n').slice(0, 10)],
+          lines: ['claude --bg did not start a session:', ...out.trim().split('\n').slice(0, 10).map(clean)],
         };
         return;
       }
@@ -993,8 +999,13 @@ export class App {
 
   /** Claude Code 自身の信頼の確認を出す。承認されたら true。 */
   private async trust(dir: string): Promise<boolean> {
+    if (!this.mainTty) this.mainTty = await this.p.tmux.option(MAIN_TTY);
     const session = await this.p.tmux.newTrustSession(dir);
-    if (!session || !this.mainTty) return false;
+    if (!session) return false;
+    if (!this.mainTty) {
+      await this.killSafely(session);
+      return false;
+    }
     await this.p.tmux.switchClient(this.mainTty, session);
     this.mainSession = session;
     let real = dir;
@@ -1052,6 +1063,8 @@ export class App {
   private async attach(id: string, cwd: string, sid: string | undefined): Promise<void> {
     const {cols, rows} = this.p.size();
     await this.p.tmux.ensureClaudeSession(id, cwd, {cols, rows});
+    // 作り直した claude の画面のセッションには概要がないので、覚えた値を捨てて置き直す
+    this.summaries.delete(id);
     const row = sid ? this.rows.get(sid) : [...this.rows.values()].find(r => r.id === id);
     if (row) {
       this.stampAttached(row.sid);
@@ -1088,14 +1101,17 @@ export class App {
       this.pendingCursorId = id;
     }
     this.fetchUsage();
-    void this.refresh({returned: true});
+    void this.refresh();
   }
   private pendingCursorId?: string;
   private firstKnown = new Set<string>();
+  private summaries = new Map<string, string>();
 
   // ---- tmux からの知らせ ----
 
   signal(): void {
+    // 起動が終わるまでは処理しない(頼みごとは tmux のオプションに残り、起動の最後にまとめて読む)
+    if (!this.initialized) return;
     this.queue = this.queue.then(() => this.onSignal()).catch(e => this.p.log(`signal failed: ${String(e)}`));
   }
 
@@ -1243,12 +1259,17 @@ export class App {
     const p = (async () => {
       const r = await this.p.run('claude', ['stop', id], {timeout: 30000});
       const ms = r.code === 0 ? ARM_MS : STOP_FAILED_MS;
-      if (this.armed?.sid === sid) this.armed.until = this.p.now() + ms;
+      // 待ち受けが残っている(止めている間にほかのキーを押していない)ときだけ、2回目で消せると添える
+      const armed = this.armed?.sid === sid;
+      if (armed && this.armed) this.armed.until = this.p.now() + ms;
       if (r.code !== 0) {
-        const out = stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '';
-        this.notify(`Stop failed: ${out} (Ctrl+X again to delete)`, ms);
+        const out = clean(stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '');
+        this.notify(armed ? `Stop failed: ${out} (Ctrl+X again to delete)` : `Stop failed: ${out}`, ms);
       } else if (!this.deleting.has(sid)) {
-        this.notify(`Stopped ${row.name}. Press Ctrl+X again within 2s to delete.`, ms);
+        this.notify(
+          armed ? `Stopped ${row.name}. Press Ctrl+X again within 2s to delete.` : `Stopped ${row.name}.`,
+          ms,
+        );
       }
     })();
     this.stopping.set(sid, p);
@@ -1298,7 +1319,7 @@ export class App {
     if (stopFirst && row.tier !== 'stopped' && row.pid !== undefined) {
       await this.p.run('claude', ['stop', id], {timeout: 30000});
     }
-    const running = this.runningOf(await this.p.tmux.running(), id) ?? [];
+    const running = (await this.p.tmux.running()).get(id) ?? [];
     if (running.length > 0) {
       const yes = await this.ask(`Delete ${row.name} and stop ${running.join(', ')}? [y/N]`, false);
       if (!yes) return fail();
@@ -1521,7 +1542,7 @@ export class App {
     const running = await t.running();
     for (const s of await t.sessions()) {
       if (CLAUDE_SESSION.test(s) || s.startsWith('trust-')) await t.killSession(s);
-      else if (s.startsWith('sh-') && (this.runningOf(running, s.slice(3)) ?? []).length === 0) await t.killSession(s);
+      else if (s.startsWith('sh-') && (running.get(s.slice(3)) ?? []).length === 0) await t.killSession(s);
     }
   }
 }

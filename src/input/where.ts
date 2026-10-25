@@ -1,4 +1,4 @@
-import {realpathSync} from 'node:fs';
+import {existsSync, realpathSync} from 'node:fs';
 import {dirname, relative} from 'node:path';
 import type {Run} from '../../lib/input/exec.js';
 
@@ -149,7 +149,9 @@ export class Prs {
       {cwd: checkout, timeout: 20000},
     );
     if (r.code === null) {
-      this.unavailable = true;
+      // gh がないと覚えるのは、起動できず(ENOENT)、しかもチェックアウトの場所がまだあるときだけ。
+      // タイムアウトや、消えた worktree で起動できなかったときは、一時的な失敗として次の回に引き直す
+      if (r.error === 'ENOENT' && existsSync(checkout)) this.unavailable = true;
       return null;
     }
     if (r.code !== 0) {
