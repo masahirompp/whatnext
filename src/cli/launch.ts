@@ -75,5 +75,6 @@ export async function launch(env: Env): Promise<number> {
   });
   // tmux が主画面に残す `[detached ...]` の行を消す
   process.stdout.write('\x1b[1A\x1b[2K');
-  return res.status ?? 0;
+  // 終了の操作でサーバごと閉じたときも、tmux は 0 以外で終わる。attach できなかったときだけ失敗にする
+  return res.error ? 1 : 0;
 }

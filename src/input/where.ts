@@ -1,3 +1,4 @@
+import {realpathSync} from 'node:fs';
 import {dirname, relative} from 'node:path';
 import type {Run} from '../../lib/input/exec.js';
 
@@ -22,7 +23,12 @@ const lines = (s: string) => s.split('\n').map(l => l.trim());
 
 /** `cwd` の場所を1回問い合わせる。git でない、または問い合わせに失敗したら、リポジトリでない場所として返す。 */
 export async function locate(run: Run, cwd: string): Promise<Location> {
-  const plain: Location = {root: cwd, repo: false, checkout: cwd, worktree: false};
+  // git でない場所はパスごとに区切る。同じ場所を別の書き方(`/tmp` と `/private/tmp`)で分けないよう、実パスにする
+  let real = cwd;
+  try {
+    real = realpathSync(cwd);
+  } catch {}
+  const plain: Location = {root: real, repo: false, checkout: cwd, worktree: false};
   const g = (args: string[], dir = cwd) => run('git', ['-C', dir, ...args], {timeout: 10000});
   const top = await g(['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir']);
   if (top.code !== 0) return plain;
@@ -49,7 +55,7 @@ export async function locate(run: Run, cwd: string): Promise<Location> {
       base = superproject;
     }
   }
-  const rel = relative(base, cwd);
+  const rel = relative(base, real);
   const subFromBase = rel && !rel.startsWith('..') ? rel : undefined;
   // worktree は自分のチェックアウトの根からのパス、submodule は親のチェックアウトの根からのパス
   return {

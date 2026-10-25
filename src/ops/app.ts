@@ -133,7 +133,7 @@ export class App {
       if (CLAUDE_SESSION.test(s) || s.startsWith('trust-')) await this.p.tmux.killSession(s);
       else if (s.startsWith('sh-')) {
         if ((this.runningOf(running, s.slice(3)) ?? []).length > 0) keep.push(s);
-        else await this.p.tmux.killSession(s);
+        else await this.killSafely(s);
       }
     }
     if (keep.length === 0) return;
@@ -143,7 +143,19 @@ export class App {
       `${n} ${n === 1 ? 'command is' : 'commands are'} still running from a previous whatnext: ${list.join(', ')}. Keep them? [Y/n]`,
       true,
     );
-    if (!yes) for (const s of keep) await this.p.tmux.killSession(s);
+    if (!yes) for (const s of keep) await this.killSafely(s);
+  }
+
+  /** セッションを畳む。クライアントが映していれば、先に別のセッションへ切り替える(`detach-on-destroy on` なので、先に畳むとクライアントごと離れる)。 */
+  private async killSafely(session: string): Promise<void> {
+    const t = this.p.tmux;
+    const [clients, main, wb] = await Promise.all([t.clients(), t.option(MAIN_TTY), t.option(WB_TTY)]);
+    for (const c of clients) {
+      if (c.session !== session) continue;
+      if (c.tty === wb) await t.switchClient(c.tty, GUIDE);
+      else if (c.tty === main) await t.switchClient(c.tty, LIST);
+    }
+    await t.killSession(session);
   }
 
   private runningOf(m: Map<string, string[]>, id: string): string[] | undefined {
@@ -1294,8 +1306,8 @@ export class App {
       this.notify(out.split('\n').slice(0, 3).join(' ').replace(/\s+/g, ' '), 10000);
       return fail();
     }
-    await this.p.tmux.killSession(`sh-${id}`);
-    await this.p.tmux.killSession(id);
+    await this.killSafely(`sh-${id}`);
+    await this.killSafely(id);
     this.persisted.notes.delete(sid);
     this.persisted.waits.delete(sid);
     this.persisted.seen.delete(sid);

@@ -1,0 +1,11 @@
+#!/bin/sh
+# 偽の ps。起動元を引く2つの読み方だけを $FAKE_DIR の固定の表で返し、ほかは本物に渡す。
+if [ "$*" = "-A -o pid=,ppid=" ] && [ -f "$FAKE_DIR/ps.txt" ]; then
+  cat "$FAKE_DIR/ps.txt"
+  exit 0
+fi
+if [ "$1" = "-E" ] && [ -f "$FAKE_DIR/ps-env.txt" ]; then
+  cat "$FAKE_DIR/ps-env.txt"
+  exit 0
+fi
+exec /bin/ps "$@"
