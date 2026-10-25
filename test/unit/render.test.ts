@@ -135,11 +135,11 @@ describe('一覧の画面', () => {
       ),
     );
     expect(lines.slice(1, 7)).toEqual([
-      '  app',
+      `── app ${'─'.repeat(model({}).cols - 7)}`,
       expect.stringMatching(/^> a1 +Review +fix +- +5m$/),
       expect.stringMatching(/^ {2}a2 /),
       '',
-      '  infra',
+      `── infra ${'─'.repeat(model({}).cols - 9)}`,
       expect.stringMatching(/^ {2}i1 /),
     ]);
     expect(lines.join('\n')).not.toContain('Up next');

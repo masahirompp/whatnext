@@ -287,6 +287,13 @@ function panelLines(p: Panel, cols: number, maxItems: number): string[] {
   }
 }
 
+/** リポジトリのビューの区切りの見出し。名前の前後に罫線を引き、端末の幅いっぱいまで伸ばす。 */
+function sectionHeading(title: string, cols: number): string {
+  const name = truncate(oneLine(title), Math.max(1, cols - 4));
+  const rest = Math.max(0, cols - 4 - width(name));
+  return `${color.gray('── ')}${color.bold(name)}${color.gray(` ${'─'.repeat(rest)}`)}`;
+}
+
 /** 一覧の画面の行を組み立てる。返す行はどれも端末の幅に収まり、行数は端末の高さを超えない。 */
 export function render(m: ScreenModel): string[] {
   const cols = Math.max(10, m.cols);
@@ -332,7 +339,7 @@ export function render(m: ScreenModel): string[] {
       // 区切りの見出しは固定せず、行と一緒にスクロールする。
       m.sections.forEach((sec, i) => {
         if (i > 0) scrollLines.push('');
-        scrollLines.push(color.bold(truncate(`  ${oneLine(sec.title)}`, cols)));
+        scrollLines.push(sectionHeading(sec.title, cols));
         block(sec.rows, c, m, scrollLines, rowAt, inline);
       });
     } else {
