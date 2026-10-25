@@ -1,3 +1,4 @@
 node_modules/
 dist/
 .claude/worktrees/
+test/e2e/.tmp/

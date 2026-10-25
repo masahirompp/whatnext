@@ -1,0 +1,207 @@
+#!/usr/bin/env node
+// 画面の通しの偽の claude。状態は $FAKE_DIR/agents.json に持ち、呼ばれたコマンドを $FAKE_DIR/calls.log に書く。
+// 行に付けた `_fake` の項目で振る舞いを変える(stopFails、rm: 'unpushed' | 'uncommitted' | 'lock' | 'fail')。
+import {appendFileSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {randomBytes, randomUUID} from 'node:crypto';
+import {join} from 'node:path';
+
+const dir = process.env.FAKE_DIR;
+if (!dir) {
+  process.stderr.write('FAKE_DIR is not set\n');
+  process.exit(9);
+}
+const file = join(dir, 'agents.json');
+const args = process.argv.slice(2);
+appendFileSync(join(dir, 'calls.log'), `${JSON.stringify({args, cwd: process.cwd()})}\n`);
+
+const load = () => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : []);
+const save = rows => writeFileSync(file, JSON.stringify(rows, null, 2));
+const conf = () => {
+  const p = join(dir, 'fake.json');
+  return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : {};
+};
+const strip = r => {
+  const {_fake, ...rest} = r;
+  return rest;
+};
+
+const cmd = args[0];
+if (cmd === 'agents') {
+  const c = conf();
+  if (c.agentsDelay) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, c.agentsDelay);
+  if (c.agentsFail) {
+    process.stderr.write('agents failed\n');
+    process.exit(1);
+  }
+  if (c.agentsGarbage) {
+    process.stdout.write('not json');
+    process.exit(0);
+  }
+  process.stdout.write(JSON.stringify(load().map(strip)));
+  process.exit(0);
+}
+
+if (cmd === '-p') {
+  if (conf().usageFail) {
+    process.stderr.write('usage failed\n');
+    process.exit(1);
+  }
+  // /usage
+  process.stdout.write(
+    JSON.stringify({
+      type: 'result',
+      result: 'Current session: 42% used · resets 2:09pm (Asia/Tokyo)\nCurrent week (all models): 25% used · resets Sep 29 at 9:59am (Asia/Tokyo)',
+    }),
+  );
+  const n = join(dir, 'usage.count');
+  writeFileSync(n, String(Number(existsSync(n) ? readFileSync(n, 'utf8') : '0') + 1));
+  process.exit(0);
+}
+
+if (cmd === '--bg') {
+  const c = conf();
+  if (c.bgDelay) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, c.bgDelay);
+  if ((c.untrusted ?? []).includes(process.cwd())) {
+    process.stdout.write(`Workspace not trusted. Run claude in ${process.cwd()} once and accept the trust prompt, then retry.\n`);
+    process.exit(1);
+  }
+  if (c.bgNoId) {
+    process.stdout.write('something went wrong\n');
+    process.exit(0);
+  }
+  const id = randomBytes(4).toString('hex');
+  const sid = `${id}-${randomUUID().slice(9)}`;
+  const mi = args.indexOf('--model');
+  const rows = load();
+  rows.push({
+    kind: 'background',
+    sessionId: sid,
+    id,
+    cwd: process.cwd(),
+    name: id,
+    startedAt: Date.now(),
+    pid: 90000 + Math.floor(Math.random() * 9000),
+    state: 'blocked',
+    status: 'idle',
+    ...(mi >= 0 ? {_fake: {model: args[mi + 1]}} : {}),
+  });
+  if (!c.hideNew) save(rows);
+  else writeFileSync(join(dir, 'hidden.json'), JSON.stringify(rows.at(-1)));
+  process.stdout.write(`\x1b[32mbackgrounded\x1b[0m · ${id} · ${id} (idle — send a prompt to start)\n`);
+  process.exit(0);
+}
+
+if (cmd === 'stop') {
+  const rows = load();
+  const r = rows.find(x => x.id === args[1]);
+  if (!r) {
+    process.stdout.write(`No job matching ${args[1]}\n`);
+    process.exit(1);
+  }
+  if (r._fake?.stopFails) {
+    process.stdout.write(`could not stop ${args[1]}: daemon busy\n`);
+    process.exit(1);
+  }
+  delete r.pid;
+  delete r.status;
+  delete r.waitingFor;
+  if (r.state !== 'done' && r.state !== 'failed') r.state = 'stopped';
+  save(rows);
+  process.stdout.write(`stopped ${args[1]}\n`);
+  process.exit(0);
+}
+
+if (cmd === 'rm') {
+  const rows = load();
+  const id = args[1];
+  const r = rows.find(x => x.id === id);
+  if (!r) {
+    process.stdout.write(`No job matching ${id}\n`);
+    process.exit(1);
+  }
+  const mode = r._fake?.rm;
+  const discard = args.includes('--discard-unpushed');
+  if (mode === 'unpushed' && !discard) {
+    process.stdout.write(
+      `kept ${id} — 1 unpushed commit on wt-${id}; deleting the worktree would lose it\n  push it, or run 'claude rm ${id} --discard-unpushed abc1234@wt-${id}'\n`,
+    );
+    process.exit(1);
+  }
+  if (mode === 'uncommitted') {
+    process.stdout.write(
+      `kept ${id} — its worktree is still at “/tmp/wt-${id}”\n  The worktree has uncommitted changes. Deleting it would lose them.\n  commit or stash them and run 'claude rm ${id}' again, or delete the session from 'claude agents' (ctrl+x twice) to discard them\n`,
+    );
+    process.exit(1);
+  }
+  if (mode === 'lock') {
+    const n = (r._fake.lockCount ?? 0) + 1;
+    r._fake.lockCount = n;
+    save(rows);
+    if (n < 3) {
+      process.stdout.write(`kept ${id} — its worktree is still at “/tmp/wt-${id}”\n  the session is still running\n`);
+      process.exit(1);
+    }
+  }
+  save(rows.filter(x => x.id !== id));
+  process.stdout.write(`removed ${id}\n`);
+  process.exit(0);
+}
+
+if (cmd === 'attach') {
+  // 端末に描いて、Ctrl+Z で抜ける。空の入力で ← を押すとタイトルを Agent View にする
+  const id = args[1];
+  const c = conf();
+  if ((c.attachFail ?? []).includes(id)) {
+    process.stdout.write('\x1b[?1049h\x1b[?1000h');
+    process.stdout.write(`Couldn't attach ${id} — try claude respawn ${id}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`\x1b]2;fake ${id}\x07\x1b[2J\x1b[Hfake claude attached to ${id}\r\n❯ `);
+  let input = '';
+  process.stdin.setRawMode?.(true);
+  process.stdin.on('data', b => {
+    const s = b.toString();
+    appendFileSync(join(dir, 'attach-input.log'), `${id} ${JSON.stringify(s)}\n`);
+    if (s === '\x1a') process.exit(0);
+    if (s === '\x1b[D' && input === '') {
+      process.stdout.write('\x1b]2;claude agents\x07');
+      return;
+    }
+    if (s === '\r') {
+      if (input === '/exit' || input === 'exit') process.exit(0);
+      input = '';
+      process.stdout.write('\r\n❯ ');
+      return;
+    }
+    if (s === '\x7f') {
+      input = input.slice(0, -1);
+      return;
+    }
+    input += s;
+    process.stdout.write(s);
+  });
+  setInterval(() => {}, 1 << 30);
+} else if (cmd === undefined || cmd.startsWith('--model') || cmd === '--') {
+  // 対話モード(信頼の確認)。y で信頼し、ほかのキーで断る
+  const cj = process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, '.claude.json') : null;
+  process.stdout.write(`Do you trust the files in ${process.cwd()}?\r\n  1. Yes, I trust this folder\r\n> 2. No, exit\r\n`);
+  process.stdin.setRawMode?.(true);
+  process.stdin.on('data', b => {
+    const s = b.toString();
+    if (s === 'y' && cj) {
+      const j = existsSync(cj) ? JSON.parse(readFileSync(cj, 'utf8')) : {};
+      j.projects = j.projects ?? {};
+      j.projects[process.cwd()] = {hasTrustDialogAccepted: true};
+      writeFileSync(cj, JSON.stringify(j));
+      const cf = conf();
+      cf.untrusted = (cf.untrusted ?? []).filter(d => d !== process.cwd());
+      writeFileSync(join(dir, 'fake.json'), JSON.stringify(cf));
+      setInterval(() => {}, 1 << 30);
+      return;
+    }
+    process.exit(0);
+  });
+} else {
+  process.stdout.write(`fake claude: unknown ${args.join(' ')}\n`);
+  process.exit(2);
+}

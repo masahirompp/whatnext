@@ -1,0 +1,7 @@
+#!/bin/sh
+# 偽の ghq。$FAKE_DIR/ghq.txt があれば、それを `ghq list -p` の結果として返す。なければ失敗する。
+if [ -f "$FAKE_DIR/ghq.txt" ]; then
+  cat "$FAKE_DIR/ghq.txt"
+  exit 0
+fi
+exit 1

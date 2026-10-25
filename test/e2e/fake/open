@@ -1,0 +1,4 @@
+#!/bin/sh
+# 偽の open。呼ばれた引数を書くだけ。
+printf '%s\n' "$*" >> "$FAKE_DIR/open.log"
+exit 0
