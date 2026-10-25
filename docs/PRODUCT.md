@@ -386,7 +386,7 @@ sandbox の外で人が動かすコマンドを、どのセッションのため
 
   ```
     SESSION                   STATUS     WHERE                 CTX  WAITING
-  ── app ─────────────────────────────────────────────────────────────────
+  ── app ──────────────────────────────────────────────────────────────────
   > fix-login                 Review     fix-login #12 (open)  91k       5m
     ├ review fix-login        Working    fix-login (wt)        40k       2m
     └ bump shared lib         Stopped    lib                     -       1h
@@ -394,7 +394,7 @@ sandbox の外で人が動かすコマンドを、どのセッションのため
     alpha (on hold)           Review                            8k       3h
       ↳ waiting for Bob's API change
 
-  ── infra ───────────────────────────────────────────────────────────────
+  ── infra ────────────────────────────────────────────────────────────────
     refactor the auth mi…     Permission auth-mw               22k       9m
 
   Usage 5h 42% · 7d 18%

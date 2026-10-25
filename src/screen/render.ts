@@ -287,11 +287,15 @@ function panelLines(p: Panel, cols: number, maxItems: number): string[] {
   }
 }
 
-/** リポジトリのビューの区切りの見出し。名前の前後に罫線を引き、端末の幅いっぱいまで伸ばす。 */
+/**
+ * リポジトリのビューの区切りの見出し。`── <名前> ───…` と、罫線を端末の幅いっぱいまで伸ばす。
+ * 名前を切り詰めても、右の罫線を1本は残す(見出しの形を崩さない)。
+ */
 function sectionHeading(title: string, cols: number): string {
-  const name = truncate(oneLine(title), Math.max(1, cols - 4));
-  const rest = Math.max(0, cols - 4 - width(name));
-  return `${color.gray('── ')}${color.bold(name)}${color.gray(` ${'─'.repeat(rest)}`)}`;
+  const lead = '── ';
+  const name = truncate(oneLine(title), Math.max(1, cols - width(lead) - 2));
+  const rest = Math.max(1, cols - width(lead) - width(name) - 1);
+  return `${color.gray(lead)}${color.bold(name)}${color.gray(` ${'─'.repeat(rest)}`)}`;
 }
 
 /** 一覧の画面の行を組み立てる。返す行はどれも端末の幅に収まり、行数は端末の高さを超えない。 */

@@ -135,14 +135,32 @@ describe('一覧の画面', () => {
       ),
     );
     expect(lines.slice(1, 7)).toEqual([
-      `── app ${'─'.repeat(model({}).cols - 7)}`,
+      expect.stringMatching(/^── app ─+$/),
       expect.stringMatching(/^> a1 +Review +fix +- +5m$/),
       expect.stringMatching(/^ {2}a2 /),
       '',
-      `── infra ${'─'.repeat(model({}).cols - 9)}`,
+      expect.stringMatching(/^── infra ─+$/),
       expect.stringMatching(/^ {2}i1 /),
     ]);
     expect(lines.join('\n')).not.toContain('Up next');
+  });
+
+  it('区切りの見出しは端末の幅いっぱいまで罫線を伸ばし、名前を太字、罫線をグレーにする', () => {
+    const [, line] = render(model({cols: 40, sections: [{title: 'app', rows: [row('a1')]}], cursor: 'a1'}));
+    expect(width(stripAnsi(line ?? ''))).toBe(40);
+    expect(line).toContain('\x1b[1mapp\x1b[22m');
+    expect(line?.startsWith('\x1b[90m── \x1b[39m')).toBe(true);
+  });
+
+  it('区切りの見出しの名前が長いときは、幅に収まるように切り詰め、右の罫線を1本は残す', () => {
+    for (const title of ['very-long-repository-name-that-overflows', 'とても長い日本語のリポジトリの名前']) {
+      for (const cols of [10, 20, 21]) {
+        const [, line] = render(model({cols, sections: [{title, rows: [row('a1')]}], cursor: 'a1'}));
+        const text = stripAnsi(line ?? '');
+        expect(width(text)).toBeLessThanOrEqual(cols);
+        expect(text).toMatch(/^── .*… ─+$/);
+      }
+    }
   });
 
   it('どの行も端末の幅に収まり、行数は高さを超えない', () => {
@@ -152,6 +170,13 @@ describe('一覧の画面', () => {
     const out = render(model({cols: 40, rows: 12, upNext: rows, cursor: rows[20]?.key ?? null}));
     expect(out.length).toBeLessThanOrEqual(12);
     for (const l of out) expect(width(stripAnsi(l))).toBeLessThanOrEqual(40);
+    const sections = [
+      {title: 'リポジトリの名前がとても長い場合'.repeat(3), rows: rows.slice(0, 20)},
+      {title: 'infra', rows: rows.slice(20)},
+    ];
+    const repo = render(model({cols: 40, rows: 12, sections, cursor: rows[20]?.key ?? null}));
+    expect(repo.length).toBeLessThanOrEqual(12);
+    for (const l of repo) expect(width(stripAnsi(l))).toBeLessThanOrEqual(40);
   });
 
   it('収まらないときは選んだ行が見えるようにスクロールし、通し番号を出す。Last attached と Up next の見出しは固定する (シナリオ 24)', () => {
