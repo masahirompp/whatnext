@@ -380,4 +380,24 @@ describe('起動元 (シナリオ 67)', () => {
     expect(spawners(rows, new Map(), prev)).toEqual(new Map([['c', 'p']]));
     expect(spawners(rows, new Map([[10, 1]]), prev)).toEqual(new Map([['c', 'p']]));
   });
+
+  it('読む間に起動元のプロセスが終わって親が付け替わった行は、起動元の行に pid があるときだけ持ち越す', () => {
+    const prev = new Map([['c', 'p']]);
+    const reparented = new Map([
+      [10, 1],
+      [20, 1],
+    ]);
+    expect(
+      spawners(
+        [
+          {sessionId: 'p', pid: 10},
+          {sessionId: 'c', pid: 20},
+        ],
+        reparented,
+        prev,
+      ),
+    ).toEqual(new Map([['c', 'p']]));
+    // 起動元の行が止まって pid がなくなったら、持ち越さない(止めた起動元の下に残り続けない)
+    expect(spawners([{sessionId: 'p'}, {sessionId: 'c', pid: 20}], reparented, prev).size).toBe(0);
+  });
 });

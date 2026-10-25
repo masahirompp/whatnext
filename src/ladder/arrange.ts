@@ -172,7 +172,7 @@ export interface Arranged {
  * 起動された行では `f` も `h` も断るので、注釈を付けたあとに起動された行になると、その注釈を外せなくなることも防ぐ。
  * 返す `linked` は、起動元への辺を足した行。起動元が一覧に出ていなければ、実際には入れ子にならない(入れ子で並ぶ行は `Arranged.subs`)。
  */
-export function linksWithSpawned(
+function linksWithSpawned(
   waits: ReadonlyMap<string, readonly string[]>,
   holds: ReadonlyMap<string, string>,
   spawnedBy: ReadonlyMap<string, string>,

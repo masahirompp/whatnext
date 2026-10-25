@@ -290,15 +290,67 @@ sandbox の外で人が動かすコマンドを、どのセッションのため
 - 起動された行が終わって一覧から消えても、`↳ <名前> done` は出さない。
   利用者が結んだ関係ではないので、終わったことを知らせる必要が薄い。
 - 利用者が結んだ待ち先についての `↳ <名前> done` を出している行が、起動された行のために待ちの段に入ったときは、待ちの段にいる間だけ `↳ <名前> done` を隠し、待ちの段を出るとまた出す。待ちの段の行に done を出すと事実と食い違う。
+
+  ```
+    SESSION                 STATUS   WHERE    CTX  WAITING
+  > fix-login               Waiting  repo       -      <1m
+    ├ review fix-login      Review   repo       -      <1m
+    └ review-loop-07 (sub)  Working  repo       -      <1m
+  ```
+
+  こうはならない（待ちの段の行に done が残る）：
+
+  ```
+    SESSION                 STATUS   WHERE    CTX  WAITING
+  > fix-login               Waiting  repo       -      <1m
+    │ ↳ review fix-login done
+    ├ review fix-login      Review   repo       -      <1m
+    └ review-loop-07 (sub)  Working  repo       -      <1m
+  ```
+
 - 起動された行は `f` のメニューに並ばず、起動された行で `f` を押しても待ち先を結べない。`h` を押しても保留にできない。どちらも断ったことを英語で示す。
   数秒から数分で消える行で、結んだ関係も保留も、そのときに切れる。
 - 起動元を削除するときも、起動された行は巻き込む対象に数えない（`id` がなく、`claude stop` も `claude rm` も受け付けない）。
   whatnext は起動された行のプロセスを止めない。起動元を消したあとも起動された行が動いていれば、祖先に一覧の行がなくなるので、トップレベルに `(tty)` を添えて並び、終われば消える。Claude Code が起動元を止めたときに起動された行も止まるかは、確かめていない。
-- 選んでいた起動された行が終わって消えたときは、どちらのビューでも、カーソルは起動元に移る。起動された行は短い時間で消えるのが普通で、一番上の組や隣の行に移ると、見ていた組から離れてしまう。
+
+  ```
+    SESSION               STATUS   WHERE    CTX  WAITING
+  > infra                 Review   repo       -        -
+    review-loop-07 (tty)  Working  repo       -        -
+  ```
+
+  こうはならない（起動元がないのに入れ子の線と `(sub)` が残る）：
+
+  ```
+    SESSION                 STATUS   WHERE    CTX  WAITING
+  > infra                   Review   repo       -        -
+    └ review-loop-07 (sub)  Working  repo       -        -
+  ```
+
+- 選んでいた起動された行が終わって消えたときは、どちらのビューでも、カーソルは起動元に移る。起動された行は短い時間で消えるのが普通で、一番上の組や隣の行に移ると、見ていた組から離れてしまう。2段の入れ子で起動元（それ自身も起動された行）も同じ回に消えたときは、残っている大本の起動元に移る。大本の起動元も消えていれば、起動された行でない行が消えたときと同じ規則で選ぶ。大本の起動元より上の待ち元には移らない。
 - リポジトリのビューでは、起動された行は起動元の組の中に並ぶ（待ち先と同じく、起動元のリポジトリの区切りに出る）。起動された行には attach できないので、組の位置を動かさない。
 - 利用者が注釈を付けた行（自分の待ち先を持つ行、一覧に出ている待ち元に結ばれた行、保留の行）は、ほかの行に起動された行でも起動された行として扱わず、結んだ関係のとおりに並べる。
   `(sub)` も添えず、`f` で関係を外せ、`h` で保留の理由を直したり解いたりできる。
   起動元が一覧に出ていない間やプロセス表が読めなかった更新のあいだに付けた注釈が、次の更新で隠れたり、外せなくなったり、起動元と一周したりしないようにするためである。
+  次の例は、起動元 `fix-login` が対象外（開いているだけの対話セッション）の間に、それが起動した `long-check` を保留にし、そのあと `fix-login` が稼働して一覧に出たときである。
+
+  ```
+    SESSION           STATUS   WHERE    CTX  WAITING
+    Up next
+    fix-login (tty)   Working  repo       -      <1m
+    On hold
+  > long-check (tty)  Working  repo       -        -
+      ↳ look tonight
+  ```
+
+  こうはならない（保留の行が起動元の下に入り、`h` で解けなくなる）：
+
+  ```
+    SESSION                       STATUS   WHERE    CTX  WAITING
+    fix-login (tty)               Working  repo       -      <1m
+  > └ long-check (sub) (on hold)  Working  repo       -        -
+        ↳ look tonight
+  ```
 - whatnext を終了して起動し直したときは、起動元の関係を引き継がず、プロセスの親子から導き直す。
   起動された行は終わるとプロセスごと消え、`--json` からも消えるので、引き継ぐ必要がない。
 - Claude Code の Agent ツールで起動するサブエージェントは、起動元と同じプロセスの中で動くので、`--json` に行として出ない。一覧にも出ない。

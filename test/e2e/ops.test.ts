@@ -505,6 +505,33 @@ describe('起動された行', () => {
       pp.kill();
     }
   });
+
+  it('70: 起動された行と起動元が同じ回に消えても、起動元の上の待ち元には移らない', async () => {
+    const pp = await processPair();
+    try {
+      h = new Harness();
+      const waiter = h.row(1, {name: 'waiter'});
+      const parent = h.row(2, {name: 'parent', pid: pp.parent, state: 'working', status: 'busy'});
+      const {id: _id, state: _state, ...child} = h.row(3, {name: 'sub-review', pid: pp.child, status: 'busy'});
+      const top = h.row(4, {name: 'top-perm', state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'});
+      h.setAgents([waiter, parent, {...child, kind: 'interactive'}, top]);
+      h.open('t');
+      await h.waitFor('t', 'sub-review');
+      await h.select('t', 'waiter');
+      await h.keys('t', 'f');
+      await h.type('t', 'parent');
+      await h.keys('t', 'Enter');
+      await h.waitFor('t', /└ parent/);
+      await h.select('t', 'sub-review');
+      pp.kill();
+      h.setAgents([waiter, top]);
+      await h.keys('t', 'r');
+      await h.waitGone('t', 'sub-review');
+      expect(h.selected('t')).toMatch(/^> top-perm/);
+    } finally {
+      pp.kill();
+    }
+  });
 });
 
 describe('新しいセッション', () => {

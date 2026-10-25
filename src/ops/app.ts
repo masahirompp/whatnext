@@ -364,14 +364,14 @@ export class App {
       this.rearrange(now, false);
       return;
     }
-    // 選んでいた起動された行が消えたときは、その起動元に移る(並べ直す前の組から、近い順に祖先を引いておく)。
+    // 選んでいた起動された行が消えたときは、その起動元に移る(並べ直す前の組から、近い順に引いておく)。
     // 2段の入れ子で起動元も同じ回に消えたときは、残っている大本の起動元に移る。
-    const spawners =
-      this.cursor && this.arranged && this.isSub(this.cursor) ? ancestorsOf(this.arranged, this.cursor) : [];
+    // たどるのは起動された行の連なりの上の、最初の起動された行でない行(大本の起動元)まで。その上の待ち元には移らない。
+    const spawnerChain = this.cursor ? this.spawnerChainOf(this.cursor) : [];
     this.arranged = a;
     for (const e of flatten(a)) this.shownNames.set(e.sid, e.name);
     if (this.lastAttached && !visible.has(this.lastAttached)) this.lastAttached = null;
-    this.fixCursor(spawners);
+    this.fixCursor(spawnerChain);
     this.order = this.sectionOrder();
     this.save();
   }
@@ -437,13 +437,24 @@ export class App {
     return this.arranged?.subs.has(sid) ?? false;
   }
 
-  private fixCursor(spawners: readonly string[] = []): void {
+  /** 起動された行 `sid` の起動元を近い順に、大本の起動元(起動された行でない最初の行)まで。起動された行でなければ空。 */
+  private spawnerChainOf(sid: string): string[] {
+    if (!this.arranged || !this.isSub(sid)) return [];
+    const out: string[] = [];
+    for (const up of ancestorsOf(this.arranged, sid)) {
+      out.push(up);
+      if (!this.isSub(up)) break;
+    }
+    return out;
+  }
+
+  private fixCursor(spawnerChain: readonly string[] = []): void {
     const list = this.entries();
     if (this.cursor && list.some(e => e.sid === this.cursor)) return;
     const prev = this.cursor;
     // 消えたのが起動された行なら、どちらのビューでも、一覧に残っている一番近い起動元に移る。
     // 移った直後の Ctrl+X の守り(moved)は、起動元に移るときも同じに立てる。起動された行を消すつもりの Ctrl+X で起動元を消さない。
-    const spawner = spawners.find(s => list.some(e => e.sid === s));
+    const spawner = spawnerChain.find(s => list.some(e => e.sid === s));
     const top = spawner ?? this.fallbackCursor(prev);
     if (prev && top !== prev) {
       const name = this.shownNames.get(prev) ?? this.nameOf(prev);
@@ -1458,7 +1469,7 @@ export class App {
     const mine = this.waits.get(waiter) ?? [];
     // 起動された行は、すぐに終わって消えるので並べない。
     const cands = this.entries().filter(e => {
-      if (e.sid === waiter || anc.has(e.sid) || e.sub) return false;
+      if (e.sid === waiter || anc.has(e.sid) || this.isSub(e.sid)) return false;
       const w = this.waiterOf(e.sid);
       return w === undefined || w === waiter;
     });
