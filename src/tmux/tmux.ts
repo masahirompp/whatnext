@@ -106,7 +106,13 @@ export function serverConfig(c: ServerConfigInput): string {
   ];
   for (const [k, v] of Object.entries(c.env)) lines.push(`set-environment -g ${k} '${v}'`);
 
-  lines.push('unbind -a -T wnq', 'bind -n C-q switch-client -T wnq');
+  // prefix の表は丸ごと消せない(tmux の既定のキーがある)ので、前の版が置いて今はないキーを名指しで外す。
+  lines.push(
+    'unbind -a -T wnq',
+    'unbind -q -T prefix C-j',
+    'unbind -q -T prefix j',
+    'bind -n C-q switch-client -T wnq',
+  );
   for (const k of ATTACH_KEYS) {
     const cmd = `run-shell -b '${req(`key ${k.action} "#{session_name}" "#{client_tty}"`)}'`;
     lines.push(`bind -T wnq C-${k.letter} ${cmd}`, `bind -T prefix C-${k.letter} ${cmd}`);

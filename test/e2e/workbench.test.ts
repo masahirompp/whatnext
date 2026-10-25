@@ -195,10 +195,6 @@ describe('作業台', () => {
     await h.waitFor('wb', /0:\S* 1:\S*\*/);
     await h.keys('wb', 'C-q', 'C-l');
     await h.waitFor('t', 'Last attached');
-    // 作業台の画面で ctrl+q ctrl+j: whatnext の画面が次のセッションへ移り、作業台の画面も付いていく
-    await h.keys('wb', 'C-q', 'C-j');
-    await h.waitFor('t', 'FAKE CLAUDE SCREEN a0000002');
-    await h.waitFor('wb', 'No workbench for beta yet.');
   });
 
   it('60、48: 作業台の画面で ctrl+q ctrl+v を押すと、その作業台のセッションの場所が VS Code で開き、作業台の画面に示される', async () => {

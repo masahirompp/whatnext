@@ -19,12 +19,13 @@ import {
   trackWaits,
   type WaitMemo,
 } from '../ladder/arrange.js';
-import {type AgentRow, dedupe, rowName} from '../ladder/classify.js';
+import {type AgentRow, classify, dedupe, rowName} from '../ladder/classify.js';
+import {displayNames} from '../ladder/paths.js';
 import {frame, type Panel, render, type ScreenModel, type ScreenRow} from '../screen/render.js';
-import type {Relations} from '../state/store.js';
+import type {Seen, State, View} from '../state/store.js';
 import type {KeyAction} from '../tmux/keys.js';
 import {GUIDE, LIST} from '../tmux/tmux.js';
-import {displayNames, expandHome, filterIndexes, tildify} from './pick.js';
+import {expandHome, filterIndexes, tildify} from './pick.js';
 import type {Observed, Ports} from './ports.js';
 
 export interface Key {
@@ -41,8 +42,11 @@ const ARM_MS = 2_000;
 const MOVED_MS = 2_000;
 const FLASH_MS = 2_000;
 
-export const LIST_HELP =
-  '↑↓ select · Enter attach · n new · ^X stop/delete · h hold · f wait for · w workbench · v VS Code · r refresh · q quit';
+/** 一覧の下のキーの説明。切り替え先のビューを出す。 */
+export function listHelp(view: View): string {
+  const other = view === 'repo' ? 'ladder view' : 'repo view';
+  return `↑↓ select · Enter attach · g ${other} · n new · ^X stop/delete · h hold · f wait for · w workbench · v VS Code · r refresh · q quit`;
+}
 
 interface Attached {
   /** 起動した直後で `--json` にまだ出ていなければ undefined。 */
@@ -79,7 +83,7 @@ interface Message {
 }
 
 export interface AppInit {
-  relations: Relations;
+  state: State;
   version: string;
   /** 前の whatnext が残した、動いているものがある作業台(id → コマンド行)。 */
   leftovers?: Map<string, string[]>;
@@ -91,6 +95,8 @@ export class App {
   private error: string | undefined;
   private observed = new Map<string, Observed>();
   private places = new Map<string, Place>();
+  /** 前回リポジトリだった場所が、続けて何回リポジトリでないと返ったか。 */
+  private placeMisses = new Map<string, number>();
   private prs = new Map<string, PullRequest | null>();
   private running = new Map<string, string[]>();
   private usage: UsageFrame[] | undefined;
@@ -108,6 +114,11 @@ export class App {
   private waits: Map<string, string[]>;
   /** 起動された行から起動元への表。更新のたびにプロセス表から導き直す。 */
   private spawnedBy = new Map<string, string>();
+  // リポジトリのビュー
+  private view: View;
+  private seen: Map<string, Seen>;
+  /** 前回の並べ替えの行と区切り(消えた行の近くにカーソルを移すため)。 */
+  private order: {sid: string; section: string}[] = [];
 
   // 画面と操作の状態
   private cursor: string | null = null;
@@ -118,6 +129,7 @@ export class App {
   private notice: string | undefined;
   private refreshing = false;
   private refreshQueued = false;
+  private queuedWaiters: (() => void)[] = [];
   private refreshTimer: {cancel(): void} | undefined;
   private transient = new Map<string, 'stopping' | 'deleting'>();
   private arm: {sid: string; until: number} | null = null;
@@ -139,8 +151,10 @@ export class App {
     private readonly p: Ports,
     init: AppInit,
   ) {
-    this.holds = new Map(init.relations.holds);
-    this.waits = new Map([...init.relations.waits].map(([k, v]) => [k, [...v]]));
+    this.holds = new Map(init.state.holds);
+    this.waits = new Map([...init.state.waits].map(([k, v]) => [k, [...v]]));
+    this.view = init.state.view;
+    this.seen = new Map([...init.state.seen].map(([k, v]) => [k, {...v}]));
     this.leftovers = init.leftovers && init.leftovers.size > 0 ? init.leftovers : undefined;
   }
 
@@ -164,11 +178,11 @@ export class App {
     }
   }
 
-  /** `--json` を読み直して並べ直す。 */
+  /** `--json` を読み直して並べ直す。更新の最中に呼ぶと、続けて予約した更新が終わるまで待つ。 */
   async refresh(opts: {flash?: boolean} = {}): Promise<void> {
     if (this.refreshing) {
       this.refreshQueued = true;
-      return;
+      return new Promise(resolve => this.queuedWaiters.push(resolve));
     }
     this.refreshing = true;
     this.refreshTimer?.cancel();
@@ -194,11 +208,17 @@ export class App {
         this.spawnedBy = spawners(rows, parents, this.spawnedBy);
         this.rows = rows;
         this.prune(rows);
+        // 初めて見た時刻は、一覧に初めて出たときに書く。対象外だった対話セッションが後から出ても、区切りの先頭に来る。
+        for (const r of rows)
+          if (!this.seen.has(r.sessionId) && classify(r).tier !== null) this.seen.set(r.sessionId, {first: now});
         this.resolvePendingLinks(rows);
         if (this.attached && !this.attached.sid) {
           const att = this.attached;
           const r = rows.find(x => x.id === att.id);
-          if (r) att.sid = r.sessionId;
+          if (r) {
+            att.sid = r.sessionId;
+            this.markAttached(r.sessionId);
+          }
         }
         this.rearrange(now, true);
         void this.updateSummaries();
@@ -213,7 +233,11 @@ export class App {
       this.scheduleWbSync();
       if (this.refreshQueued) {
         this.refreshQueued = false;
-        void this.refresh();
+        const waiters = this.queuedWaiters;
+        this.queuedWaiters = [];
+        void this.refresh().finally(() => {
+          for (const w of waiters) w();
+        });
       }
     }
   }
@@ -222,8 +246,20 @@ export class App {
     const cwds = [...new Set(rows.map(r => r.cwd).filter(Boolean))];
     const got = await Promise.all(cwds.map(c => this.p.place(c)));
     const next = new Map<string, Place>();
-    for (const [i, c] of cwds.entries()) next.set(c, got[i] as Place);
+    const misses = new Map<string, number>();
+    for (const [i, c] of cwds.entries()) {
+      const pl = got[i] as Place;
+      // git の問い合わせが一度失敗しただけで、行が別の区切りへ移らないようにする。
+      // 続けて2回リポジトリでないと返ったら、本当にリポジトリでなくなった(worktree を消したなど)とみなす。
+      const prev = this.places.get(c);
+      const miss = !pl.git && prev?.git ? (this.placeMisses.get(c) ?? 0) + 1 : 0;
+      if (miss === 1) {
+        next.set(c, prev as Place);
+        misses.set(c, miss);
+      } else next.set(c, pl);
+    }
     this.places = next;
+    this.placeMisses = misses;
   }
 
   private async loadPullRequests(rows: AgentRow[]): Promise<void> {
@@ -259,6 +295,7 @@ export class App {
       const kept = ts.filter(t => present.has(t));
       if (kept.length !== ts.length) this.cutWaits(w, kept);
     }
+    for (const sid of [...this.seen.keys()]) if (!present.has(sid)) this.seen.delete(sid);
     this.save();
   }
 
@@ -288,6 +325,7 @@ export class App {
     const sups = new Map<string, Supplement>();
     for (const [sid, o] of this.observed) sups.set(sid, o.sup);
     const visible = new Set<string>();
+    const view = this.viewInput();
     let a = arrange({
       rows: this.rows,
       holds: this.holds,
@@ -297,6 +335,7 @@ export class App {
       waitSince: this.waitMemo.entries.size ? this.sinceMap() : new Map(),
       sups,
       doneMemo: this.doneMemo,
+      ...view,
     });
     if (track) {
       this.waitMemo = trackWaits(this.waitMemo, a.tiers, sups, now);
@@ -309,6 +348,7 @@ export class App {
         waitSince: this.sinceMap(),
         sups,
         doneMemo: this.doneMemo,
+        ...view,
       });
     }
     this.doneMemo = a.doneMemo;
@@ -330,6 +370,53 @@ export class App {
     for (const e of flatten(a)) this.shownNames.set(e.sid, e.name);
     if (this.lastAttached && !visible.has(this.lastAttached)) this.lastAttached = null;
     this.fixCursor(spawner);
+    this.order = this.sectionOrder();
+    this.save();
+  }
+
+  /** 並べ替えに渡す、ビューと、リポジトリのビューで使う時刻と区切り。 */
+  private viewInput(): {
+    view: View;
+    touched: Map<string, number>;
+    attachedAt: Map<string, number>;
+    repoOf: Map<string, string>;
+  } {
+    const touched = new Map<string, number>();
+    const attachedAt = new Map<string, number>();
+    for (const [sid, e] of this.seen) {
+      touched.set(sid, e.attached ?? e.first);
+      if (e.attached !== undefined) attachedAt.set(sid, e.attached);
+    }
+    const repoOf = new Map<string, string>();
+    for (const r of this.rows ?? []) repoOf.set(r.sessionId, this.repoKeyOf(r.cwd));
+    return {view: this.view, touched, attachedAt, repoOf};
+  }
+
+  /**
+   * リポジトリのビューの区切り。元のリポジトリの根で、リポジトリでなければ `cwd`。
+   * 根より下の `cwd` も根に寄せる(作業ディレクトリの候補の repoPathOf は、worktree でなければ `cwd` を残す)。
+   */
+  private repoKeyOf(cwd: string): string {
+    return this.places.get(cwd)?.mainRoot ?? cwd;
+  }
+
+  private sectionOrder(): {sid: string; section: string}[] {
+    const a = this.arranged;
+    if (!a?.repos) return this.entries().map(e => ({sid: e.sid, section: ''}));
+    return a.repos.flatMap(r => r.groups.flatMap(g => g.entries.map(e => ({sid: e.sid, section: r.key}))));
+  }
+
+  /** whatnext から attach した時刻を残す。リポジトリのビューの区切りの中の並びに使う。 */
+  private markAttached(sid: string): void {
+    const now = this.p.now();
+    this.seen.set(sid, {first: this.seen.get(sid)?.first ?? now, attached: now});
+    this.save();
+  }
+
+  private toggleView(): void {
+    this.view = this.view === 'repo' ? 'ladder' : 'repo';
+    this.rearrange(this.p.now(), false);
+    // 一覧を読み込む前や `--json` を読めない間は rearrange が保存しないので、ここでも書く。
     this.save();
   }
 
@@ -352,10 +439,9 @@ export class App {
     const list = this.entries();
     if (this.cursor && list.some(e => e.sid === this.cursor)) return;
     const prev = this.cursor;
+    // 消えたのが起動された行なら、どちらのビューでも起動元に移る。
     // 移った直後の Ctrl+X の守り(moved)は、起動元に移るときも同じに立てる。起動された行を消すつもりの Ctrl+X で起動元を消さない。
-    const fallback =
-      spawner && list.some(e => e.sid === spawner) ? spawner : (this.arranged?.upNext[0]?.positionSid ?? null);
-    const top = fallback ?? list[0]?.sid ?? null;
+    const top = spawner && list.some(e => e.sid === spawner) ? spawner : this.fallbackCursor(prev);
     if (prev && top !== prev) {
       const name = this.shownNames.get(prev) ?? this.nameOf(prev);
       if (top) this.moved = {name, until: this.p.now() + MOVED_MS};
@@ -363,8 +449,44 @@ export class App {
     this.cursor = top;
   }
 
+  /**
+   * 選んでいた行がないときに選ぶ行。ラダーのビューでは一番上の組の位置を決めた行。
+   * リポジトリのビューでは、消えた行と同じ区切りの次の行(なければ前の行、区切りが空なら隣の区切りの行)、
+   * 起動したときは最も新しく attach したセッション。
+   */
+  private fallbackCursor(prev: string | null): string | null {
+    const list = this.entries();
+    if (!this.arranged?.repos) return this.arranged?.upNext[0]?.positionSid ?? list[0]?.sid ?? null;
+    // 消えた行の区切りは前回の並びで、候補の区切りは並べ直したあとの並びで見る(待ち元が消えると待ち先は別の区切りへ移る)。
+    const now = new Map(this.sectionOrder().map(o => [o.sid, o.section]));
+    const i = prev ? this.order.findIndex(o => o.sid === prev) : -1;
+    if (i >= 0) {
+      const section = this.order[i]?.section;
+      const after = this.order
+        .slice(i + 1)
+        .flatMap(o => (now.has(o.sid) ? [{sid: o.sid, section: now.get(o.sid)}] : []));
+      const before = this.order
+        .slice(0, i)
+        .reverse()
+        .flatMap(o => (now.has(o.sid) ? [{sid: o.sid, section: now.get(o.sid)}] : []));
+      const pick =
+        after.find(o => o.section === section) ?? before.find(o => o.section === section) ?? after[0] ?? before[0];
+      if (pick) return pick.sid;
+    }
+    let best: string | null = null;
+    let bestAt = -Infinity;
+    for (const e of list) {
+      const at = this.seen.get(e.sid)?.attached;
+      if (at !== undefined && at > bestAt) {
+        best = e.sid;
+        bestAt = at;
+      }
+    }
+    return best ?? list[0]?.sid ?? null;
+  }
+
   private save(): void {
-    this.p.saveState({holds: this.holds, waits: this.waits});
+    this.p.saveState({holds: this.holds, waits: this.waits, view: this.view, seen: this.seen});
   }
 
   async fetchUsage(force = false): Promise<void> {
@@ -444,15 +566,22 @@ export class App {
       messages: msgs,
       panel: this.panel(),
       panelUnder: this.mode.kind === 'hold' ? this.mode.sid : undefined,
-      help: this.mode.kind === 'list' ? LIST_HELP : '',
+      help: this.mode.kind === 'list' ? listHelp(this.view) : '',
     };
     if (this.rows === null) {
       m.placeholder = this.error ?? 'Loading...';
       return m;
     }
     const a = this.arranged;
-    if (!a || (a.upNext.length === 0 && !a.lastAttached && a.onHold.length === 0)) {
+    if (!a || (a.upNext.length === 0 && !a.lastAttached && a.onHold.length === 0 && !a.repos?.length)) {
       m.placeholder = 'No sessions to show.';
+      return m;
+    }
+    if (a.repos) {
+      m.sections = a.repos.map(r => ({
+        title: r.label,
+        rows: r.groups.flatMap(g => g.entries.map((e, i) => this.screenRow(e, g.entries[i + 1], r.key))),
+      }));
       return m;
     }
     const conv = (es: Entry[]) => es.map((e, i) => this.screenRow(e, es[i + 1]));
@@ -462,8 +591,11 @@ export class App {
     return m;
   }
 
-  private screenRow(e: Entry, next: Entry | undefined): ScreenRow {
+  /** `section` はリポジトリのビューの区切り。同じリポジトリなら WHERE からリポジトリ名を除く(根より下なら `sub` を残す)。 */
+  private screenRow(e: Entry, next: Entry | undefined, section?: string): ScreenRow {
     const pl = this.places.get(e.row.cwd);
+    let repo = pl?.repo ?? '';
+    if (pl && section !== undefined && this.repoKeyOf(e.row.cwd) === section) repo = pl.sub ?? '';
     const pr = this.prOf(e.row.cwd);
     // 保留の理由は行のすぐ下に出す(PRODUCT.md「保留」)。`⚙` は一言の下に出す。
     const notes: string[] = [];
@@ -479,7 +611,7 @@ export class App {
       name: e.name,
       tty: e.row.kind === 'interactive',
       sub: e.sub,
-      midHold: e.midHold,
+      holdMark: e.holdMark,
       depth: e.depth,
       lastChain: e.lastChain,
       hasChildren: next !== undefined && next.depth > e.depth,
@@ -488,7 +620,7 @@ export class App {
       transient: this.transient.get(e.sid),
       where: pl
         ? {
-            repo: pl.repo,
+            repo,
             branch: pl.nonDefault ? pl.branch : undefined,
             worktree: pl.worktree,
             pr: pr ? {number: pr.number, state: pr.state} : undefined,
@@ -769,6 +901,9 @@ export class App {
         }
         if (k.ctrl || k.meta) return;
         switch (str) {
+          case 'g':
+            this.toggleView();
+            break;
           case 'n':
             this.openDirPicker({});
             break;
@@ -833,6 +968,7 @@ export class App {
     }
     await this.p.tmux.setSummary(id, this.summaryText(sid, id));
     this.clearDone(sid);
+    this.markAttached(sid);
     await this.switchTo({sid, id});
   }
 
@@ -925,14 +1061,18 @@ export class App {
     // attach から戻ったか
     const att = this.attached;
     if (att && main && main.session !== att.id && !main.session.startsWith('trust-')) {
-      if (main.session === LIST) await this.returned(att);
+      // 続けて処理する頼みごと(ctrl+q ctrl+h など)があれば、その対象を決めるのに更新の結果が要るので待つ。
+      if (main.session === LIST) await this.returned(att, {settle: reqs.length > 0});
     }
     for (const r of reqs) await this.request(r, clients);
     this.scheduleWbSync();
   }
 
-  /** attach から戻ったとき(新しく起動したセッションから戻ったときを含む)。 */
-  private async returned(att: Attached): Promise<void> {
+  /**
+   * attach から戻ったとき(新しく起動したセッションから戻ったときを含む)。`settle` なら、戻ったあとの更新が終わるまで待つ。
+   * キーの操作(ctrl+q ctrl+h など)は対象のセッションを決めるのに更新の結果が要るので待つ。ただ戻っただけなら待たない。
+   */
+  private async returned(att: Attached, opts: {settle?: boolean} = {}): Promise<void> {
     this.p.log?.(`returned ${JSON.stringify(att)}`);
     this.attached = null;
     const sid = att.sid ?? this.sidOfId(att.id);
@@ -941,20 +1081,34 @@ export class App {
       this.cursor = sid;
     } else this.pendingReturnId = att.id;
     void this.fetchUsage();
-    await this.refresh();
+    // 待つと、tmux からの知らせの処理が、更新2回分ふさがる。
+    const settled = this.refresh().then(() => this.afterReturn(sid));
+    if (opts.settle) await settled;
+  }
+
+  /** 一覧に戻ったあとの更新が終わってから。 */
+  private afterReturn(sid: string | undefined): void {
+    // attach している間と、この更新で新しく見えたセッションより上に来るよう、更新のあとに書き直す。
+    // 更新を待つ間に別のセッションへ attach していたら、そちらの時刻を古い時刻で上書きしない。
+    if (sid && this.rowOf(sid) && !this.attached) {
+      this.markAttached(sid);
+      this.rearrange(this.p.now(), false);
+      this.draw();
+    }
     if (!sid && this.pendingReturnId) {
       const s2 = this.sidOfId(this.pendingReturnId);
       this.pendingReturnId = undefined;
       if (s2) {
         this.lastAttached = s2;
         this.cursor = s2;
+        this.markAttached(s2);
         this.rearrange(this.p.now(), false);
         this.draw();
       }
     }
-    // Last attached が出ないとき(対象外になったとき)は、ラダーの最上位を選ぶ。
+    // Last attached が出ないとき(対象外になったとき)は、ラダーの最上位を選ぶ(Up next が空なら一覧の先頭)。
     if (this.cursor === null || !this.entries().some(e => e.sid === this.cursor)) {
-      this.cursor = this.arranged?.upNext[0]?.positionSid ?? null;
+      this.cursor = this.fallbackCursor(this.cursor);
       this.draw();
     }
   }
@@ -1021,10 +1175,6 @@ export class App {
         await this.p.tmux.display(tty, 'This session is not in the list yet. Try again in a moment.', 3000);
       return;
     }
-    if (action === 'next') {
-      await this.next(tty, main, fromWb);
-      return;
-    }
     // 一覧に戻るキー
     if (!main) {
       await this.p.tmux.display(tty, 'The list is not open. Run "whatnext" to open it.', 3000);
@@ -1032,7 +1182,7 @@ export class App {
     }
     if (main.session !== LIST && mainTty) {
       await this.p.tmux.switchClient(mainTty, LIST);
-      if (this.attached) await this.returned(this.attached);
+      if (this.attached) await this.returned(this.attached, {settle: true});
     }
     const target = sid ?? (fromWb ? undefined : (this.lastAttached ?? undefined));
     this.mode = {kind: 'list'};
@@ -1056,37 +1206,6 @@ export class App {
         break;
     }
     this.draw();
-  }
-
-  /** `ctrl+q ctrl+j`: Up next の先頭のセッションへ、一覧を経由せずに移る。 */
-  private async next(tty: string, main: {tty: string; session: string} | undefined, fromWb: boolean): Promise<void> {
-    if (!main) {
-      await this.p.tmux.display(tty, 'The list is not open. Run "whatnext" to open it.', 3000);
-      return;
-    }
-    let current: string | undefined;
-    if (main.session === LIST) current = fromWb ? (this.lastAttached ?? undefined) : undefined;
-    else current = this.attached?.sid ?? this.sidOfId(main.session);
-    const saved = this.lastAttached;
-    if (current) this.lastAttached = current;
-    this.rearrange(this.p.now(), false);
-    const target = this.arranged?.upNext
-      .map(g => g.positionSid)
-      .find(s => {
-        const r = this.rowOf(s);
-        return s !== current && r?.kind === 'background' && r.id && !this.isDeleting(s);
-      });
-    if (!target) {
-      this.lastAttached = saved;
-      this.rearrange(this.p.now(), false);
-      await this.p.tmux.display(tty, 'No other session in Up next.', 2000);
-      return;
-    }
-    this.attached = null;
-    this.cursor = current ?? target;
-    await this.attach(target);
-    void this.fetchUsage();
-    void this.refresh();
   }
 
   // ---- 作業台 ----
@@ -1300,7 +1419,8 @@ export class App {
     const before = [...list.slice(0, Math.max(0, i))].reverse().find(e => !moving.includes(e.sid));
     this.holds.set(sid, reason);
     this.rearrange(this.p.now(), false);
-    this.cursor = after?.sid ?? before?.sid ?? sid;
+    // リポジトリのビューでは行が動かないので、カーソルはその行に残す。
+    if (!this.arranged?.repos) this.cursor = after?.sid ?? before?.sid ?? sid;
     this.flash(`Put ${this.nameOf(sid)} on hold. To bring it back, press h on it and clear the reason.`);
     this.scheduleWbSync();
   }

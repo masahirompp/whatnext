@@ -332,13 +332,13 @@ describe('待ち先 (シナリオ 17〜21)', () => {
   });
 });
 
-describe('起動された行 (シナリオ 61、62)', () => {
+describe('起動された行 (シナリオ 67、68)', () => {
   const tty = (name: string, extra: Partial<AgentRow> = {}): AgentRow => {
     const {id: _id, state: _state, ...r} = bg(name, {status: 'busy', ...extra});
     return {...r, kind: 'interactive'};
   };
 
-  it('起動元の下に入れ子で並び、sub の印が付く。さらに起動した行はもう一段深く並ぶ (61)', () => {
+  it('起動元の下に入れ子で並び、sub の印が付く。さらに起動した行はもう一段深く並ぶ (67)', () => {
     const P = bg('P', {state: 'working', status: 'busy'});
     const C = tty('C');
     const G = tty('G');
@@ -354,7 +354,7 @@ describe('起動された行 (シナリオ 61、62)', () => {
     ]);
   });
 
-  it('起動元がターンを終えても、起動された行が動いていれば起動元は待ちの段に入る。done は出さない (62)', () => {
+  it('起動元がターンを終えても、起動された行が動いていれば起動元は待ちの段に入る。done は出さない (68)', () => {
     const P = bg('P');
     const C = tty('C');
     const spawnedBy = new Map([[C.sessionId, P.sessionId]]);
@@ -458,5 +458,146 @@ describe('起動された行 (シナリオ 61、62)', () => {
     expect(during.doneMemo.waiting.has(W.sessionId)).toBe(true);
     const after = arrange(input([W, T], {waits, doneMemo: during.doneMemo}));
     expect(flatten(after).find(e => e.name === 'W')?.doneNames).toEqual(['T']);
+  });
+
+  it('リポジトリのビューでも起動元の組の中に (sub) で並び、別のリポジトリで動いていても起動元の区切りに出る', () => {
+    const P = bg('P', {state: 'working', status: 'busy', cwd: '/app'});
+    const C = tty('C', {cwd: '/lib'});
+    const r = arrange(
+      input([P, C], {
+        view: 'repo',
+        spawnedBy: new Map([[C.sessionId, P.sessionId]]),
+        repoOf: new Map([
+          [P.sessionId, '/app'],
+          [C.sessionId, '/lib'],
+        ]),
+      }),
+    );
+    expect(r.repos?.map(s => [s.label, s.groups.flatMap(g => g.entries.map(e => [e.name, e.depth, e.sub]))])).toEqual([
+      [
+        'app',
+        [
+          ['P', 0, false],
+          ['C', 1, true],
+        ],
+      ],
+    ]);
+    expect(r.subs.has(C.sessionId)).toBe(true);
+  });
+});
+
+describe('リポジトリのビュー (シナリオ 61〜65)', () => {
+  const names = (a: ReturnType<typeof arrange>) => flatten(a).map(e => e.name);
+  const repoOf = (rows: AgentRow[]) => new Map(rows.map(r => [r.sessionId, r.cwd]));
+
+  it('区切りは見出しの順、区切りの中は触った時刻の新しい順で、段では動かない', () => {
+    const a1 = bg('a1', {cwd: '/r/app', state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'});
+    const a2 = bg('a2', {cwd: '/r/app'});
+    const i1 = bg('i1', {cwd: '/r/infra'});
+    const rows = [i1, a1, a2];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        touched: new Map([
+          [a1.sessionId, 1],
+          [a2.sessionId, 5],
+          [i1.sessionId, 9],
+        ]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.repos?.map(r => r.label)).toEqual(['app', 'infra']);
+    expect(names(a)).toEqual(['a2', 'a1', 'i1']);
+    expect(a.upNext).toEqual([]);
+    expect(a.lastAttached).toBeNull();
+  });
+
+  it('ディレクトリ名が重なるときだけ親のディレクトリ名を足す (シナリオ 63)', () => {
+    const rows = [bg('x', {cwd: '/g/a/foo'}), bg('y', {cwd: '/g/b/foo'}), bg('z', {cwd: '/g/c/bar'})];
+    const a = arrange(input(rows, {view: 'repo', repoOf: repoOf(rows)}));
+    expect(a.repos?.map(r => r.label)).toEqual(['a/foo', 'b/foo', 'bar']);
+    // 末尾の2段まで同じなら、区別できるところまで親を足す
+    const deep = [bg('p', {cwd: '/g/github.com/acme/foo'}), bg('q', {cwd: '/g/gitlab.com/acme/foo'})];
+    const d = arrange(input(deep, {view: 'repo', repoOf: repoOf(deep)}));
+    expect(d.repos?.map(r => r.label)).toEqual(['github.com/acme/foo', 'gitlab.com/acme/foo']);
+  });
+
+  it('待ち先の組は根のリポジトリに出て、待ち先に attach すると組ごと上がる (シナリオ 64)', () => {
+    const w = bg('waiter', {cwd: '/r/app'});
+    const t = bg('target', {cwd: '/r/lib', state: 'working', status: 'busy'});
+    const o = bg('other', {cwd: '/r/app'});
+    const rows = [w, t, o];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        waits: new Map([[w.sessionId, [t.sessionId]]]),
+        touched: new Map([
+          [w.sessionId, 1],
+          [t.sessionId, 9],
+          [o.sessionId, 5],
+        ]),
+        attachedAt: new Map([[t.sessionId, 9]]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.repos?.map(r => r.label)).toEqual(['app']);
+    expect(names(a)).toEqual(['waiter', 'target', 'other']);
+  });
+
+  it('組の位置は根の時刻と attach した時刻で決まり、保留にしても待ち先の初めて見た時刻でも動かない', () => {
+    const w = bg('waiter', {cwd: '/r/app'});
+    const t = bg('target', {cwd: '/r/app'});
+    const o = bg('other', {cwd: '/r/app'});
+    const rows = [w, t, o];
+    const base = {
+      view: 'repo' as const,
+      waits: new Map([[w.sessionId, [t.sessionId]]]),
+      repoOf: repoOf(rows),
+    };
+    // 待ち先は初めて見ただけ(時刻 9)。組は根の時刻 1 の位置に残る
+    const linked = arrange(
+      input(rows, {
+        ...base,
+        touched: new Map([
+          [w.sessionId, 1],
+          [t.sessionId, 9],
+          [o.sessionId, 5],
+        ]),
+      }),
+    );
+    expect(names(linked)).toEqual(['other', 'waiter', 'target']);
+    // 待ち先に attach すると(時刻 9)組が上がり、保留にしても上にとどまる
+    const touched = new Map([
+      [w.sessionId, 1],
+      [t.sessionId, 9],
+      [o.sessionId, 5],
+    ]);
+    const attachedAt = new Map([[t.sessionId, 9]]);
+    const attached = arrange(input(rows, {...base, touched, attachedAt}));
+    expect(names(attached)).toEqual(['waiter', 'target', 'other']);
+    const held = arrange(input(rows, {...base, touched, attachedAt, holds: new Map([[t.sessionId, 'later']])}));
+    expect(names(held)).toEqual(['waiter', 'target', 'other']);
+  });
+
+  it('保留の行は区切りの中に残り、(on hold) の印が付く (シナリオ 65)', () => {
+    const h = bg('held', {cwd: '/r/app'});
+    const k = bg('kept', {cwd: '/r/app'});
+    const rows = [h, k];
+    const a = arrange(
+      input(rows, {
+        view: 'repo',
+        holds: new Map([[h.sessionId, 'later']]),
+        touched: new Map([
+          [h.sessionId, 1],
+          [k.sessionId, 2],
+        ]),
+        repoOf: repoOf(rows),
+      }),
+    );
+    expect(a.onHold).toEqual([]);
+    expect(flatten(a).map(e => [e.name, e.holdMark, e.holdReason])).toEqual([
+      ['kept', false, undefined],
+      ['held', true, 'later'],
+    ]);
   });
 });

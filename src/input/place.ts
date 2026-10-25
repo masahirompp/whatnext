@@ -6,6 +6,8 @@ import type {Run} from './exec.js';
 export interface Place {
   /** リポジトリ名(`repo/sub`)か、git でない場所のパスの末尾。 */
   repo: string;
+  /** `cwd` がリポジトリの根より下なら、根からの相対パス。 */
+  sub?: string;
   /** 今チェックアウトされているブランチ(切り離された HEAD なら undefined)。 */
   branch?: string;
   /** 既定のブランチと違うか。 */
@@ -36,8 +38,9 @@ export async function placeOf(run: Run, cwd: string): Promise<Place> {
   const [top, common, head] = r.stdout.trim().split('\n');
   if (!top || !common) return plain;
   const mainRoot = basename(common) === '.git' ? dirname(common) : common;
-  const sub = relative(top, cwd);
-  const repo = basename(mainRoot) + (sub && !sub.startsWith('..') ? `/${sub}` : '');
+  const rel = relative(top, cwd);
+  const sub = rel && !rel.startsWith('..') ? rel : undefined;
+  const repo = basename(mainRoot) + (sub ? `/${sub}` : '');
   const branch = head && head !== 'HEAD' ? head : undefined;
   let nonDefault = false;
   if (branch) {
@@ -45,7 +48,7 @@ export async function placeOf(run: Run, cwd: string): Promise<Place> {
     const def = d.code === 0 ? d.stdout.trim().replace(/^[^/]+\//, '') : undefined;
     nonDefault = def ? branch !== def : branch !== 'main' && branch !== 'master';
   }
-  return {repo, branch, nonDefault, worktree: top !== mainRoot, checkoutRoot: top, mainRoot, git: true};
+  return {repo, sub, branch, nonDefault, worktree: top !== mainRoot, checkoutRoot: top, mainRoot, git: true};
 }
 
 export interface PullRequest {

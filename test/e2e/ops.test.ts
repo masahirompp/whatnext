@@ -1,5 +1,5 @@
 // 画面の通し: 停止と削除、保留、待ち先、新しいセッション、外のアプリで開く
-// (シナリオ 8、9、14、15、17、18、20、21、22、29、40、43、44、47、48、51、52、53、54、55、61、62、63、64)。
+// (シナリオ 8、9、14、15、17、18、20、21、22、29、40、43、44、47、48、51、52、53、54、55、67、68、69、70)。
 
 import {spawn, spawnSync} from 'node:child_process';
 import {mkdirSync} from 'node:fs';
@@ -143,7 +143,7 @@ describe('保留', () => {
     expect(s).toContain('Put alpha on hold. To bring it back, press h on it and clear the reason.');
     expect(s).toMatch(/On hold\n {2}alpha +Permission[^\n]*\n {4}↳ ask Bob/);
     expect(h.selected('t')).toMatch(/^> beta/);
-    expect(h.stateFile()).toMatchObject({version: 1, holds: {[h.row(1).sessionId as string]: 'ask Bob'}});
+    expect(h.stateFile()).toMatchObject({version: 2, holds: {[h.row(1).sessionId as string]: 'ask Bob'}});
     // 再起動しても残る
     await h.keys('t', 'q');
     await h.waitFor('t', /\[exit 0\]/);
@@ -419,7 +419,7 @@ describe('起動された行', () => {
     throw new Error('no child process');
   }
 
-  it('61、62、63: 起動された行は起動元の下に (sub) で並び、起動元は Waiting。f と削除の巻き込みの対象にならない', async () => {
+  it('67、68、69: 起動された行は起動元の下に (sub) で並び、起動元は Waiting。f と削除の巻き込みの対象にならない', async () => {
     const pp = await processPair();
     try {
       h = new Harness();
@@ -452,7 +452,7 @@ describe('起動された行', () => {
     }
   });
 
-  it('62、64: 起動された行が終わって消えると、起動元はレビュー待ちに戻り、done は出ない。選んでいたカーソルは起動元に移る', async () => {
+  it('68、70: 起動された行が終わって消えると、起動元はレビュー待ちに戻り、done は出ない。選んでいたカーソルは起動元に移る', async () => {
     const pp = await processPair();
     try {
       h = new Harness();
