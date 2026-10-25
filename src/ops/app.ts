@@ -472,7 +472,12 @@ export class App {
     const list = this.entries();
     if (!this.arranged?.repos) return this.arranged?.upNext[0]?.positionSid ?? list[0]?.sid ?? null;
     // 消えた行の区切りは前回の並びで、候補の区切りは並べ直したあとの並びで見る(待ち元が消えると待ち先は別の区切りへ移る)。
-    const now = new Map(this.sectionOrder().map(o => [o.sid, o.section]));
+    // 起動された行は手を付けられないので候補にしない。
+    const now = new Map(
+      this.sectionOrder()
+        .filter(o => !this.isSub(o.sid))
+        .map(o => [o.sid, o.section]),
+    );
     const i = prev ? this.order.findIndex(o => o.sid === prev) : -1;
     if (i >= 0) {
       const section = this.order[i]?.section;
@@ -1429,8 +1434,10 @@ export class App {
     const i = list.findIndex(e => e.sid === sid);
     let moving = [sid];
     if (this.arranged && i >= 0 && list[i]?.depth === 0) moving = subtreeOf(this.arranged, sid);
-    const after = list.slice(i + 1).find(e => !moving.includes(e.sid));
-    const before = [...list.slice(0, Math.max(0, i))].reverse().find(e => !moving.includes(e.sid));
+    // 起動された行は手を付けられないので、カーソルの移り先にしない(組の位置を決める行と同じ)。
+    const target = (e: Entry) => !moving.includes(e.sid) && !this.isSub(e.sid);
+    const after = list.slice(i + 1).find(target);
+    const before = [...list.slice(0, Math.max(0, i))].reverse().find(target);
     this.holds.set(sid, reason);
     this.rearrange(this.p.now(), false);
     // リポジトリのビューでは行が動かないので、カーソルはその行に残す。

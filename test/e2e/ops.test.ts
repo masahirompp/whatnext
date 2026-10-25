@@ -550,6 +550,94 @@ describe('起動された行', () => {
       pp.kill();
     }
   });
+
+  it('69: 保留にしてある行は、起動元が一覧に出てきても (sub) にならず、h で理由を直せる', async () => {
+    const pp = await processPair();
+    try {
+      h = new Harness();
+      const {id: _a, state: _b, ...p} = h.row(1, {name: 'fix-login', pid: pp.parent, status: 'idle'});
+      const {id: _c, state: _d, ...c} = h.row(2, {name: 'long-check', pid: pp.child, status: 'busy'});
+      h.setAgents([
+        {...p, kind: 'interactive'},
+        {...c, kind: 'interactive'},
+      ]);
+      h.open('t');
+      await h.waitFor('t', 'long-check');
+      await h.select('t', 'long-check');
+      await h.keys('t', 'h');
+      await h.type('t', 'look tonight');
+      await h.keys('t', 'Enter');
+      await h.waitFor('t', '↳ look tonight');
+      // 起動元が稼働して一覧に出る
+      const rows = h.agents();
+      rows[0] = {...rows[0], status: 'busy'};
+      h.setAgents(rows);
+      await h.keys('t', 'r');
+      const s = await h.waitFor('t', /fix-login \(tty\) +Working/);
+      expect(s).toMatch(/long-check \(tty\)/);
+      expect(s).not.toContain('(sub)');
+      await h.select('t', 'long-check');
+      await h.keys('t', 'h');
+      await h.waitFor('t', /look tonight█/);
+      expect(h.screen('t')).not.toContain('cannot be put on hold');
+      await h.keys('t', 'Escape');
+    } finally {
+      pp.kill();
+    }
+  });
+
+  it('70: 組の途中の行を保留にしても、カーソルはその下の起動された行に移らない', async () => {
+    const pp = await processPair();
+    try {
+      h = new Harness();
+      const waiter = h.row(1, {name: 'waiter'});
+      const mid = h.row(2, {name: 'mid', pid: pp.parent, state: 'working', status: 'busy'});
+      const {id: _id, state: _state, ...child} = h.row(3, {name: 'sub-review', pid: pp.child, status: 'busy'});
+      h.setAgents([waiter, mid, {...child, kind: 'interactive'}]);
+      h.open('t');
+      await h.waitFor('t', 'sub-review');
+      await h.select('t', 'waiter');
+      await h.keys('t', 'f');
+      await h.type('t', 'mid');
+      await h.keys('t', 'Enter');
+      await h.waitFor('t', /└ mid/);
+      await h.select('t', 'mid');
+      await h.keys('t', 'h');
+      await h.type('t', 'later');
+      await h.keys('t', 'Enter');
+      await h.waitFor('t', '↳ later');
+      expect(h.selected('t')).not.toMatch(/sub-review/);
+    } finally {
+      pp.kill();
+    }
+  });
+
+  it('70: リポジトリのビューで行が消えたときも、カーソルは起動された行に移らない', async () => {
+    const pp = await processPair();
+    try {
+      h = new Harness();
+      const waiter = h.row(1, {name: 'waiter', pid: pp.parent, state: 'working', status: 'busy'});
+      const target = h.row(2, {name: 'a-target', ...{state: 'working', status: 'busy'}});
+      const {id: _id, state: _state, ...child} = h.row(3, {name: 'sub-review', pid: pp.child, status: 'busy'});
+      h.setAgents([waiter, target, {...child, kind: 'interactive'}]);
+      h.open('t');
+      await h.waitFor('t', 'sub-review');
+      await h.select('t', 'waiter');
+      await h.keys('t', 'f');
+      await h.type('t', 'a-target');
+      await h.keys('t', 'Enter');
+      await h.waitFor('t', /├ a-target/);
+      await h.keys('t', 'g');
+      await h.waitFor('t', 'g ladder view');
+      await h.select('t', 'a-target');
+      h.update(target.id as string, null);
+      await h.keys('t', 'r');
+      await h.waitGone('t', 'a-target');
+      expect(h.selected('t')).not.toMatch(/sub-review/);
+    } finally {
+      pp.kill();
+    }
+  });
 });
 
 describe('新しいセッション', () => {

@@ -77,7 +77,10 @@ describe('whatnext から起動したセッション', () => {
     await sleep(1000);
     await h.keys('t', 'C-q', 'C-l');
     s = await h.refreshUntil('t', /Review +\S+ +\d+k[^\n]*\n\s+All done here\./, 120000);
-    expect(s).not.toMatch(/Review +\S+ +- /);
+    // 確かめるのは、このテストのセッションの行だけ(利用者の別のセッションには CTX が - の行がありうる)。
+    const lines = s.split('\n');
+    const row = lines[lines.findIndex(l => /^\s+All done here\./.test(l)) - 1] ?? '';
+    expect(row).not.toMatch(/Review +\S+ +- /);
   });
 
   it('23、34: 指示を出してすぐ離脱すると → 指示。whatnext を終了している間にターンを終えても、フックのエラーは出ず、起動し直すと最初の一覧から最後の応答の冒頭が出る', async () => {
@@ -200,12 +203,26 @@ describe('ほかの行が起動した claude -p', () => {
     const id = /backgrounded\s*·\s*([^\s·]+)/.exec(out.replace(/\x1b\[[0-9;]*m/g, ''))?.[1];
     expect(id).toBeDefined();
     h.open('t');
-    const s = await h.refreshUntil('t', /└ \S+ \(sub\) +Working/, 120000);
-    const lines = s.split('\n');
-    const i = lines.findIndex(l => l.includes(`wn-real-spawner-${tag}`));
-    expect(i).toBeGreaterThanOrEqual(0);
-    const j = lines.findIndex(l => /└ \S+ \(sub\) +Working/.test(l));
-    expect(j).toBeGreaterThan(i);
+    // 利用者の別のセッションも (sub) の行を持ちうるので、起動元の行の組の中だけを見る。
+    // 組の中の行は、入れ子の線か一言の字下げで始まる。
+    const spawnedUnder = (screen: string): boolean => {
+      const lines = screen.split('\n');
+      const i = lines.findIndex(l => l.includes(`wn-real-spawner-${tag}`));
+      if (i < 0) return false;
+      for (const l of lines.slice(i + 1)) {
+        if (!/^ {2}[│├└ ]/.test(l)) return false;
+        if (/[├└] \S+ \(sub\) +Working/.test(l)) return true;
+      }
+      return false;
+    };
+    const end = Date.now() + 120000;
+    let ok = false;
+    while (!ok && Date.now() < end) {
+      await h.keys('t', 'r');
+      await sleep(2500);
+      ok = spawnedUnder(h.screen('t'));
+    }
+    expect(ok, h.screen('t')).toBe(true);
   });
 });
 

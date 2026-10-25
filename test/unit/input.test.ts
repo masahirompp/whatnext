@@ -366,6 +366,14 @@ describe('起動元 (シナリオ 67)', () => {
     expect(spawners([{sessionId: 'a', pid: 10}], parents).size).toBe(0);
   });
 
+  it('background の行は、祖先に別の行があっても起動された行にしない', () => {
+    const rows = [
+      {sessionId: 'p', pid: 10, kind: 'interactive'},
+      {sessionId: 'b', pid: 20, kind: 'background'},
+    ];
+    expect(spawners(rows, new Map([[20, 10]])).size).toBe(0);
+  });
+
   it('表に pid がない行は、起動元が残っていれば前回の関係を持ち越す', () => {
     const rows = [
       {sessionId: 'p', pid: 10},

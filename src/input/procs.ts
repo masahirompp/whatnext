@@ -24,14 +24,18 @@ export function parseParents(text: string): Map<number, number> {
 /**
  * 各行の pid の祖先をたどり、最初に当たった別の行を起動元とする。
  * `sessionId` から起動元の `sessionId` への表を返す。
- * 表に pid がない行(`--json` と `ps` を読む間に終わった行、`ps` が読めなかった回)は、
- * 起動元がまだ行に残っていれば前回の関係を持ち越す。持ち越さないと、その1回だけトップレベルに出て、起動元も待ちの段から落ちる。
- * 祖先をたどっても行に当たらなかったとき(読む間に起動元のプロセスが終わり、親が付け替わった)も、
- * 起動元の行がこの回の `--json` でまだ pid を持っていれば持ち越す。次の回には起動元の行の pid が消えるので、持ち越しは続かない。
+ * `background` の行は、起動された行にしない(祖先は Claude Code の常駐プロセスで、起動された行のように扱うと Enter や削除の扱いと食い違う)。
+ *
+ * 前回の関係を持ち越す場面が2つある。
+ * - 表に pid がない行(`--json` と `ps` を読む間に終わった行、`ps` が読めなかった回): 起動元がまだ行に残っていれば持ち越す。
+ *   持ち越さないと、その1回だけトップレベルに出て、起動元も待ちの段から落ちる。
+ * - 祖先をたどっても行に当たらない行(読む間に起動元のプロセスが終わった、間のシェルが終わって親が pid 1 に付け替わった):
+ *   起動元の行がこの回の `--json` でまだ pid を持っていれば持ち越す。起動元が止まって pid がなくなれば、そこで持ち越しは終わる。
+ *   間のシェルだけが終わったときは、起動元が動いている間は持ち越し続ける(その行を起動したのは起動元なので、入れ子のままにする)。
  * `ps` が読めなかった回に初めて出た行は、前回の関係がないので、その回だけトップレベルに出る。
  */
 export function spawners(
-  rows: readonly {sessionId: string; pid?: number}[],
+  rows: readonly {sessionId: string; pid?: number; kind?: string}[],
   parents: ReadonlyMap<number, number>,
   prev: ReadonlyMap<string, string> = new Map(),
 ): Map<string, string> {
@@ -39,31 +43,32 @@ export function spawners(
   for (const r of rows) if (r.pid !== undefined) byPid.set(r.pid, r.sessionId);
   const present = new Set(rows.map(r => r.sessionId));
   const alive = new Set(rows.filter(r => r.pid !== undefined).map(r => r.sessionId));
-  const out = new Map<string, string>();
-  const carry = (sid: string, live: boolean) => {
-    const before = prev.get(sid);
-    if (before !== undefined && (live ? alive : present).has(before)) out.set(sid, before);
-  };
-  for (const r of rows) {
-    if (r.pid === undefined) continue;
-    if (!parents.has(r.pid)) {
-      carry(r.sessionId, false);
-      continue;
-    }
-    const seen = new Set<number>([r.pid]);
-    let p = parents.get(r.pid);
-    let found = false;
+
+  /** pid の祖先で最初に当たった、自分以外の行。 */
+  const nearestRow = (self: string, pid: number): string | undefined => {
+    const seen = new Set<number>([pid]);
+    let p = parents.get(pid);
     while (p !== undefined && p > 1 && !seen.has(p)) {
       const sid = byPid.get(p);
-      if (sid !== undefined && sid !== r.sessionId) {
-        out.set(r.sessionId, sid);
-        found = true;
-        break;
-      }
+      if (sid !== undefined && sid !== self) return sid;
       seen.add(p);
       p = parents.get(p);
     }
-    if (!found) carry(r.sessionId, true);
+    return undefined;
+  };
+  /** 前回の起動元が、まだ行に残っていれば(`mustBeAlive` なら pid を持っていれば)それを返す。 */
+  const carriedOver = (sid: string, mustBeAlive: boolean): string | undefined => {
+    const before = prev.get(sid);
+    return before !== undefined && (mustBeAlive ? alive : present).has(before) ? before : undefined;
+  };
+
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    if (r.pid === undefined || r.kind === 'background') continue;
+    const spawner = parents.has(r.pid)
+      ? (nearestRow(r.sessionId, r.pid) ?? carriedOver(r.sessionId, true))
+      : carriedOver(r.sessionId, false);
+    if (spawner !== undefined) out.set(r.sessionId, spawner);
   }
   return out;
 }
