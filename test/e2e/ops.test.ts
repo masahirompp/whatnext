@@ -437,6 +437,33 @@ describe('起動された行', () => {
     throw new Error('no child process');
   }
 
+  /** 本物の3段のプロセス(sh、その子の sh、その子の sleep)を作り、上から順の pid を返す。 */
+  async function processChain(): Promise<{pids: [number, number, number]; kill(): void}> {
+    const top = spawn('sh', ['-c', 'sh -c "sleep 60; :"; :'], {stdio: 'ignore'});
+    const a = top.pid as number;
+    const childOf = (p: number) =>
+      Number(
+        spawnSync('pgrep', ['-P', String(p)], {encoding: 'utf8'})
+          .stdout.trim()
+          .split('\n')[0] || 0,
+      );
+    for (let i = 0; i < 50; i++) {
+      const b = childOf(a);
+      const c = b ? childOf(b) : 0;
+      if (b && c) {
+        const kill = () => {
+          for (const pid of [c, b, a])
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch {}
+        };
+        return {pids: [a, b, c], kill};
+      }
+      await sleep(20);
+    }
+    throw new Error('no grandchild process');
+  }
+
   it('67、68、69: 起動された行は起動元の下に (sub) で並び、起動元は Waiting。f と削除の巻き込みの対象にならない', async () => {
     const pp = await processPair();
     try {
@@ -521,6 +548,29 @@ describe('起動された行', () => {
       expect(h.selected('t')).toMatch(/^> parent/);
     } finally {
       pp.kill();
+    }
+  });
+
+  it('70: 2段の入れ子で孫だけが消えると、カーソルは中間の起動された行を飛ばして大本の起動元に移る', async () => {
+    const pc = await processChain();
+    try {
+      h = new Harness();
+      const [a, b, c] = pc.pids;
+      const top = h.row(1, {name: 'top', pid: a, state: 'working', status: 'busy'});
+      const {id: _i1, state: _s1, ...mid} = h.row(2, {name: 'mid-p', pid: b, status: 'busy'});
+      const {id: _i2, state: _s2, ...leaf} = h.row(3, {name: 'leaf-p', pid: c, status: 'busy'});
+      const other = h.row(4, {name: 'perm-top', state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'});
+      h.setAgents([top, {...mid, kind: 'interactive'}, {...leaf, kind: 'interactive'}, other]);
+      h.open('t');
+      await h.waitFor('t', /└ leaf-p \(sub\)/);
+      await h.select('t', 'leaf-p');
+      h.setAgents([top, {...mid, kind: 'interactive'}, other]);
+      await h.keys('t', 'r');
+      await h.waitGone('t', 'leaf-p');
+      expect(h.screen('t')).toMatch(/└ mid-p \(sub\)/);
+      expect(h.selected('t')).toMatch(/^> top/);
+    } finally {
+      pc.kill();
     }
   });
 

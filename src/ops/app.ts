@@ -453,8 +453,9 @@ export class App {
     if (this.cursor && list.some(e => e.sid === this.cursor)) return;
     const prev = this.cursor;
     // 消えたのが起動された行なら、どちらのビューでも、一覧に残っている一番近い起動元に移る。
+    // ただし、残っている起動元がまだ起動された行(2段の入れ子の中間)なら飛ばす。手を付けられない行には自動で移らない。
     // 移った直後の Ctrl+X の守り(moved)は、起動元に移るときも同じに立てる。起動された行を消すつもりの Ctrl+X で起動元を消さない。
-    const spawner = spawnerChain.find(s => list.some(e => e.sid === s));
+    const spawner = spawnerChain.find(s => list.some(e => e.sid === s) && !this.isSub(s));
     const top = spawner ?? this.fallbackCursor(prev);
     if (prev && top !== prev) {
       const name = this.shownNames.get(prev) ?? this.nameOf(prev);

@@ -130,7 +130,8 @@ export class Harness {
       ...ids(n),
       cwd: this.repo,
       name: `s${n}`,
-      pid: 1000 + n,
+      // 一覧は本物の ps で起動元をたどるので、実在しにくい pid にする(macOS の上限は 99998、Linux は 4194304)。
+      pid: 4190000 + n,
       state: 'done',
       status: 'idle',
       startedAt: Date.now(),

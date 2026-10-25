@@ -42,7 +42,7 @@ export function spawners(
   const byPid = new Map<number, string>();
   for (const r of rows) if (r.pid !== undefined) byPid.set(r.pid, r.sessionId);
   const present = new Set(rows.map(r => r.sessionId));
-  const alive = new Set(rows.filter(r => r.pid !== undefined).map(r => r.sessionId));
+  const alive = new Set(byPid.values());
 
   /** pid の祖先で最初に当たった、自分以外の行。 */
   const nearestRow = (self: string, pid: number): string | undefined => {
