@@ -35,8 +35,8 @@ describe('リポジトリのビュー', () => {
     await h.keys('t', 'g');
     let s = await h.waitFor('t', 'g ladder view');
     // 区切りは見出しの順(infra、repo、scratch)。区切りの間は1行あく。
-    expect(s).toMatch(/\n {2}infra\n[> ] gamma [^\n]*\n\n {2}repo\n/);
-    expect(s).toMatch(/\n\n {2}scratch\n[> ] delta /);
+    expect(s).toMatch(/\n── infra ─+\n[> ] gamma [^\n]*\n\n── repo ─+\n/);
+    expect(s).toMatch(/\n\n── scratch ─+\n[> ] delta /);
     expect(s).not.toContain('Up next');
     // 同じリポジトリの行の WHERE にはリポジトリ名を出さない
     expect(s).toMatch(/alpha +Review +- +-/);
@@ -48,7 +48,7 @@ describe('リポジトリのビュー', () => {
     s = await h.waitFor('t', 'g ladder view');
     expect(s).not.toContain('Last attached');
     expect(h.selected('t')).toMatch(/^> beta/);
-    const repoAt = lineOf(s, /^ {2}repo$/);
+    const repoAt = lineOf(s, /^── repo ─+$/);
     expect(lineOf(s, /^[> ] beta /)).toBe(repoAt + 1);
     expect(lineOf(s, /^[> ] alpha /)).toBe(repoAt + 2);
     // ラダーのビューに戻しても、カーソルは同じセッションに付いていく
@@ -76,7 +76,7 @@ describe('リポジトリのビュー', () => {
     const lines = h.screen('t');
     expect(lineOf(lines, /^[> ] alpha /)).toBeLessThan(lineOf(lines, /^[> ] gamma /));
     expect(lineOf(lines, /^[> ] gamma /)).toBeLessThan(lineOf(lines, /^[> ] beta /));
-    expect(s).toContain('  repo');
+    expect(s).toMatch(/^── repo ─+$/m);
   });
 
   it('62: 対象外だった対話セッションが後から一覧に出ると、そのときに区切りの先頭に出る', async () => {

@@ -287,6 +287,19 @@ function panelLines(p: Panel, cols: number, maxItems: number): string[] {
   }
 }
 
+/**
+ * リポジトリのビューの区切りの見出し。`── <名前> ───…` と、罫線を端末の幅いっぱいまで伸ばす。
+ * 名前は、後ろに空白と罫線1本が入るところまでで切り詰める。こうすると右の罫線が必ず1本は残る。
+ * `─` は曖昧幅の文字だが、幅1と数える。claude の画面も同じ罫線を幅いっぱいに引くので、
+ * 曖昧幅を全角で描く端末では、whatnext だけ避けても attach 先の画面が崩れる。
+ */
+function sectionHeading(title: string, cols: number): string {
+  const lead = '── ';
+  const name = truncate(oneLine(title), cols - width(lead) - ' ─'.length);
+  const rule = '─'.repeat(cols - width(lead) - width(name) - ' '.length);
+  return `${color.gray(lead)}${color.bold(name)}${color.gray(` ${rule}`)}`;
+}
+
 /** 一覧の画面の行を組み立てる。返す行はどれも端末の幅に収まり、行数は端末の高さを超えない。 */
 export function render(m: ScreenModel): string[] {
   const cols = Math.max(10, m.cols);
@@ -332,7 +345,7 @@ export function render(m: ScreenModel): string[] {
       // 区切りの見出しは固定せず、行と一緒にスクロールする。
       m.sections.forEach((sec, i) => {
         if (i > 0) scrollLines.push('');
-        scrollLines.push(color.bold(truncate(`  ${oneLine(sec.title)}`, cols)));
+        scrollLines.push(sectionHeading(sec.title, cols));
         block(sec.rows, c, m, scrollLines, rowAt, inline);
       });
     } else {
