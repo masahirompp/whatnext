@@ -9,7 +9,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 ## 技術と依存
 
 - Node で作る。描画とキー入力は自前で行い、Ink は使わない（「描画とキー入力」）。
-- 本体が依存するコマンドは `claude`、`git`、`tmux` だけで（tmux は作業台のために必須。専用のサーバで使い、利用者の設定には触れない）、URL やエディタを開くときに OS の `open` を、起動したセッションのフックが値を送るときに `curl` を、作業台で動いているもののコマンド行を引くときと、起動された行の起動元を引くときに `ps` を使う（[ADR-0008](adr/0008-dependencies-and-contact-points-with-tmux.md)）。任意の依存として、作業ディレクトリの候補を増やすためだけに `ghq` を、行に PR を出し、その PR を開くためだけに `gh` を、あれば使う。
+- 本体が依存するコマンドは `claude`、`git`、`tmux` だけで（tmux は作業台のために必須。専用のサーバで使い、利用者の設定には触れない）、URL やエディタを開くときに OS の `open` を、起動したセッションのフックが値を送るときに `curl` を、作業台で動いているもののコマンド行を引くときと、起動された行の起動元を引くときに `ps` を使う（[ADR-0008](adr/0008-dependencies-and-contact-points-with-tmux.md)、[ADR-0019](adr/0019-derive-spawned-rows-from-the-process-table.md)）。任意の依存として、作業ディレクトリの候補を増やすためだけに `ghq` を、行に PR を出し、その PR を開くためだけに `gh` を、あれば使う。
 - 段を決める状態は `claude agents --json --all` からだけ読む（[ADR-0001](adr/0001-read-state-only-from-agents-json.md)）。アカウントの Usage はセッションの状態ではないので、別に `claude -p "/usage"` から読む（[PRODUCT.md](PRODUCT.md)「Usage の表示」を参照）。
 - whatnext が起動したセッションからは、フックのイベントと OTel も受ける（「フックの受信」「OTel の受信」と [ADR-0009](adr/0009-receive-hooks-and-otel-from-launched-sessions.md) を参照）。フックで取れない値は、Claude Code がセッションごとに残す会話記録から補う（「会話記録の読み取り」と [ADR-0011](adr/0011-fill-in-from-transcripts-when-hooks-are-missing.md) を参照）。フック、OTel、会話記録の値は、行の一言、列の表示、待機時間の推定にだけ使い、段の判定には使わない。どの機能をどの入力から取るかは「機能ごとの入力の出どころ」にまとめる。
 
@@ -98,6 +98,8 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | Usage | | | | 主：`claude -p "/usage"` |
 
 ## 起動元の引き方
+
+起動された行の起動元を OS のプロセス表から導く判断は [ADR-0019](adr/0019-derive-spawned-rows-from-the-process-table.md) にある。
 
 - 更新のたびに `ps -A -o pid=,ppid=` を1回動かしてプロセス表を読む（読めなければ空の表として扱う）。`pid` を持つ各行について親をたどり、最初に当たった `--json` の別の行を起動元とする。表の読み取りと起動元の導き方は入力のモジュール（`src/input/procs.ts`）にあり、操作が更新のたびに呼ぶ。
 - `background` の行は起動された行にしない。祖先は Claude Code の常駐プロセスで、今の Claude Code ではほかの行に当たらない。当たったとしても、起動された行として扱うと、attach と削除の扱いが食い違う。
