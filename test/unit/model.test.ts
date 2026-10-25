@@ -391,6 +391,14 @@ describe('カーソル', () => {
     const gone = layout(inputs([bg('W', 'review'), tty('S1', 'working')], {W: ['P']}));
     expect(followCursor(prev, 'S2', gone)).toBe('S1');
   });
+  it('起動された行と大本の起動元が同時に消えたら、大本の起動元が消えたものとして隣を選ぶ', () => {
+    const t = {A: {first: 9}, P: {first: 5}, T: {first: 2}, B: {first: 1}};
+    const rows = [bg('A', 'review'), bg('P', 'working'), bg('T', 'working'), tty('S', 'working'), bg('B', 'review')];
+    const prev = layout(inputs(rows, {P: ['T']}, {S: 'P'}, {...t, S: {first: 8}}));
+    expect(prev.order).toEqual(['A', 'P', 'S', 'T', 'B']);
+    const next = layout(inputs([bg('A', 'review'), bg('T', 'working'), bg('B', 'review')], {}, {}, t));
+    expect(followCursor(prev, 'S', next)).toBe('T');
+  });
   it('自動で移るときは起動された行を選ばない', () => {
     const t = {A: {first: 3}, P: {first: 2}};
     const prev = layout(inputs([bg('A', 'review'), bg('P', 'working'), tty('S', 'working')], {}, {S: 'P'}, t));

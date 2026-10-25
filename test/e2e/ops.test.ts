@@ -202,6 +202,12 @@ describe('停止と削除', () => {
     await h.keys('C-x');
     await h.waitFor(/Stop failed: could not stop a0000000: daemon busy \(Ctrl\+X again to delete\)/);
     expect(h.screen()).not.toMatch(/Stopped alpha/);
+    // 知らせが出ている間は、2秒を過ぎても2回目を削除として受け付ける
+    await sleep(3000);
+    await h.keys('C-x');
+    await h.waitFor(s => !/alpha/.test(s), 10000);
+    expect(h.calls().filter(c => c.args[0] === 'stop').length).toBe(1);
+    expect(h.calls().some(c => c.args[0] === 'rm')).toBe(true);
   });
 
   it('9: 待ち受け中に別のキーを押すと取り消す。Esc でも取り消す。一覧では ctrl+q を無視する', async () => {

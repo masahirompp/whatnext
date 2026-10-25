@@ -142,8 +142,34 @@ export function headingLine(title: string, w: number): string {
   return `${color.gray('── ')}${color.bold(title)} ${color.gray('─'.repeat(rest))}`;
 }
 
+/** 外から来た文字列の、改行とタブを空白にし、ほかの制御文字(ESC など)を除く。描画が崩れないように。 */
+export function clean(s: string): string {
+  let out = '';
+  for (const ch of oneLine(s)) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c >= 0x20 && c !== 0x7f && !(c >= 0x80 && c < 0xa0)) out += ch;
+  }
+  return out;
+}
+
+const cleanRow = (r: ScreenRow): ScreenRow => ({
+  ...r,
+  name: clean(r.name),
+  line: r.line === undefined ? undefined : clean(r.line),
+  running: r.running?.map(clean),
+  done: r.done?.map(clean),
+  note: r.note === undefined ? undefined : clean(r.note),
+  where: {
+    ...r.where,
+    repo: r.where.repo === undefined ? undefined : clean(r.where.repo),
+    sub: r.where.sub === undefined ? undefined : clean(r.where.sub),
+    branch: r.where.branch === undefined ? undefined : clean(r.where.branch),
+  },
+});
+
 /** 画面の行の配列を組み立てる。どの行も端末の幅に収め、行数は端末の高さを超えない。 */
-export function render(s: Screen): string[] {
+export function render(raw: Screen): string[] {
+  const s: Screen = {...raw, groups: raw.groups.map(g => ({...g, title: clean(g.title), rows: g.rows.map(cleanRow)}))};
   const w = Math.max(1, s.width);
   const h = Math.max(1, s.height);
   const bottom: string[] = [];

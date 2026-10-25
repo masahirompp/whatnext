@@ -4,6 +4,7 @@ import {color, truncate} from '../../lib/text/text.js';
 import {Tmux} from '../../lib/tmux/tmux.js';
 import {GUIDE_CREATE} from '../ops/keys.js';
 import {GUIDE_OPTION, type GuideState} from '../ops/names.js';
+import {frame} from '../screen/screen.js';
 import {type Env, tmuxEnv} from './env.js';
 
 // 作業台の画面の案内(案内のセッションの中で動く)。何を出すかは一覧が `@wn_guide` に置く。
@@ -31,7 +32,7 @@ export async function guide(env: Env): Promise<number> {
     const w = process.stdout.columns || 80;
     const lines = guideLines(state).map(l => truncate(l, w));
     const body = lines.map((l, i) => (i === lines.length - 1 && state.kind === 'none' ? color.bold(l) : l));
-    process.stdout.write(`\x1b[?2026h\x1b[H${body.map(l => `${l}\x1b[K`).join('\r\n')}\x1b[J\x1b[?2026l`);
+    process.stdout.write(frame(body));
   };
   const reload = async () => {
     const t = (await tmux.option(GUIDE_OPTION)) ?? '';

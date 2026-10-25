@@ -127,11 +127,16 @@ export class Prs {
       const c = this.cache.get(key);
       if (this.inflight.has(key) || (c && this.now() - c.at < maxAge)) continue;
       this.inflight.add(key);
+      // 引き始めた時刻で数える。失敗したときも時刻だけは進め、前の値を残す(60秒に1回までを守る)
+      const started = this.now();
       void this.fetch(checkout, branch).then(pr => {
         this.inflight.delete(key);
-        if (pr === null) return;
         const before = this.cache.get(key)?.pr;
-        this.cache.set(key, {pr, at: this.now()});
+        if (pr === null) {
+          this.cache.set(key, {pr: before, at: started});
+          return;
+        }
+        this.cache.set(key, {pr, at: started});
         if (before?.number !== pr?.number || before?.state !== pr?.state) onChange();
       });
     }

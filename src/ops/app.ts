@@ -13,7 +13,7 @@ import type {Observation, ObsRow} from '../input/observe.js';
 import {locate} from '../input/where.js';
 import {followCursor, initialCursor} from '../model/cursor.js';
 import {clearDone, type DoneState, nextDone} from '../model/done.js';
-import {byReading, groupTitles, layout, waitView} from '../model/layout.js';
+import {groupTitles, layout, waitView} from '../model/layout.js';
 import {canLink, cascade, waitCandidates} from '../model/relations.js';
 import type {Inputs, Layout, Row} from '../model/types.js';
 import {validWaits} from '../model/waits.js';
@@ -30,6 +30,8 @@ import type {Ports} from './ports.js';
 const REFRESH_MS = 60_000;
 const USAGE_MIN_MS = 60_000;
 const ARM_MS = 2000;
+// 止める操作が失敗したときの知らせと、そのあいだの削除の待ち受け(文言を読む時間を取る)
+const STOP_FAILED_MS = 8000;
 const GUARD_MS = 2000;
 const CLAUDE_SESSION = /^[0-9a-f]{8}$/;
 
@@ -56,8 +58,7 @@ type Mode =
   | {k: 'model'; sel: number; dir: string; waitFor?: string; items: DirItem[]}
   | {k: 'modelInput'; text: string; dir: string; waitFor?: string; items: DirItem[]}
   | {k: 'starting'; dir: string; model?: string; since: number}
-  | {k: 'output'; lines: string[]}
-  | {k: 'confirm'; prompt: string; def: boolean; resolve: (yes: boolean) => void; back: Mode};
+  | {k: 'output'; lines: string[]};
 
 interface Notice {
   text: string;
@@ -79,6 +80,7 @@ export class App {
   private done: DoneState = new Map();
   private cursor?: string;
   private mode: Mode = {k: 'list'};
+  private confirms: {prompt: string; def: boolean; resolve: (yes: boolean) => void}[] = [];
   private notices: Notice[] = [];
   private refreshing = false;
   private refreshQueued = false;
@@ -119,7 +121,9 @@ export class App {
     await this.refresh({initial: true});
     this.initialized = true;
     this.fetchUsage(true);
-    await this.onSignal();
+    // 起動中に届いた知らせと同時に走らないよう、列を通す
+    this.signal();
+    await this.queue;
   }
 
   /** 前の tmux サーバに残っていたもの(異常終了のあと)。動いているものがある作業台だけ、引き継ぐかを聞く。 */
@@ -158,7 +162,7 @@ export class App {
   }
 
   private runningOf(m: Map<string, string[]>, id: string): string[] | undefined {
-    return m.get(id) ?? m.get(`sh-${id}`);
+    return m.get(id);
   }
 
   // ---- 更新 ----
@@ -208,20 +212,19 @@ export class App {
     const prevAt = this.lastAt;
     this.lastAt = obs.at;
     const present = new Set(obs.rows.map(r => r.sid));
-    // --json から消えたセッションの関係、メモ、時刻を外す
-    let changed = false;
+    // --json から消えたセッションの関係、メモ、時刻を外す(ファイルにはそのまま書く。木にならない関係を整理するのは、
+    // 利用者がメモか待ち先を変えたときだけ。DESIGN.md「状態のファイルに書くもの」)
+    let linked = false;
     for (const m of [this.persisted.notes, this.persisted.seen] as Map<string, unknown>[]) {
       for (const k of [...m.keys()]) if (!present.has(k)) m.delete(k);
     }
     for (const [w, ts] of [...this.persisted.waits]) {
       if (!present.has(w)) {
         this.persisted.waits.delete(w);
-        changed = true;
         continue;
       }
       const kept = ts.filter(t => present.has(t));
       if (kept.length !== ts.length) {
-        changed = true;
         if (kept.length === 0) this.persisted.waits.delete(w);
         else this.persisted.waits.set(w, kept);
       }
@@ -240,7 +243,7 @@ export class App {
       this.pendingLinks = this.pendingLinks.filter(x => x !== pl);
       if (present.has(pl.waiter) && canLink(this.inputs(), pl.waiter, row.sid)) {
         this.link(pl.waiter, row.sid);
-        changed = true;
+        linked = true;
       }
     }
     await this.p.locations.refresh(obs.rows.filter(r => r.tier !== null).map(r => r.cwd));
@@ -274,7 +277,18 @@ export class App {
       this.cursor = next;
       if (this.armed) this.armed = undefined;
     }
-    this.save(changed);
+    // 起動した直後のセッションから戻ったときは、その行が観測に現れた更新で選ぶ
+    if (this.pendingCursorId) {
+      const r = obs.rows.find(x => x.id === this.pendingCursorId && x.tier !== null);
+      if (r) {
+        this.pendingCursorId = undefined;
+        this.stampAttached(r.sid);
+        this.cursor = r.sid;
+        this.guard = undefined;
+        this.relayout();
+      }
+    }
+    this.save(linked);
     void this.updateSummaries();
     this.p.prs.refresh(
       obs.rows
@@ -330,11 +344,13 @@ export class App {
   private async setSummary(r: ObsRow, force = false): Promise<void> {
     if (!r.id) return;
     const first = await this.p.transcripts.firstPrompt(r.sid, force).catch(() => undefined);
+    if (first) this.firstKnown.add(r.sid);
     await this.p.tmux.setSummary(r.id, first ? `${r.name} · ${first}` : r.name);
   }
 
   private onHook(sid: string, event: string): void {
-    if (event !== 'UserPromptSubmit') return;
+    // 最初の依頼がもう分かっていれば何もしない(概要の行は変わらない)
+    if (event !== 'UserPromptSubmit' || this.firstKnown.has(sid)) return;
     // 最初の依頼を送ったら、更新を待たずに概要の行に出す(会話記録の行は少し遅れて書かれる)
     const id = sid.slice(0, 8);
     void (async () => {
@@ -344,6 +360,7 @@ export class App {
       for (let i = 0; i < 10; i++) {
         const first = await this.p.transcripts.firstPrompt(sid, true).catch(() => undefined);
         if (first) {
+          this.firstKnown.add(sid);
           await this.p.tmux.setSummary(id, `${name} · ${first}`);
           return;
         }
@@ -407,7 +424,8 @@ export class App {
 
   private titles(): Map<string, string> {
     const roots = new Set<string>();
-    for (const r of this.rows.values()) roots.add(this.p.locations.get(r.cwd)?.root ?? r.cwd);
+    // 見出しと同じく、一覧に出る行の根だけで名前を決める(見えない行の根で WHERE の名前が変わらないように)
+    for (const r of this.rows.values()) if (r.tier !== null) roots.add(this.p.locations.get(r.cwd)?.root ?? r.cwd);
     return groupTitles([...roots]);
   }
 
@@ -468,13 +486,13 @@ export class App {
         title: g.title,
         rows: g.nodes.filter(n => this.rows.has(n.sid)).map(n => this.screenRow(n.sid, g.root, n, titles)),
       })),
-      keys: this.mode.k === 'list' ? LIST_KEYS_HELP : '',
+      keys: this.mode.k === 'list' && this.confirms.length === 0 ? LIST_KEYS_HELP : '',
       usage: this.usageText(),
     };
     if (this.error) s.message = this.error;
     else if (this.lay.order.length === 0)
       s.message = this.initialized ? 'No sessions to show. Press n to start one.' : 'Loading...';
-    const panel = this.panel(cols, rows);
+    const panel = this.confirms[0] ? [this.confirms[0].prompt] : this.panel(cols, rows);
     if (this.mode.k === 'note') {
       const m = this.mode;
       const name = this.rows.get(m.sid)?.name ?? m.sid.slice(0, 8);
@@ -482,7 +500,8 @@ export class App {
         sid: m.sid,
         lines: [`Note for ${name}: ${m.text}█`, color.gray('Enter confirm · Esc cancel · ^U clear')],
       };
-    } else if (panel.length > 0) s.panel = panel;
+    }
+    if (this.confirms[0] || (this.mode.k !== 'note' && panel.length > 0)) s.panel = panel;
     const notice: string[] = [];
     if (this.refreshing) notice.push('refreshing...');
     const now = this.p.now();
@@ -561,8 +580,6 @@ export class App {
       }
       case 'output':
         return [...m.lines, color.gray('Press any key to go back to the list.')];
-      case 'confirm':
-        return [m.prompt];
       default:
         return [];
     }
@@ -660,13 +677,15 @@ export class App {
     // ctrl+q は一覧では何もしない(削除の待ち受けも取り消さない)
     if (key.ctrl && name === 'q') return;
     if (this.notices.length > 0 && m.k === 'list' && name !== 'x') this.notices = [];
+    // 確認が開いていれば、まず確認に答える(画面の切り替えがあっても、確認は待ち行列に残る)
+    const c = this.confirms[0];
+    if (c) {
+      if (str === 'y' || str === 'Y') this.answer(true);
+      else if (str === 'n' || str === 'N' || name === 'escape') this.answer(false);
+      else if (name === 'return') this.answer(c.def);
+      return;
+    }
     switch (m.k) {
-      case 'confirm': {
-        if (str === 'y' || str === 'Y') this.answer(true);
-        else if (str === 'n' || str === 'N' || name === 'escape') this.answer(false);
-        else if (name === 'return') this.answer(m.def);
-        return;
-      }
       case 'starting':
         return;
       case 'output':
@@ -994,9 +1013,17 @@ export class App {
         this.mainSession = LIST;
         return false;
       }
+      // 答えずに信頼の確認の画面を離れた(端末を閉じて開き直した、一覧に戻るキーを押した)ら、断ったものとして畳む
+      const main = (await this.p.tmux.clients()).find(c => c.tty === this.mainTty);
+      if (main && main.session !== session) {
+        await this.killSafely(session);
+        return false;
+      }
     }
   }
 
+  // 手元のファイルを読むだけの確かめ(信頼の記録、ディレクトリがあるか)は口を通さない。通しのテストでは、
+  // CLAUDE_CONFIG_DIR と一時ディレクトリで差し替えられる。口に通すのは、外のコマンドと tmux に頼む作業である
   private isTrusted(dir: string): boolean {
     try {
       if (!existsSync(this.p.claudeJson)) return false;
@@ -1061,20 +1088,10 @@ export class App {
       this.pendingCursorId = id;
     }
     this.fetchUsage();
-    void this.refresh({returned: true}).then(() => {
-      if (this.pendingCursorId) {
-        const r = [...this.rows.values()].find(x => x.id === this.pendingCursorId);
-        if (r) {
-          this.stampAttached(r.sid);
-          this.cursor = r.sid;
-          this.relayout();
-          this.draw();
-        }
-        this.pendingCursorId = undefined;
-      }
-    });
+    void this.refresh({returned: true});
   }
   private pendingCursorId?: string;
+  private firstKnown = new Set<string>();
 
   // ---- tmux からの知らせ ----
 
@@ -1150,7 +1167,7 @@ export class App {
     const termname = (await this.p.tmux.clients()).find(c => c.tty === tty)?.termname ?? '';
     const sid = this.sidOfSession(session);
     if (action === GUIDE_CREATE) {
-      if (sid) await this.createWorkbench(sid, {from: 'guide'});
+      if (sid) void this.createWorkbench(sid, {from: 'guide'});
       return;
     }
     if (!isAttachAction(action)) return;
@@ -1168,11 +1185,11 @@ export class App {
     const key = ATTACH_KEYS.find(k => k.action === action);
     if (!key) return;
     if (action === 'vscode') {
-      if (sid) await this.openVsCode(sid, {from: 'attach', tty});
+      if (sid) void this.openVsCode(sid, {from: 'attach', tty});
       return;
     }
     if (action === 'workbench') {
-      if (sid) await this.createWorkbench(sid, {from: 'attach', tty, termname});
+      if (sid) void this.createWorkbench(sid, {from: 'attach', tty, termname});
       return;
     }
     // 一覧に戻ってから処理する
@@ -1192,7 +1209,7 @@ export class App {
     this.cursor = sid;
     this.mode = {k: 'list'};
     if (action === 'note') this.openNote(sid);
-    else if (action === 'stop') await this.ctrlX();
+    else if (action === 'stop') void this.ctrlX();
     else if (action === 'new') this.openNew(undefined, sid);
     else if (action === 'wait') this.openWait(sid);
     this.draw();
@@ -1222,20 +1239,22 @@ export class App {
       return;
     }
     const id = row.id;
+    // 止め終わった時点から待ち受けを数え直し、知らせを出している間は2回目を削除として受け付ける
     const p = (async () => {
       const r = await this.p.run('claude', ['stop', id], {timeout: 30000});
+      const ms = r.code === 0 ? ARM_MS : STOP_FAILED_MS;
+      if (this.armed?.sid === sid) this.armed.until = this.p.now() + ms;
       if (r.code !== 0) {
         const out = stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '';
-        this.notify(`Stop failed: ${out} (Ctrl+X again to delete)`, 8000);
+        this.notify(`Stop failed: ${out} (Ctrl+X again to delete)`, ms);
       } else if (!this.deleting.has(sid)) {
-        this.notify(`Stopped ${row.name}. Press Ctrl+X again within 2s to delete.`, ARM_MS);
+        this.notify(`Stopped ${row.name}. Press Ctrl+X again within 2s to delete.`, ms);
       }
     })();
     this.stopping.set(sid, p);
     this.draw();
     await p;
     this.stopping.delete(sid);
-    if (this.armed?.sid === sid) this.armed.until = Math.max(this.armed.until, this.p.now());
     this.draw();
     if (!this.deleting.has(sid)) void this.refresh();
   }
@@ -1315,7 +1334,7 @@ export class App {
     this.persisted.notes.delete(sid);
     this.persisted.waits.delete(sid);
     this.persisted.seen.delete(sid);
-    this.save(true);
+    this.save(false);
     this.notify(`Deleted ${row.name}.`);
     this.follow();
     return true;
@@ -1323,19 +1342,18 @@ export class App {
 
   // ---- 確認 ----
 
+  /** 確認を出す。ほかの確認が開いていれば、その後ろに並べる。開いた確認は必ず答えを受けて解決する。 */
   private ask(prompt: string, def: boolean): Promise<boolean> {
     return new Promise(resolve => {
-      const back = this.mode;
-      this.mode = {k: 'confirm', prompt, def, resolve, back};
+      this.confirms.push({prompt, def, resolve});
       this.draw();
     });
   }
 
   private answer(yes: boolean): void {
-    const m = this.mode;
-    if (m.k !== 'confirm') return;
-    this.mode = m.back.k === 'confirm' ? {k: 'list'} : m.back;
-    m.resolve(yes);
+    const c = this.confirms.shift();
+    c?.resolve(yes);
+    this.draw();
   }
 
   // ---- VS Code ----
@@ -1356,7 +1374,7 @@ export class App {
     if (!cwd) return;
     const loc = await locate(this.p.run, cwd);
     const path = loc.repo ? loc.checkout : cwd;
-    const url = `vscode://file${encodeURI(path)}/?windowId=_blank`;
+    const url = `vscode://file${path.split('/').map(encodeURIComponent).join('/')}/?windowId=_blank`;
     const r = await this.p.run('open', [url], {timeout: 15000});
     const msg =
       r.code === 0 ? `Opened ${this.tilde(path)} in VS Code.` : `open failed: ${(r.stderr || r.stdout).trim()}`;
@@ -1517,5 +1535,3 @@ function dropLast(s: string): string {
     .map(x => x.segment)
     .join('');
 }
-
-export const _test = {dropLast, byReading};

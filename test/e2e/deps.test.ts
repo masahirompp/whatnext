@@ -340,6 +340,8 @@ describe('待ち先', () => {
       bg('e', {name: 'echo'}),
       tty('q', {name: 'poke'}),
       bg('f', {name: 'fox', state: 'working', status: 'busy'}),
+      bg('z', {name: 'zulu'}),
+      bg('w', {name: 'whisky'}),
     ]);
     const waits = {
       [sid('a')]: [sid('c')],
@@ -347,13 +349,20 @@ describe('待ち先', () => {
       [sid('d')]: [sid('e')],
       [sid('e')]: [sid('d')],
       [sid('q')]: [sid('f')],
+      [sid('w')]: [sid('z')],
     };
     h.writeState({version: 3, notes: {}, waits, seen: {}});
     await h.start();
     const s = h.screen();
-    expect(s).not.toMatch(/[├└]/);
+    expect(s.replace(/.*zulu.*/g, '')).not.toMatch(/[├└]/);
     expect(s).not.toMatch(/Waiting/);
     expect(h.state().waits).toEqual(waits);
+    // 関係のない行が消えても、木にならない関係はファイルから消えない
+    h.remove('zulu');
+    await h.refresh();
+    expect(h.screen()).not.toMatch(/zulu/);
+    const {[sid('w')]: _gone, ...rest} = waits;
+    expect(h.state().waits).toEqual(rest);
   });
 });
 

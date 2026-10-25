@@ -26,18 +26,23 @@ export function followCursor(prev: Layout, sid: string | undefined, next: Layout
   if (sid === undefined) return next.order.find(s => !isSpawned(next, s)) ?? next.order[0];
   if (next.order.includes(sid)) return sid;
   const ok = (s: string) => next.order.includes(s) && !isSpawned(next, s);
+  // 隣を探す起点。大本の起動元も消えたときは、大本の起動元が消えたものとして、その位置から探す
+  let base = sid;
   if (isSpawned(prev, sid)) {
     let cur = prev.parent.get(sid);
     while (cur !== undefined) {
       if (ok(cur)) return cur;
-      if (!isSpawned(prev, cur)) break;
+      if (!isSpawned(prev, cur)) {
+        base = cur;
+        break;
+      }
       cur = prev.parent.get(cur);
     }
   }
-  const gi = prev.groups.findIndex(g => g.nodes.some(n => n.sid === sid));
+  const gi = prev.groups.findIndex(g => g.nodes.some(n => n.sid === base));
   if (gi >= 0) {
     const nodes = prev.groups[gi].nodes.map(n => n.sid);
-    const i = nodes.indexOf(sid);
+    const i = nodes.indexOf(base);
     for (let j = i + 1; j < nodes.length; j++) if (ok(nodes[j])) return nodes[j];
     for (let j = i - 1; j >= 0; j--) if (ok(nodes[j])) return nodes[j];
     for (let d = 1; d < prev.groups.length + next.groups.length; d++) {

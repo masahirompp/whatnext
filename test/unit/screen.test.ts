@@ -190,6 +190,23 @@ describe('画面の組み立て', () => {
     expect(formatCtx(36_400)).toBe('36k');
     expect(formatCtx(1_234_567)).toBe('1.2M');
   });
+  it('外から来た文字列の制御文字を除いて描く', () => {
+    const esc = String.fromCharCode(27);
+    const s: Screen = {
+      width: 60,
+      height: 6,
+      cursor: 'a',
+      groups: [
+        {
+          title: 'app',
+          rows: [row('a', {name: `bad${esc}[31mname`, line: `x${esc}]2;title${String.fromCharCode(7)}y`})],
+        },
+      ],
+    };
+    const lines = render(s);
+    expect(lines.join('\n')).not.toContain(`${esc}]2;`);
+    expect(lines.map(stripAnsi).join('\n')).toContain('bad[31mname');
+  });
   it('メニューは候補が多いと窓を出す', () => {
     const items = Array.from({length: 20}, (_, i) => ({label: `c${i}`}));
     const lines = menuLines({title: 'T', input: 'x', items, selected: 15, hint: 'h', maxItems: 5, width: 40}).map(
