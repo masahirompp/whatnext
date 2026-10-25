@@ -340,6 +340,24 @@ describe('待ち先', () => {
     expect(h.agents().map(r => r.name)).toEqual(['gamma']);
   });
 
+  it('22: 対話セッションの待ち先は消せないので、待ち元を消すときの確認に出ない', async () => {
+    h = new Harness();
+    const {id: _id, state: _state, ...tty} = h.row(2, {name: 'my-tty', status: 'busy'});
+    h.setAgents([h.row(1, {name: 'alpha'}), {...tty, kind: 'interactive'}]);
+    h.open('t');
+    await h.waitFor('t', 'my-tty');
+    await h.select('t', 'alpha');
+    await h.keys('t', 'f');
+    await h.type('t', 'my-tty');
+    await h.keys('t', 'Enter');
+    await h.waitFor('t', /alpha +Waiting/);
+    await h.select('t', 'alpha');
+    await h.keys('t', 'C-x', 'C-x');
+    await h.waitGone('t', /alpha +/);
+    expect(h.screen('t')).not.toContain('Also delete');
+    expect(h.screen('t')).toMatch(/my-tty \(tty\)/);
+  });
+
   it('22: N なら待ち元だけが消える。待ち元が消えなかったときは待ち先も残る', async () => {
     h = new Harness();
     h.setAgents([

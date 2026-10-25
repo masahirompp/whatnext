@@ -1706,12 +1706,12 @@ export class App {
   }
 
   private async deleteFlow(sid: string): Promise<void> {
-    // 起動された行は削除できない(`id` がない)ので、巻き込む対象に数えない。
-    // 起動された行の下には起動された行しか並ばない(利用者が結んだ関係を持つ行は起動された行にならない)。
+    // `id` のない行(対話セッションと起動された行)は `claude rm` が受け付けず消せないので、巻き込む対象に数えない。
+    // 確認に並べると、`y` と答えても消えない行が出る。その下に `id` のある待ち先がいれば、それは数える。
     const targets = this.arranged
       ? subtreeOf(this.arranged, sid)
           .slice(1)
-          .filter(t => !this.isSub(t))
+          .filter(t => this.rowOf(t)?.id !== undefined)
       : [];
     let cascade = false;
     if (targets.length > 0) {
