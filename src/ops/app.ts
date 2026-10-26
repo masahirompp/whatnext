@@ -270,6 +270,9 @@ export class App {
       this.cursor = next;
       if (this.armed) this.armed = undefined;
     }
+    // メモと待ち先の入力は、その行が選べなくなった(消えた、起動された行と分かった)ら閉じる。起動された行には結ばない
+    const target = this.mode.k === 'note' ? this.mode.sid : this.mode.k === 'wait' ? this.mode.waiter : undefined;
+    if (target !== undefined && !selectableOrder(this.lay).includes(target)) this.mode = {k: 'list'};
     // 起動した直後のセッションから戻ったときは、その行が観測に現れた更新で選ぶ
     if (this.pendingCursorId) {
       const r = obs.rows.find(x => x.id === this.pendingCursorId && x.tier !== null);
@@ -838,7 +841,8 @@ export class App {
 
   private openNote(sid: string): void {
     const r = this.rows.get(sid);
-    if (!r) return;
+    // 起動された行にはメモを付けない。カーソルは乗らないが、作業台の案内からは届きうる
+    if (!r || !selectableOrder(this.lay).includes(sid)) return;
     this.mode = {k: 'note', sid, text: this.persisted.notes.get(sid) ?? ''};
   }
 
@@ -859,7 +863,7 @@ export class App {
 
   private openWait(sid: string): void {
     const r = this.rows.get(sid);
-    if (!r) return;
+    if (!r || !selectableOrder(this.lay).includes(sid)) return;
     if (r.kind !== 'background') {
       this.notify(`${r.name} is an interactive session. It can't wait for other sessions.`);
       return;

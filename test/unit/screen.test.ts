@@ -190,6 +190,23 @@ describe('画面の組み立て', () => {
     expect(i).toBeLessThan(7);
     expect(lines.some(l => l.startsWith('  a5'))).toBe(true);
   });
+  it('起動された行だけの区切りは、直前の区切りの最後の選べる行と一緒に見せる', () => {
+    const a = Array.from({length: 8}, (_, i) => row(`a${i}`));
+    const b = Array.from({length: 3}, (_, i) => row(`w${i}`, {marker: 'sub'}));
+    const c = Array.from({length: 8}, (_, i) => row(`c${i}`));
+    const groups = [
+      {title: 'a', rows: a},
+      {title: 'b', rows: b},
+      {title: 'c', rows: c},
+    ];
+    const lines = plain({width: 60, height: 12, cursor: 'a7', groups, keys: 'k'});
+    expect(lines.some(l => l.startsWith('> a7'))).toBe(true);
+    expect(lines.some(l => l.startsWith('  w2 (sub)'))).toBe(true);
+    // 先頭の区切りが起動された行だけなら、次の区切りの最初の選べる行と一緒に見せる
+    const head = plain({width: 60, height: 12, cursor: 'c0', groups: [groups[1], groups[2], groups[0]], keys: 'k'});
+    expect(head[1]).toMatch(/^── b/);
+    expect(head.some(l => l.startsWith('> c0'))).toBe(true);
+  });
   it('選べる行がないときは通し番号を出さない', () => {
     const rows = Array.from({length: 12}, (_, i) => row(`w${i}`, {marker: 'sub'}));
     const lines = plain({width: 60, height: 8, cursor: undefined, groups: [{title: 'app', rows}], keys: 'k'});

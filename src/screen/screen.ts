@@ -187,29 +187,28 @@ export function render(raw: Screen): string[] {
     const body: string[] = [];
     // 選んだ行の塊(行、注記、入力欄)。窓には必ず入れる
     let block: [number, number] = [0, 0];
-    // 塊に、同じ区切りで選んだ行のすぐ下に続く起動された行と、区切りの最初の選べる行なら
-    // その上の見出しと起動された行を足したもの。窓に収まるときだけ一緒に入れる。
-    // 起動された行は選べないので、こうしないと窓の外に残って見る手段がなくなる
-    let reach: [number, number] = [0, 0];
+    // 各行を見せる役の、選べる行。起動された行は選べないので、選べる行のどれかに付けて一緒に見せる。
+    // こうしないと窓の外に残って見る手段がなくなる。区切りの中では直前の選べる行に、区切りの頭は
+    // その区切りの最初の選べる行に、選べる行のない区切りは直前の区切りの最後の選べる行
+    // (なければ次の区切りの最初の選べる行)に付ける
+    const owner: (string | undefined)[] = [];
+    const sections: {from: number; first?: string; last?: string}[] = [];
     // 選べる行(起動された行は選べない)。<通し番号>/<総数> もこれで数える
     const rowIndex: string[] = [];
     s.groups.forEach((g, gi) => {
       if (g.rows.length === 0) return;
+      const sec: {from: number; first?: string; last?: string} = {from: body.length};
+      sections.push(sec);
       if (gi > 0 && body.length > 0) body.push('');
-      const head = body.length;
       body.push(headingLine(g.title, w));
-      let seen = false;
-      let trailing = false;
       for (const r of g.rows) {
         const start = body.length;
         const selected = r.sid === s.cursor;
         // `(sub)` の印は起動された行にだけ付く(app.ts の画面の行の組み立て)
-        const selectable = r.marker !== 'sub';
-        const first = selectable && !seen;
-        if (selectable) {
+        if (r.marker !== 'sub') {
           rowIndex.push(r.sid);
-          seen = true;
-          trailing = false;
+          sec.first ??= r.sid;
+          sec.last = r.sid;
         }
         body.push(rowLine(r, c, selected, w));
         const inline = s.inline?.sid === r.sid ? s.inline.lines : undefined;
@@ -218,13 +217,29 @@ export function render(raw: Screen): string[] {
           body.push(annotationLine(r, a.text, w));
         }
         if (inline) for (const l of inline) body.push(clip(`  ${annotationPrefix(r)}${l}`, w));
-        if (selected) {
-          block = [start, body.length];
-          reach = [first ? head : start, body.length];
-          trailing = true;
-        } else if (trailing) reach[1] = body.length;
+        if (selected) block = [start, body.length];
+        while (owner.length < body.length) owner.push(sec.last);
       }
+      while (owner.length < body.length) owner.push(sec.last);
     });
+    sections.forEach((sec, i) => {
+      const end = sections[i + 1]?.from ?? body.length;
+      const fallback =
+        sec.first ??
+        sections
+          .slice(0, i)
+          .reverse()
+          .find(x => x.last)?.last ??
+        sections.slice(i + 1).find(x => x.first)?.first;
+      for (let j = sec.from; j < end; j++) owner[j] ??= fallback;
+    });
+    // 選んだ行と、それに付く行の範囲。窓に収まるときだけ一緒に入れる
+    let reach: [number, number] = block;
+    if (s.cursor !== undefined) {
+      const r0 = owner.indexOf(s.cursor);
+      const r1 = owner.lastIndexOf(s.cursor) + 1;
+      if (r0 >= 0) reach = [Math.min(r0, block[0]), Math.max(r1, block[1])];
+    }
     const fixed = 1 + bottom.length + footer.length;
     let avail = Math.max(1, h - fixed);
     let pos: string | undefined;
