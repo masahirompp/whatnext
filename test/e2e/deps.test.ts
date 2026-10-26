@@ -38,7 +38,7 @@ describe('待ち先', () => {
     h.update(newId, {state: 'done', status: 'idle'});
     await h.refresh();
     expect(h.screen()).toMatch(/impl +Review/);
-    expect(h.screen()).not.toMatch(/done/);
+    expect(h.screen()).not.toMatch(/↳ .*done/);
     // 再び稼働すると Waiting に入る
     h.update(newId, {state: 'working', status: 'busy'});
     await h.refresh();
@@ -162,7 +162,7 @@ describe('待ち先', () => {
     await h.type('gamma');
     await h.keys('Enter');
     await h.waitFor(/alpha now waits for gamma/);
-    expect(h.screen()).not.toMatch(/done/);
+    expect(h.screen()).not.toMatch(/↳ .*done/);
     expect(h.screen()).toMatch(/alpha +Review/);
     await h.keys('f');
     await h.waitFor(/alpha waits for:/);

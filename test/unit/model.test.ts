@@ -44,7 +44,7 @@ describe('待ちの段', () => {
     expect(l.tier.get('A')).toBe('waiting');
     expect(l.parent.get('B')).toBe('A');
   });
-  it('待ち先がすべてレビュー待ちか停止になるか一覧から消えると、自分の段に戻る(18、20)', () => {
+  it('待ち先がすべてレビュー待ちか停止になるか一覧から消えると、自分の段に戻る(18、20、73)', () => {
     expect(layout(inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']})).tier.get('A')).toBe('review');
     expect(layout(inputs([bg('A', 'review'), bg('B', 'stopped')], {A: ['B']})).tier.get('A')).toBe('review');
     expect(layout(inputs([bg('A', 'review'), tty('B', null)], {A: ['B']})).tier.get('A')).toBe('review');

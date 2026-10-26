@@ -355,7 +355,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 
 ### シナリオごとの作り方
 
-- シナリオ 1、3、4（段の判定と行の判定）は、`--json` の出力を模した固定データで確かめる。段は `--json` の行だけで決まる判定なので、固定データでも実機と同じ保証が得られる。`pid` のない `blocked` は実機で意図して作るのが難しい。`"sandbox request"` は checking-claude-cli スキルの手順で作れる。`failed` は、存在しないモデル名で `--bg` を起動すれば作れる。
+- シナリオ 1、3、4（段の判定と行の判定）は、`--json` の出力を模した固定データで確かめる。待ちのほかの段は `--json` の行だけで決まる判定なので、固定データでも実機と同じ保証が得られる。`pid` のない `blocked` は実機で意図して作るのが難しい。`"sandbox request"` は checking-claude-cli スキルの手順で作れる。`failed` は、存在しないモデル名で `--bg` を起動すれば作れる。
 - attach は端末の制御そのものなので、画面の通しか実機の通しで確かめる。
 - シナリオ 12 は、人間が publish したあとに、実機で `npx @masahirompp/whatnext` を実行して確かめる。publish の前には、`npm pack` で作った tarball から起動できることを確かめてよい。`npx` は whatnext のリポジトリの外で実行する。中で実行すると、npm は `name` の一致する手元のプロジェクトを優先してダウンロードせず、`whatnext: command not found` になる。公開の直後は、約2分レジストリが 404 を返した。公開の直後は npm のキャッシュが古く、版を指定した `npx -y @masahirompp/whatnext@<版>` が ETARGET で断られた（`--prefer-online` で解消した）。
 - 画面の操作と表示の確認は、tmux の中で起動して send-keys と capture-pane で行える（`driving-whatnext-in-tmux` スキル）。シナリオ 16 と 23 は実機の `claude` で確かめる。

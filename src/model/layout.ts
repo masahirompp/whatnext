@@ -50,7 +50,7 @@ export function layout(inp: Inputs): Layout {
   const all = new Map(inp.rows.map(r => [r.sid, r]));
   const spawned = new Set(inp.spawner.keys());
   const waits = validWaits(inp.waits, all, spawned);
-  const derived = deriveTiers(all, waits);
+  const derivedTier = deriveTiers(all, waits);
   const visible = new Map<string, Row>();
   for (const r of inp.rows) if (r.tier !== null) visible.set(r.sid, r);
 
@@ -100,7 +100,7 @@ export function layout(inp: Inputs): Layout {
 
   const tier = new Map<string, Tier>();
   for (const sid of visible.keys()) {
-    const t = derived.get(sid);
+    const t = derivedTier.get(sid);
     if (t) tier.set(sid, t);
   }
   const order: string[] = [];

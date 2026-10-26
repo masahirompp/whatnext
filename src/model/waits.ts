@@ -71,12 +71,12 @@ export function deriveTiers(
     const row = rows.get(sid);
     const own = row ? row.tier : null;
     tier.set(sid, own); // 一周は validWaits で落としてあるが、念のため先に置く
-    const open: string[] = [];
+    let open = false;
     for (const t of waits.get(sid) ?? []) {
       if (!rows.has(t)) continue;
-      if (!finished(visit(t))) open.push(t);
+      if (!finished(visit(t))) open = true;
     }
-    const eff = own === 'review' && open.length > 0 ? 'waiting' : own;
+    const eff = own === 'review' && open ? 'waiting' : own;
     tier.set(sid, eff);
     return eff;
   };
