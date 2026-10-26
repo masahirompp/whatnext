@@ -2,7 +2,7 @@
 
 A terminal list of your parallel Claude Code sessions, grouped by repository — with the sessions that depend on each other nested together, and what each one is doing shown on every row.
 
-When you split work across sessions (an implementation and its review, a big task and its parts, a fix that has to land in another repository first, sessions that an orchestrating session started), whatnext keeps each group together under one row, across repositories. Mark that a session waits for others, and it moves to `Waiting` until they finish, then comes back with `↳ <name> done`. Pick a row to attach, detach to come back to the list.
+When you split work across sessions (an implementation and its review, a big task and its parts, a fix that has to land in another repository first, sessions that an orchestrating session started), whatnext keeps each group together under one row, across repositories. Mark that a session waits for others, and it shows as `Waiting` until they finish, then goes back to its own status. Pick a row to attach, detach to come back to the list.
 
 > **Status: 0.x — expect breaking changes without notice.**
 

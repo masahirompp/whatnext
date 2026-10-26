@@ -9,7 +9,7 @@ afterEach(() => h?.cleanup());
 const rowsOf = (s: string) => s.split('\n').filter(l => /^[> ] [ │├└]*\S/.test(l) && !/SESSION|↳|→|⚙/.test(l));
 
 describe('待ち先', () => {
-  it('17・18・19: f の New session で待ち先を起動し、待ち元は Waiting、終わると ↳ done、attach で消える', async () => {
+  it('17・18・19: f の New session で待ち先を起動し、待ち元は Waiting、終わると自分の段に戻り、↳ done は出ない', async () => {
     h = new Harness();
     const app = h.repo('app');
     h.agents([bg('a', {cwd: app, name: 'impl'})]);
@@ -34,19 +34,18 @@ describe('待ち先', () => {
       expect.stringMatching(/^ {2}impl +Waiting/),
       expect.stringMatching(/^> └ review +Working/),
     ]);
-    // 終わると自分の段に戻り、↳ done
+    // 終わると自分の段に戻る。↳ done は出さない
     h.update(newId, {state: 'done', status: 'idle'});
     await h.refresh();
     expect(h.screen()).toMatch(/impl +Review/);
-    expect(h.screen()).toMatch(/│ ↳ review done/);
-    // 再び稼働すると Waiting に入り、done は消える
+    expect(h.screen()).not.toMatch(/done/);
+    // 再び稼働すると Waiting に入る
     h.update(newId, {state: 'working', status: 'busy'});
     await h.refresh();
     expect(h.screen()).toMatch(/impl +Waiting/);
-    expect(h.screen()).not.toMatch(/review done/);
     h.update(newId, {state: 'done', status: 'idle'});
     await h.refresh();
-    expect(h.screen()).toMatch(/review done/);
+    expect(h.screen()).toMatch(/impl +Review/);
     // 待ち元が自分で権限待ちなら、待ち先を待っていても自分の段
     h.update(newId, {state: 'working', status: 'busy'});
     h.update('impl', {state: 'blocked', status: 'waiting', waitingFor: 'permission prompt'});
@@ -55,14 +54,7 @@ describe('待ち先', () => {
     h.update('impl', {state: 'done', status: 'idle', waitingFor: undefined});
     h.update(newId, {state: 'done', status: 'idle'});
     await h.refresh();
-    expect(h.screen()).toMatch(/review done/);
-    // attach すると消える
-    await h.select('impl');
-    await h.keys('Enter');
-    await h.waitFor(/fake claude attached/);
-    await h.keys('C-q', 'C-l');
-    await h.waitFor(/^> impl/m);
-    expect(h.screen()).not.toMatch(/review done/);
+    expect(h.screen()).toMatch(/impl +Review/);
   });
 
   it('20・44・72: 既存のセッションを結び、外す。メニューは一覧と同じ順。一周する行とほかの待ち元の待ち先は並ばない。(tty) は待ち先になれる', async () => {
@@ -151,7 +143,7 @@ describe('待ち先', () => {
     await h.waitFor(/poke is an interactive session\. It can't wait for other sessions\./);
   });
 
-  it('73: done を出している待ち元に新しく結ぶと done が消える。終わっている行を結んでも done は出ず Waiting にもならない', async () => {
+  it('73: 終わっている行を新しく結んでも Waiting にならず、稼働中の行を結ぶと Waiting に入る', async () => {
     h = new Harness();
     h.agents([
       bg('a', {name: 'alpha'}),
@@ -163,7 +155,7 @@ describe('待ち先', () => {
     await h.start();
     h.update('beta', {state: 'done', status: 'idle'});
     await h.refresh();
-    expect(h.screen()).toMatch(/↳ beta done/);
+    expect(h.screen()).toMatch(/alpha +Review/);
     await h.select('alpha');
     await h.keys('f');
     await h.waitFor(/alpha waits for:/);

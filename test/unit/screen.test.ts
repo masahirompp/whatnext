@@ -61,7 +61,7 @@ const example: Screen = {
           waiting: 10000,
           running: ['npm run e2e', 'make'],
         }),
-        row('alpha', {ctx: 8000, waiting: 3 * 3600000, note: "waiting for Bob's API change", done: ['x', 'y']}),
+        row('alpha', {ctx: 8000, waiting: 3 * 3600000, note: "waiting for Bob's API change"}),
       ],
     },
     {
@@ -97,12 +97,12 @@ describe('画面の組み立て', () => {
       '  add metrics                                       Working                           12k      <1m',
       '    ⚙ npm run e2e · make',
       '  alpha                                             Review                             8k       3h',
-      '    ↳ x, y done',
       "    ↳ waiting for Bob's API change",
       '',
       '── infra ───────────────────────────────────────────────────────────────────────────────────────────',
       '  refactor the auth middleware so that it is long…  Permission  auth-mw               22k       9m',
       '    Bash: rm -rf node_modules',
+      '',
       'session 42% · week 18%',
       '↑↓ select · Enter attach · e note · f wait for',
     ]);
@@ -123,7 +123,7 @@ describe('画面の組み立て', () => {
   it('端末の幅が足りないときは WHERE から詰める', () => {
     const lines = plain({...example, width: 80});
     expect(lines[2]).toBe('> fix-login                                      Review      fix-…  91k       5m');
-    expect(lines[16]).toBe('  refactor the auth middleware so that it is l…  Permission  auth…  22k       9m');
+    expect(lines[15]).toBe('  refactor the auth middleware so that it is l…  Permission  auth…  22k       9m');
   });
   it('収まらないときは選んだ行が見えるように窓を動かし、通し番号を出す(24)', () => {
     const rows = Array.from({length: 30}, (_, i) => row(`s${i}`));

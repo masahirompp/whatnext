@@ -12,8 +12,7 @@ import {GUIDE, LIST} from '../../lib/tmux/tmux.js';
 import type {Observation, ObsRow} from '../input/observe.js';
 import {locate} from '../input/where.js';
 import {followCursor, initialCursor} from '../model/cursor.js';
-import {clearDone, type DoneState, nextDone} from '../model/done.js';
-import {groupTitles, layout, waitView} from '../model/layout.js';
+import {groupTitles, layout} from '../model/layout.js';
 import {canLink, cascade, waitCandidates} from '../model/relations.js';
 import type {Inputs, Layout, Row} from '../model/types.js';
 import {validWaits} from '../model/waits.js';
@@ -77,7 +76,6 @@ export class App {
   private since = new Map<string, {tier: Tier; observed?: number}>();
   private waitingMs = new Map<string, number | undefined>();
   private lay: Layout = {groups: [], order: [], parent: new Map(), tier: new Map()};
-  private done: DoneState = new Map();
   private cursor?: string;
   private mode: Mode = {k: 'list'};
   private confirms: {prompt: string; def: boolean; resolve: (yes: boolean) => void}[] = [];
@@ -269,9 +267,6 @@ export class App {
     }
     this.since = nextSince;
     this.relayout();
-    // ↳ done
-    const v = waitView(this.inputs());
-    this.done = nextDone(initial ? undefined : this.done, {present, waits: v.waits, unfinished: v.unfinished});
     // カーソル
     if (initial || this.cursor === undefined) {
       this.cursor = initialCursor(this.lay, this.persisted.seen);
@@ -457,7 +452,6 @@ export class App {
           ? statusLabel('waiting')
           : statusLabel(tier, r.reason);
     const pr = loc?.repo && loc.branch ? this.p.prs.get(loc.checkout, loc.branch) : undefined;
-    const doneNames = (this.done.get(sid)?.done ?? []).map(t => this.rows.get(t)?.name ?? t.slice(0, 8));
     return {
       sid,
       name: r.name,
@@ -475,7 +469,6 @@ export class App {
       waiting: this.waitingMs.get(sid),
       line: this.lineOf(r, tier === 'waiting' ? tierOf(r.tier) : tier),
       running: r.id ? this.running.get(r.id) : undefined,
-      done: doneNames,
       note: n.spawned ? undefined : this.persisted.notes.get(sid),
       deleting: this.deleting.has(sid),
       depth: n.depth,
@@ -912,15 +905,12 @@ export class App {
       this.notify(`${wname} now waits for ${tname}.`);
     }
     this.relayout();
-    const v = waitView(this.inputs());
-    this.done = nextDone(this.done, {present: new Set(this.rows.keys()), waits: v.waits, unfinished: v.unfinished});
     this.save(true);
   }
 
   private link(waiter: string, target: string): void {
     const ts = this.persisted.waits.get(waiter) ?? [];
     if (!ts.includes(target)) this.persisted.waits.set(waiter, [...ts, target]);
-    this.done = clearDone(this.done, waiter);
   }
 
   // ---- 新しいセッション ----
@@ -1100,7 +1090,6 @@ export class App {
     const row = [...this.rows.values()].find(r => r.id === id);
     if (row) {
       this.stampAttached(row.sid);
-      this.done = clearDone(this.done, row.sid);
       this.cursor = row.sid;
       this.guard = undefined;
       this.relayout();

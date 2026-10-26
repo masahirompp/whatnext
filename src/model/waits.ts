@@ -64,9 +64,8 @@ export function finished(tier: Tier | null): boolean {
 export function deriveTiers(
   rows: ReadonlyMap<string, Row>,
   waits: ReadonlyMap<string, readonly string[]>,
-): {tier: Map<string, Tier | null>; unfinished: Map<string, string[]>} {
+): Map<string, Tier | null> {
   const tier = new Map<string, Tier | null>();
-  const unfinished = new Map<string, string[]>();
   const visit = (sid: string): Tier | null => {
     if (tier.has(sid)) return tier.get(sid) ?? null;
     const row = rows.get(sid);
@@ -77,11 +76,10 @@ export function deriveTiers(
       if (!rows.has(t)) continue;
       if (!finished(visit(t))) open.push(t);
     }
-    if (open.length > 0) unfinished.set(sid, open);
     const eff = own === 'review' && open.length > 0 ? 'waiting' : own;
     tier.set(sid, eff);
     return eff;
   };
   for (const sid of rows.keys()) visit(sid);
-  return {tier, unfinished};
+  return tier;
 }

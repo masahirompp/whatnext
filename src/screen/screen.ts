@@ -63,12 +63,11 @@ export function annotationPrefix(r: Pick<ScreenRow, 'depth' | 'last' | 'ancestor
 
 const nameText = (r: ScreenRow) => (r.marker ? `${r.name} (${r.marker})` : r.name);
 
-/** 注記の文字列(一言、`⚙`、`↳ done`、`↳ メモ` の順)。 */
-export function annotations(r: ScreenRow): {kind: 'line' | 'running' | 'done' | 'note'; text: string}[] {
-  const out: {kind: 'line' | 'running' | 'done' | 'note'; text: string}[] = [];
+/** 注記の文字列(一言、`⚙`、`↳ メモ` の順)。 */
+export function annotations(r: ScreenRow): {kind: 'line' | 'running' | 'note'; text: string}[] {
+  const out: {kind: 'line' | 'running' | 'note'; text: string}[] = [];
   if (r.line) out.push({kind: 'line', text: oneLine(r.line)});
   if (r.running && r.running.length > 0) out.push({kind: 'running', text: `⚙ ${r.running.map(oneLine).join(' · ')}`});
-  if (r.done && r.done.length > 0) out.push({kind: 'done', text: `↳ ${r.done.join(', ')} done`});
   if (r.note) out.push({kind: 'note', text: `↳ ${oneLine(r.note)}`});
   return out;
 }
@@ -157,7 +156,6 @@ const cleanRow = (r: ScreenRow): ScreenRow => ({
   name: clean(r.name),
   line: r.line === undefined ? undefined : clean(r.line),
   running: r.running?.map(clean),
-  done: r.done?.map(clean),
   note: r.note === undefined ? undefined : clean(r.note),
   where: {
     ...r.where,
