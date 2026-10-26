@@ -30,7 +30,7 @@ export function initialCursor(l: Layout, times: ReadonlyMap<string, Times>): str
  */
 export function followCursor(prev: Layout, sid: string | undefined, next: Layout): string | undefined {
   const selectable = new Set(selectableOrder(next));
-  const ok = (s: string) => selectable.has(s);
+  const ok = selectable.has.bind(selectable);
   if (sid === undefined) return next.order.find(ok);
   if (ok(sid)) return sid;
   const gi = prev.groups.findIndex(g => g.nodes.some(n => n.sid === sid));

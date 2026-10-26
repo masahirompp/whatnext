@@ -254,7 +254,9 @@ export function render(raw: Screen): string[] {
       const [b0, b1] = block;
       const [r0, r1] = reach;
       if (r1 - r0 <= avail) start = r0 - Math.floor((avail - (r1 - r0)) / 2);
-      else if (b1 - b0 >= avail || r1 > b1) start = b0;
+      else if (b1 - b0 >= avail) start = b0;
+      // 下に続く起動された行を優先し、余れば上(区切りの頭)も見せる
+      else if (r1 > b1) start = Math.max(r0, Math.min(b0, r1 - avail));
       else start = Math.max(r0, b1 - avail);
       start = Math.max(0, Math.min(start, body.length - avail));
       // 入力欄は最後の行まで窓に入れる

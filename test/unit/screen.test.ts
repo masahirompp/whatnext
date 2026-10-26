@@ -207,6 +207,25 @@ describe('画面の組み立て', () => {
     expect(head[1]).toMatch(/^── b/);
     expect(head.some(l => l.startsWith('> c0'))).toBe(true);
   });
+  it('頭と下の起動された行が全部は収まらないとき、下を優先して余りで頭も見せる', () => {
+    const rows = [
+      row('h0', {marker: 'sub'}),
+      row('p'),
+      ...Array.from({length: 5}, (_, i) => row(`w${i}`, {marker: 'sub'})),
+    ];
+    const lines = plain({
+      width: 60,
+      height: 10,
+      cursor: 'p',
+      groups: [
+        {title: 'app', rows},
+        {title: 'z', rows: [row('z0')]},
+      ],
+      keys: 'k',
+    });
+    expect(lines.some(l => l.startsWith('  h0 (sub)'))).toBe(true);
+    expect(lines.some(l => l.startsWith('  w4 (sub)'))).toBe(true);
+  });
   it('選べる行がないときは通し番号を出さない', () => {
     const rows = Array.from({length: 12}, (_, i) => row(`w${i}`, {marker: 'sub'}));
     const lines = plain({width: 60, height: 8, cursor: undefined, groups: [{title: 'app', rows}], keys: 'k'});

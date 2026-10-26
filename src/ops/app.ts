@@ -270,11 +270,10 @@ export class App {
       this.cursor = next;
       if (this.armed) this.armed = undefined;
     }
-    // メモと待ち先の入力は、その行が起動された行と分かったら閉じる。起動された行には結ばない。
-    // 一覧から外れただけ(対話セッションが idle になった)なら開いたまま残し、メモを付けられるようにする
-    const target = this.mode.k === 'note' ? this.mode.sid : this.mode.k === 'wait' ? this.mode.waiter : undefined;
-    if (target !== undefined && this.lay.order.includes(target) && !selectableOrder(this.lay).includes(target))
-      this.mode = {k: 'list'};
+    // メモの入力は、その行が起動された行と分かったら閉じる。起動された行にはメモを付けない。
+    // 一覧から外れただけ(対話セッションが idle になった)なら開いたまま残し、メモを付けられるようにする。
+    // 待ち先の入力は background の行でしか開かず、background の行は起動された行にならない
+    if (this.mode.k === 'note' && this.isSpawned(this.mode.sid)) this.mode = {k: 'list'};
     // 起動した直後のセッションから戻ったときは、その行が観測に現れた更新で選ぶ
     if (this.pendingCursorId) {
       const r = obs.rows.find(x => x.id === this.pendingCursorId && x.tier !== null);
@@ -833,6 +832,10 @@ export class App {
     else if (str === 'v') void this.openVsCode(sid, {from: 'list'});
   }
 
+  private isSpawned(sid: string): boolean {
+    return this.spawner.has(sid);
+  }
+
   private moveCursor(sid: string): void {
     this.cursor = sid;
     this.guard = undefined;
@@ -844,7 +847,7 @@ export class App {
   private openNote(sid: string): void {
     const r = this.rows.get(sid);
     // 起動された行にはメモを付けない。カーソルは乗らないが、作業台の案内からは届きうる
-    if (!r || !selectableOrder(this.lay).includes(sid)) return;
+    if (!r || this.isSpawned(sid)) return;
     this.mode = {k: 'note', sid, text: this.persisted.notes.get(sid) ?? ''};
   }
 
@@ -865,7 +868,7 @@ export class App {
 
   private openWait(sid: string): void {
     const r = this.rows.get(sid);
-    if (!r || !selectableOrder(this.lay).includes(sid)) return;
+    if (!r) return;
     if (r.kind !== 'background') {
       this.notify(`${r.name} is an interactive session. It can't wait for other sessions.`);
       return;
@@ -1203,7 +1206,8 @@ export class App {
       this.mainSession = LIST;
       if (CLAUDE_SESSION.test(from)) this.onReturn(from);
     }
-    if (!sid) return;
+    // 作業台の案内は、起動された行と分かったばかりの行を指していることがある。カーソルは起動された行に置かない
+    if (!sid || this.isSpawned(sid)) return;
     this.cursor = sid;
     this.mode = {k: 'list'};
     if (action === 'note') this.openNote(sid);
