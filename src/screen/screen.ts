@@ -192,12 +192,13 @@ export function render(raw: Screen): string[] {
     // その区切りの最初の選べる行に、選べる行のない区切りは直前の区切りの最後の選べる行
     // (なければ次の区切りの最初の選べる行)に付ける
     const owner: (string | undefined)[] = [];
-    const sections: {from: number; first?: string; last?: string}[] = [];
+    type Section = {from: number; first?: string; last?: string};
+    const sections: Section[] = [];
     // 選べる行(起動された行は選べない)。<通し番号>/<総数> もこれで数える
     const rowIndex: string[] = [];
     s.groups.forEach((g, gi) => {
       if (g.rows.length === 0) return;
-      const sec: {from: number; first?: string; last?: string} = {from: body.length};
+      const sec: Section = {from: body.length};
       sections.push(sec);
       if (gi > 0 && body.length > 0) body.push('');
       body.push(headingLine(g.title, w));
@@ -220,7 +221,6 @@ export function render(raw: Screen): string[] {
         if (selected) block = [start, body.length];
         while (owner.length < body.length) owner.push(sec.last);
       }
-      while (owner.length < body.length) owner.push(sec.last);
     });
     sections.forEach((sec, i) => {
       const end = sections[i + 1]?.from ?? body.length;

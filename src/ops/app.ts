@@ -270,9 +270,11 @@ export class App {
       this.cursor = next;
       if (this.armed) this.armed = undefined;
     }
-    // メモと待ち先の入力は、その行が選べなくなった(消えた、起動された行と分かった)ら閉じる。起動された行には結ばない
+    // メモと待ち先の入力は、その行が起動された行と分かったら閉じる。起動された行には結ばない。
+    // 一覧から外れただけ(対話セッションが idle になった)なら開いたまま残し、メモを付けられるようにする
     const target = this.mode.k === 'note' ? this.mode.sid : this.mode.k === 'wait' ? this.mode.waiter : undefined;
-    if (target !== undefined && !selectableOrder(this.lay).includes(target)) this.mode = {k: 'list'};
+    if (target !== undefined && this.lay.order.includes(target) && !selectableOrder(this.lay).includes(target))
+      this.mode = {k: 'list'};
     // 起動した直後のセッションから戻ったときは、その行が観測に現れた更新で選ぶ
     if (this.pendingCursorId) {
       const r = obs.rows.find(x => x.id === this.pendingCursorId && x.tier !== null);
