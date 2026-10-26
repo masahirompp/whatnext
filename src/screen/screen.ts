@@ -186,7 +186,10 @@ export function render(raw: Screen): string[] {
     top.push(header(c, w));
     const body: string[] = [];
     let cursorBlock: [number, number] = [0, 0];
+    // 選べる行(起動された行は選べない)。<通し番号>/<総数> もこれで数える
     const rowIndex: string[] = [];
+    // 選んだ行のすぐ下に続く起動された行も、選んだ行と一緒に見せる
+    let trailing = false;
     s.groups.forEach((g, gi) => {
       if (g.rows.length === 0) return;
       if (gi > 0 && body.length > 0) body.push('');
@@ -195,14 +198,21 @@ export function render(raw: Screen): string[] {
         const start = body.length;
         const selected = r.sid === s.cursor;
         body.push(rowLine(r, c, selected, w));
-        rowIndex.push(r.sid);
+        if (r.marker !== 'sub') {
+          rowIndex.push(r.sid);
+          trailing = false;
+        }
         const inline = s.inline?.sid === r.sid ? s.inline.lines : undefined;
         for (const a of annotations(r)) {
           if (inline && a.kind === 'note') continue;
           body.push(annotationLine(r, a.text, w));
         }
         if (inline) for (const l of inline) body.push(clip(`  ${annotationPrefix(r)}${l}`, w));
-        if (selected) cursorBlock = [start, body.length];
+        if (selected) {
+          // 最初の選べる行なら、その上の見出しと起動された行も見せる
+          cursorBlock = [rowIndex.length === 1 ? 0 : start, body.length];
+          trailing = true;
+        } else if (trailing) cursorBlock[1] = body.length;
       }
     });
     const fixed = 1 + bottom.length + footer.length;

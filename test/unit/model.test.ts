@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {followCursor, initialCursor} from '../../src/model/cursor.js';
+import {followCursor, initialCursor, selectableOrder} from '../../src/model/cursor.js';
 import {groupTitles, layout} from '../../src/model/layout.js';
 import {canLink, cascade, waitCandidates} from '../../src/model/relations.js';
 import type {Inputs, Row, Tier, Times} from '../../src/model/types.js';
@@ -309,23 +309,22 @@ describe('カーソル', () => {
     expect(followCursor(prev, 'C', layout(inputs([bg('A', 'review'), bg('B', 'review')], {}, {}, t)))).toBe('B');
     expect(followCursor(prev, 'X', layout(inputs([bg('A', 'review'), bg('B', 'review')], {}, {}, t)))).toBe('B');
   });
-  it('消えた起動された行からは起動元へ。2段なら大本の起動元へ(70)', () => {
-    const rows = [bg('W', 'review'), bg('P', 'working'), tty('S1', 'working'), tty('S2', 'working')];
-    const prev = layout(inputs(rows, {W: ['P']}, {S1: 'P', S2: 'S1'}));
-    const next = layout(inputs([bg('W', 'review'), bg('P', 'working'), tty('S1', 'working')], {W: ['P']}, {S1: 'P'}));
-    expect(followCursor(prev, 'S2', next)).toBe('P');
-    expect(followCursor(prev, 'S1', layout(inputs([bg('W', 'review'), bg('P', 'working')], {W: ['P']})))).toBe('P');
-    // 大本の起動元も消え、すぐ上の起動元がトップレベルの (tty) の行になった
-    const gone = layout(inputs([bg('W', 'review'), tty('S1', 'working')], {W: ['P']}));
-    expect(followCursor(prev, 'S2', gone)).toBe('S1');
+  it('起動された行は選べる並びに入らず、起動したときにも選ばない', () => {
+    const t = {P: {first: 2, attached: 1}, S: {first: 3, attached: 5}};
+    const l = layout(inputs([bg('P', 'working'), bg('S', 'working'), bg('A', 'review')], {}, {S: 'P'}, t));
+    expect(l.order).toEqual(['P', 'S', 'A']);
+    expect(selectableOrder(l)).toEqual(['P', 'A']);
+    expect(initialCursor(l, new Map(Object.entries(t)))).toBe('P');
+    // 選べる行がなければ選ばない
+    const only = layout(inputs([tty('S', 'working')], {}, {S: 'Q'}));
+    expect(initialCursor(only, new Map())).toBeUndefined();
+    expect(followCursor(only, undefined, only)).toBeUndefined();
   });
-  it('起動された行と大本の起動元が同時に消えたら、大本の起動元が消えたものとして隣を選ぶ', () => {
-    const t = {A: {first: 9}, P: {first: 5}, T: {first: 2}, B: {first: 1}};
-    const rows = [bg('A', 'review'), bg('P', 'working'), bg('T', 'working'), tty('S', 'working'), bg('B', 'review')];
-    const prev = layout(inputs(rows, {P: ['T']}, {S: 'P'}, {...t, S: {first: 8}}));
-    expect(prev.order).toEqual(['A', 'P', 'S', 'T', 'B']);
-    const next = layout(inputs([bg('A', 'review'), bg('T', 'working'), bg('B', 'review')], {}, {}, t));
-    expect(followCursor(prev, 'S', next)).toBe('T');
+  it('選んでいた行が起動された行になったら、隣の選べる行に移る', () => {
+    const t = {A: {first: 3}, P: {first: 2}, S: {first: 1}};
+    const prev = layout(inputs([bg('A', 'review'), bg('P', 'working'), tty('S', 'working')], {}, {}, t));
+    const next = layout(inputs([bg('A', 'review'), bg('P', 'working'), tty('S', 'working')], {}, {S: 'P'}, t));
+    expect(followCursor(prev, 'S', next)).toBe('P');
   });
   it('自動で移るときは起動された行を選ばない', () => {
     const t = {A: {first: 3}, P: {first: 2}};

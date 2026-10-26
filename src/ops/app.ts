@@ -11,7 +11,7 @@ import {focusWorkbench, splitWorkbench} from '../../lib/tmux/ghostty.js';
 import {GUIDE, LIST} from '../../lib/tmux/tmux.js';
 import type {Observation, ObsRow} from '../input/observe.js';
 import {locate} from '../input/where.js';
-import {followCursor, initialCursor} from '../model/cursor.js';
+import {followCursor, initialCursor, selectableOrder} from '../model/cursor.js';
 import {groupTitles, layout} from '../model/layout.js';
 import {canLink, cascade, waitCandidates} from '../model/relations.js';
 import type {Inputs, Layout, Row} from '../model/types.js';
@@ -259,7 +259,7 @@ export class App {
     // カーソル
     if (initial || this.cursor === undefined) {
       this.cursor = initialCursor(this.lay, this.persisted.seen);
-    } else if (!this.lay.order.includes(this.cursor)) {
+    } else if (!selectableOrder(this.lay).includes(this.cursor)) {
       const goneName = prevLayout.order.includes(this.cursor) ? this.nameOfPrev(this.cursor) : undefined;
       const next = followCursor(prevLayout, this.cursor, this.lay);
       if (next !== this.cursor && goneName) this.guard = {until: this.p.now() + GUARD_MS, name: goneName};
@@ -780,7 +780,8 @@ export class App {
     }
     // --json を読めずエラーだけを出している間は、画面に出ていない行への操作を受け付けない
     if (this.error && str !== 'q' && str !== 'r' && str !== 'n') return;
-    const order = this.lay.order;
+    // 起動された行は飛ばす
+    const order = selectableOrder(this.lay);
     const i = this.cursor ? order.indexOf(this.cursor) : -1;
     if (name === 'up') {
       if (i > 0) this.moveCursor(order[i - 1]);
@@ -829,19 +830,11 @@ export class App {
     this.follow();
   }
 
-  private isSpawned(sid: string): boolean {
-    return this.spawner.has(sid);
-  }
-
   // ---- メモ ----
 
   private openNote(sid: string): void {
     const r = this.rows.get(sid);
     if (!r) return;
-    if (this.isSpawned(sid)) {
-      this.notify(`${r.name} was started by another session. It can't have a note.`);
-      return;
-    }
     this.mode = {k: 'note', sid, text: this.persisted.notes.get(sid) ?? ''};
   }
 
@@ -863,10 +856,6 @@ export class App {
   private openWait(sid: string): void {
     const r = this.rows.get(sid);
     if (!r) return;
-    if (this.isSpawned(sid)) {
-      this.notify(`${r.name} was started by another session. It can't wait for other sessions.`);
-      return;
-    }
     if (r.kind !== 'background') {
       this.notify(`${r.name} is an interactive session. It can't wait for other sessions.`);
       return;
@@ -1038,10 +1027,7 @@ export class App {
 
   private async enter(row: ObsRow): Promise<void> {
     if (row.kind !== 'background' || !row.id) {
-      this.notify(
-        `${row.name}${this.isSpawned(row.sid) ? ' (sub)' : ''} runs in ${clean(row.cwd)} (pid ${row.pid ?? '-'}).`,
-        8000,
-      );
+      this.notify(`${row.name} runs in ${clean(row.cwd)} (pid ${row.pid ?? '-'}).`, 8000);
       return;
     }
     await this.attach(row.id, row.cwd, row.sid);

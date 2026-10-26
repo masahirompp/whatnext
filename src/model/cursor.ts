@@ -2,47 +2,37 @@ import type {Layout, Times} from './types.js';
 
 const isSpawned = (l: Layout, sid: string) => l.groups.some(g => g.nodes.some(n => n.sid === sid && n.spawned));
 
-/** 起動したときの行。最も新しく attach したセッション。なければ起動された行でない最初の行。 */
+/** カーソルで選べる行の並び。起動された行は選べない(PRODUCT.md「起動された行」)。 */
+export const selectableOrder = (l: Layout): string[] => l.order.filter(s => !isSpawned(l, s));
+
+/** 起動したときの行。最も新しく attach したセッション。なければ選べる最初の行。 */
 export function initialCursor(l: Layout, times: ReadonlyMap<string, Times>): string | undefined {
+  const order = selectableOrder(l);
   let best: string | undefined;
   let at = -1;
-  for (const sid of l.order) {
+  for (const sid of order) {
     const a = times.get(sid)?.attached;
-    if (a !== undefined && a > at && !isSpawned(l, sid)) {
+    if (a !== undefined && a > at) {
       best = sid;
       at = a;
     }
   }
-  return best ?? l.order.find(s => !isSpawned(l, s)) ?? l.order[0];
+  return best ?? order[0];
 }
 
 /**
  * 更新のあとの行(PRODUCT.md「リポジトリの区切りと並び」の「カーソル」)。
- * 選んでいた行が残っていればその行。消えた起動された行なら、前の組で起動元を近い順にたどり、
- * 新しい一覧に残っていて起動された行でない最初の行(大本の起動元まで)。
+ * 選んでいた行が残っていて選べればその行。
  * それ以外は、前の並びで同じ区切りの次の行、前の行、隣の区切りの行の順。起動された行は選ばない。
  */
 export function followCursor(prev: Layout, sid: string | undefined, next: Layout): string | undefined {
-  if (sid === undefined) return next.order.find(s => !isSpawned(next, s)) ?? next.order[0];
-  if (next.order.includes(sid)) return sid;
   const ok = (s: string) => next.order.includes(s) && !isSpawned(next, s);
-  // 隣を探す起点。大本の起動元も消えたときは、大本の起動元が消えたものとして、その位置から探す
-  let base = sid;
-  if (isSpawned(prev, sid)) {
-    let cur = prev.parent.get(sid);
-    while (cur !== undefined) {
-      if (ok(cur)) return cur;
-      if (!isSpawned(prev, cur)) {
-        base = cur;
-        break;
-      }
-      cur = prev.parent.get(cur);
-    }
-  }
-  const gi = prev.groups.findIndex(g => g.nodes.some(n => n.sid === base));
+  if (sid === undefined) return next.order.find(ok);
+  if (ok(sid)) return sid;
+  const gi = prev.groups.findIndex(g => g.nodes.some(n => n.sid === sid));
   if (gi >= 0) {
     const nodes = prev.groups[gi].nodes.map(n => n.sid);
-    const i = nodes.indexOf(base);
+    const i = nodes.indexOf(sid);
     for (let j = i + 1; j < nodes.length; j++) if (ok(nodes[j])) return nodes[j];
     for (let j = i - 1; j >= 0; j--) if (ok(nodes[j])) return nodes[j];
     for (let d = 1; d < prev.groups.length + next.groups.length; d++) {
@@ -55,5 +45,5 @@ export function followCursor(prev: Layout, sid: string | undefined, next: Layout
       if (before) return before;
     }
   }
-  return next.order.find(ok) ?? next.order[0];
+  return next.order.find(ok);
 }
