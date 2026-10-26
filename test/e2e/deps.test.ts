@@ -135,6 +135,24 @@ describe('待ち先', () => {
     expect(h.state().waits[sid('a')]).toEqual([sid('q')]);
   });
 
+  it('78: 待ちが明けた待ち元の WAITING は、待ち先が終わった時刻から数える', async () => {
+    h = new Harness();
+    const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+    const turn = (m: number, text: string) => [
+      {type: 'user', message: {role: 'user', content: '進めて'}, timestamp: ago(m + 1)},
+      {type: 'assistant', message: {role: 'assistant', content: [{type: 'text', text}]}, timestamp: ago(m)},
+    ];
+    h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta', state: 'working', status: 'busy'})]);
+    h.writeState({version: 3, notes: {}, waits: {[sid('a')]: [sid('b')]}, seen: {}});
+    h.transcript(sid('a'), turn(180, '実装しました'));
+    await h.start();
+    expect(h.screen()).toMatch(/alpha +Waiting.* 3h/);
+    h.transcript(sid('b'), turn(5, 'レビューしました'));
+    h.update('beta', {state: 'done', status: 'idle'});
+    await h.refresh();
+    expect(h.screen()).toMatch(/alpha +Review.* 5m/);
+  });
+
   it('72: (tty) の行で f を押すと断る', async () => {
     h = new Harness();
     h.agents([tty('q', {name: 'poke'})]);
@@ -359,7 +377,7 @@ describe('待ち先', () => {
 });
 
 describe('起動された行', () => {
-  it('67・68: 起動元の下に (sub) で入れ子になり、さらに起動した行はもう一段深い。起動元の段は変わらず、消えても done は出ない', async () => {
+  it('67・68: 起動元の下に (sub) で入れ子になり、さらに起動した行はもう一段深い。起動元の段は、動いている間も消えたあとも変わらない', async () => {
     h = new Harness();
     h.agents([
       bg('p', {name: 'orchestrator', state: 'done', pid: 100}),
@@ -390,7 +408,7 @@ describe('起動された行', () => {
     h.remove('worker-2');
     h.remove('worker-1');
     await h.refresh();
-    expect(h.screen()).not.toMatch(/done/);
+    expect(h.screen()).not.toMatch(/↳ .*done/);
     expect(h.screen()).toMatch(/orchestrator +Review/);
   });
 

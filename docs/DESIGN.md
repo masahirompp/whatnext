@@ -349,6 +349,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 75 | 単体 |
 | 76 | 単体 |
 | 77 | 実機の通し、単体 |
+| 78 | 単体、画面の通し |
 | 完了条件2(概要の行) | 実機の通し |
 
 画面の通しは、外側の tmux のセッションを端末の代わりにし、偽の `claude`、`ps`、`gh`、`ghq`、`open`(`test/e2e/fake/`)を `PATH` の前に置く。偽の claude は状態を一時ディレクトリの `agents.json` に持ち、呼ばれたコマンドを `calls.log` に書き、`fake.json` と行の `_fake` で失敗や遅れを起こす。偽の `ps` は、起動元を引く2つの読み方(`ps -A -o pid=,ppid=` と `ps -E`)だけを固定の表で返し、ほかは本物に渡す。外側の tmux を挟むと Esc が約 500ms 遅れて届くので、harness は Esc のあとに待つ(#278)。実機の通しは `/tmp/whatnext-real`(git でない。初回に対話モードの claude で信頼の確認を済ませる)で haiku のセッションを起動し、テストのあとにそのディレクトリのセッションだけを `claude stop` と `claude rm` で消す。Claude Code の中のシェルから流すときは、`CLAUDE_CODE_CHILD_SESSION` などを外してから claude を動かす(引き継ぐと対話セッションが `--json` に出ない。#284)。子の `claude -p` には道具を使わない長い出力を頼む(利用者のフックが前景の `sleep` を止めると、子がすぐ終わる。#285)。Ghostty の通しは、AppleScript で新しいウィンドウを開き、`ctrl+q` の組み合わせだけを Ghostty の `send key` で送る(修飾キーのない文字は `send key` では届かず、`input text` は貼り付けとして届くため、一覧への文字キーは tmux の `send-keys` で一覧のペインに送る)。AppleScript の中では `tab` が Ghostty のタブの class と紛れるので、区切りの文字は `character id 9` と書く。
