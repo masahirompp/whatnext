@@ -463,7 +463,7 @@ describe('起動された行', () => {
     expect(h.screen()).not.toMatch(/^> /m);
     await h.keys('f');
     await h.keys('e');
-    expect(h.screen()).not.toMatch(/waits for:|can't/);
+    expect(h.screen()).not.toMatch(/waits for:|Note for|can't/);
     h.update('quiet', {status: 'busy'});
     await h.refresh();
     expect(h.screen()).toMatch(/^> quiet \(tty\) +Working/m);

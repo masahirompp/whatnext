@@ -85,7 +85,7 @@ export class App {
   private manualQueued = false;
   private refreshTimer?: NodeJS.Timeout;
   private armed?: {sid: string; until: number};
-  private guard?: {until: number; name: string};
+  private guard?: {until: number; name: string; why: string};
   private stopping = new Map<string, Promise<void>>();
   private deleting = new Set<string>();
   private pendingLinks: {waiter: string; id: string}[] = [];
@@ -261,8 +261,12 @@ export class App {
       this.cursor = initialCursor(this.lay, this.persisted.seen);
     } else if (!selectableOrder(this.lay).includes(this.cursor)) {
       const goneName = prevLayout.order.includes(this.cursor) ? this.nameOfPrev(this.cursor) : undefined;
+      // 行が残っていても、起動された行と分かったなら選べないので移る
+      const why = this.lay.order.includes(this.cursor)
+        ? 'turned out to be started by another session'
+        : 'left the list';
       const next = followCursor(prevLayout, this.cursor, this.lay);
-      if (next !== this.cursor && goneName) this.guard = {until: this.p.now() + GUARD_MS, name: goneName};
+      if (next !== this.cursor && goneName) this.guard = {until: this.p.now() + GUARD_MS, name: goneName, why};
       this.cursor = next;
       if (this.armed) this.armed = undefined;
     }
@@ -1212,7 +1216,7 @@ export class App {
     if (this.deleting.has(sid)) return;
     const now = this.p.now();
     if (this.guard && now < this.guard.until) {
-      this.notify(`Ctrl+X ignored: ${this.guard.name} left the list and the selection moved.`);
+      this.notify(`Ctrl+X ignored: ${this.guard.name} ${this.guard.why} and the selection moved.`);
       return;
     }
     if (this.armed?.sid === sid && (now < this.armed.until || this.stopping.has(sid))) {

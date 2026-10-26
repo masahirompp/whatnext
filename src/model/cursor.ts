@@ -1,9 +1,12 @@
 import type {Layout, Times} from './types.js';
 
-const isSpawned = (l: Layout, sid: string) => l.groups.some(g => g.nodes.some(n => n.sid === sid && n.spawned));
+const spawnedOf = (l: Layout) => new Set(l.groups.flatMap(g => g.nodes.filter(n => n.spawned).map(n => n.sid)));
 
 /** カーソルで選べる行の並び。起動された行は選べない(PRODUCT.md「起動された行」)。 */
-export const selectableOrder = (l: Layout): string[] => l.order.filter(s => !isSpawned(l, s));
+export function selectableOrder(l: Layout): string[] {
+  const spawned = spawnedOf(l);
+  return l.order.filter(s => !spawned.has(s));
+}
 
 /** 起動したときの行。最も新しく attach したセッション。なければ選べる最初の行。 */
 export function initialCursor(l: Layout, times: ReadonlyMap<string, Times>): string | undefined {
@@ -26,7 +29,8 @@ export function initialCursor(l: Layout, times: ReadonlyMap<string, Times>): str
  * それ以外は、前の並びで同じ区切りの次の行、前の行、隣の区切りの行の順。起動された行は選ばない。
  */
 export function followCursor(prev: Layout, sid: string | undefined, next: Layout): string | undefined {
-  const ok = (s: string) => next.order.includes(s) && !isSpawned(next, s);
+  const selectable = new Set(selectableOrder(next));
+  const ok = (s: string) => selectable.has(s);
   if (sid === undefined) return next.order.find(ok);
   if (ok(sid)) return sid;
   const gi = prev.groups.findIndex(g => g.nodes.some(n => n.sid === sid));

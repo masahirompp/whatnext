@@ -152,6 +152,50 @@ describe('画面の組み立て', () => {
     expect(top[1]).toMatch(/^── app/);
     expect(top).toContain('1/10');
   });
+  it('続く起動された行が窓に収まらないときも、選んだ行とメモの入力欄を見せる', () => {
+    const rows = [row('s0'), row('p'), ...Array.from({length: 12}, (_, i) => row(`w${i}`, {marker: 'sub'}))];
+    const lines = plain({
+      width: 60,
+      height: 10,
+      cursor: 'p',
+      inline: {sid: 'p', lines: ['Note for p: x█']},
+      groups: [{title: 'app', rows}],
+      keys: 'k',
+    });
+    expect(lines.some(l => l.startsWith('> p'))).toBe(true);
+    expect(lines.some(l => l.includes('Note for p: x'))).toBe(true);
+  });
+  it('区切りの頭の起動された行が窓に収まらないときも、選んだ行を見せる', () => {
+    const rows = [...Array.from({length: 12}, (_, i) => row(`w${i}`, {marker: 'sub'})), row('p'), row('q')];
+    const lines = plain({width: 60, height: 10, cursor: 'p', groups: [{title: 'app', rows}], keys: 'k'});
+    expect(lines.some(l => l.startsWith('> p'))).toBe(true);
+    expect(lines).toContain('1/2');
+  });
+  it('続く起動された行は区切りを越えて数えない', () => {
+    const a = [...Array.from({length: 6}, (_, i) => row(`a${i}`)), row('p')];
+    const b = [...Array.from({length: 8}, (_, i) => row(`w${i}`, {marker: 'sub'})), row('q')];
+    const lines = plain({
+      width: 60,
+      height: 10,
+      cursor: 'p',
+      groups: [
+        {title: 'a', rows: a},
+        {title: 'b', rows: b},
+      ],
+      keys: 'k',
+    });
+    // p を窓の中ほどに置く(b の起動された行の側へ寄せない)
+    const i = lines.findIndex(l => l.startsWith('> p'));
+    expect(i).toBeGreaterThan(1);
+    expect(i).toBeLessThan(7);
+    expect(lines.some(l => l.startsWith('  a5'))).toBe(true);
+  });
+  it('選べる行がないときは通し番号を出さない', () => {
+    const rows = Array.from({length: 12}, (_, i) => row(`w${i}`, {marker: 'sub'}));
+    const lines = plain({width: 60, height: 8, cursor: undefined, groups: [{title: 'app', rows}], keys: 'k'});
+    expect(lines.some(l => /^\d+\/\d+$/.test(l))).toBe(false);
+    expect(lines.some(l => l.startsWith('  w0 (sub)'))).toBe(true);
+  });
   it('メモの入力欄は行と注記の直下に出て、↳ メモの行を置き換える(15)', () => {
     const s: Screen = {
       width: 60,
