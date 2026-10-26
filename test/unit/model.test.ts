@@ -1,7 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {followCursor, initialCursor} from '../../src/model/cursor.js';
-import {clearDone, type DoneState, nextDone} from '../../src/model/done.js';
-import {groupTitles, layout, waitView} from '../../src/model/layout.js';
+import {groupTitles, layout} from '../../src/model/layout.js';
 import {canLink, cascade, waitCandidates} from '../../src/model/relations.js';
 import type {Inputs, Row, Tier, Times} from '../../src/model/types.js';
 
@@ -45,7 +44,7 @@ describe('待ちの段', () => {
     expect(l.tier.get('A')).toBe('waiting');
     expect(l.parent.get('B')).toBe('A');
   });
-  it('待ち先がすべてレビュー待ちか停止になるか一覧から消えると、自分の段に戻る(18、20)', () => {
+  it('待ち先がすべてレビュー待ちか停止になるか一覧から消えると、自分の段に戻る(18、20、73)', () => {
     expect(layout(inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']})).tier.get('A')).toBe('review');
     expect(layout(inputs([bg('A', 'review'), bg('B', 'stopped')], {A: ['B']})).tier.get('A')).toBe('review');
     expect(layout(inputs([bg('A', 'review'), tty('B', null)], {A: ['B']})).tier.get('A')).toBe('review');
@@ -247,77 +246,6 @@ describe('入れ子の線の情報', () => {
       ['D', 2, true, [false], false],
       ['C', 1, true, [], false],
     ]);
-  });
-});
-
-describe('↳ done(18、73、D2)', () => {
-  const obs = (inp: Inputs) => {
-    const v = waitView(inp);
-    return {present: new Set(inp.rows.map(r => r.sid)), waits: v.waits, unfinished: v.unfinished};
-  };
-  it('待ち先がすべて終わると done を出し、attach するまで続く', () => {
-    let s: DoneState = nextDone(undefined, obs(inputs([bg('A', 'review'), bg('B', 'working')], {A: ['B']})));
-    expect(s.get('A')?.done).toEqual([]);
-    s = nextDone(s, obs(inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']})));
-    expect(s.get('A')?.done).toEqual(['B']);
-    s = nextDone(s, obs(inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']})));
-    expect(s.get('A')?.done).toEqual(['B']);
-    s = clearDone(s, 'A');
-    s = nextDone(s, obs(inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']})));
-    expect(s.get('A')?.done).toEqual([]);
-  });
-  it('待ち先が再び稼働すると done は消え、また終わると出る', () => {
-    let s = nextDone(undefined, obs(inputs([bg('A', 'review'), bg('B', 'working')], {A: ['B']})));
-    s = nextDone(s, obs(inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']})));
-    s = nextDone(s, obs(inputs([bg('A', 'review'), bg('B', 'working')], {A: ['B']})));
-    expect(s.get('A')?.done).toEqual([]);
-    s = nextDone(s, obs(inputs([bg('A', 'review'), bg('B', 'stopped')], {A: ['B']})));
-    expect(s.get('A')?.done).toEqual(['B']);
-  });
-  it('起動した直後の観測では出さない', () => {
-    const s = nextDone(undefined, obs(inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']})));
-    expect(s.get('A')?.done).toEqual([]);
-  });
-  it('待ち先が削除されて関係が切れたときは出さず、出ていれば消える', () => {
-    let s = nextDone(undefined, obs(inputs([bg('A', 'review'), bg('B', 'working')], {A: ['B']})));
-    s = nextDone(s, obs(inputs([bg('A', 'review')], {A: ['B']})));
-    expect(s.get('A')?.done ?? []).toEqual([]);
-    let t = nextDone(
-      undefined,
-      obs(inputs([bg('A', 'review'), bg('B', 'working'), bg('C', 'working')], {A: ['B', 'C']})),
-    );
-    t = nextDone(t, obs(inputs([bg('A', 'review'), bg('B', 'review'), bg('C', 'review')], {A: ['B', 'C']})));
-    expect(t.get('A')?.done).toEqual(['B', 'C']);
-    t = nextDone(t, obs(inputs([bg('A', 'review'), bg('C', 'review')], {A: ['B', 'C']})));
-    expect(t.get('A')?.done).toEqual(['C']);
-  });
-  it('待ち先を外して待ちが解けたときは、残った待ち先の done を出す', () => {
-    let s = nextDone(
-      undefined,
-      obs(inputs([bg('A', 'review'), bg('B', 'working'), bg('C', 'review')], {A: ['B', 'C']})),
-    );
-    s = nextDone(s, obs(inputs([bg('A', 'review'), bg('B', 'working'), bg('C', 'review')], {A: ['C']})));
-    expect(s.get('A')?.done).toEqual(['C']);
-  });
-  it('done を出している待ち元に新しく待ち先を結ぶと done を消す。終わっている行を結んでも出さない(73)', () => {
-    let s = nextDone(undefined, obs(inputs([bg('A', 'review'), bg('B', 'working'), bg('C', 'review')], {A: ['B']})));
-    s = nextDone(s, obs(inputs([bg('A', 'review'), bg('B', 'review'), bg('C', 'review')], {A: ['B']})));
-    expect(s.get('A')?.done).toEqual(['B']);
-    s = clearDone(s, 'A');
-    const linked = inputs([bg('A', 'review'), bg('B', 'review'), bg('C', 'review')], {A: ['B', 'C']});
-    s = nextDone(s, obs(linked));
-    expect(s.get('A')?.done).toEqual([]);
-    expect(layout(linked).tier.get('A')).toBe('review');
-    const s2 = nextDone(
-      clearDone(s, 'A'),
-      obs(inputs([bg('A', 'review'), bg('B', 'review'), bg('D', 'working')], {A: ['B', 'D']})),
-    );
-    expect(s2.get('A')?.done).toEqual([]);
-  });
-  it('起動された行が終わって消えても done は出ない(68)', () => {
-    let s = nextDone(undefined, obs(inputs([bg('P', 'review'), tty('S', 'working')], {}, {S: 'P'})));
-    s = nextDone(s, obs(inputs([bg('P', 'review')], {}, {})));
-    expect(s.get('P')).toBeUndefined();
   });
 });
 

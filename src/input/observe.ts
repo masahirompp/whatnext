@@ -21,7 +21,15 @@ export interface ObsRow {
 }
 
 export type Observation =
-  | {ok: true; at: number; rows: ObsRow[]; spawner: Map<string, string>; supplied: Map<string, Supplied>}
+  | {
+      ok: true;
+      at: number;
+      rows: ObsRow[];
+      spawner: Map<string, string>;
+      supplied: Map<string, Supplied>;
+      /** 会話記録から分かった、セッションを作った時刻。 */
+      created: Map<string, number>;
+    }
   | {ok: false; at: number; error: string};
 
 export class Observer {
@@ -65,14 +73,19 @@ export class Observer {
     this.hooks.forget(keep);
     this.transcripts.forget(keep);
     const supplied = new Map<string, Supplied>();
+    const created = new Map<string, number>();
     await Promise.all(
       rows
         .filter(r => r.tier !== null)
         .map(async r => {
-          const tr = await this.transcripts.read(r.sid).catch(() => undefined);
+          const [tr, c] = await Promise.all([
+            this.transcripts.read(r.sid).catch(() => undefined),
+            this.transcripts.createdAt(r.sid),
+          ]);
           supplied.set(r.sid, supplement(this.hooks.get(r.sid), tr, this.hooks.ctxOf(r.sid)));
+          if (c !== undefined) created.set(r.sid, c);
         }),
     );
-    return {ok: true, at, rows, spawner, supplied};
+    return {ok: true, at, rows, spawner, supplied, created};
   }
 }

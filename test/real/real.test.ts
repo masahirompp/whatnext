@@ -152,7 +152,7 @@ describe('whatnext が起動したセッション', () => {
 });
 
 describe('whatnext の外で起動したセッション', () => {
-  it('33・45: 権限待ちの対象と待機時間が最初の一覧から出て、CTX は -。断ると Declined、終えると最後の応答の冒頭', async () => {
+  it('33・45: 権限待ちの対象と AGE が最初の一覧から出て、CTX は -。断ると Declined、終えると最後の応答の冒頭', async () => {
     const id = startBg('wn-real-ext', PERMISSION_PROMPT('ext'));
     await waitAgent(a => a.some(x => x.id === id && x.waitingFor === 'permission prompt'));
     await sleep(2000);

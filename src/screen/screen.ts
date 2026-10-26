@@ -6,7 +6,7 @@ import type {Screen, ScreenRow, Tone} from './types.js';
 const NAME_MAX = 48;
 const GAP = '  ';
 
-export function formatWaiting(ms: number | undefined): string {
+export function formatAge(ms: number | undefined): string {
   if (ms === undefined) return '-';
   const m = Math.floor(Math.max(0, ms) / 60000);
   if (m < 1) return '<1m';
@@ -63,12 +63,11 @@ export function annotationPrefix(r: Pick<ScreenRow, 'depth' | 'last' | 'ancestor
 
 const nameText = (r: ScreenRow) => (r.marker ? `${r.name} (${r.marker})` : r.name);
 
-/** 注記の文字列(一言、`⚙`、`↳ done`、`↳ メモ` の順)。 */
-export function annotations(r: ScreenRow): {kind: 'line' | 'running' | 'done' | 'note'; text: string}[] {
-  const out: {kind: 'line' | 'running' | 'done' | 'note'; text: string}[] = [];
+/** 注記の文字列(一言、`⚙`、`↳ メモ` の順)。 */
+export function annotations(r: ScreenRow): {kind: 'line' | 'running' | 'note'; text: string}[] {
+  const out: {kind: 'line' | 'running' | 'note'; text: string}[] = [];
   if (r.line) out.push({kind: 'line', text: oneLine(r.line)});
   if (r.running && r.running.length > 0) out.push({kind: 'running', text: `⚙ ${r.running.map(oneLine).join(' · ')}`});
-  if (r.done && r.done.length > 0) out.push({kind: 'done', text: `↳ ${r.done.join(', ')} done`});
   if (r.note) out.push({kind: 'note', text: `↳ ${oneLine(r.note)}`});
   return out;
 }
@@ -78,7 +77,7 @@ interface Cols {
   status: number;
   where: number;
   ctx: number;
-  wait: number;
+  age: number;
 }
 
 function columns(s: Screen): Cols {
@@ -90,9 +89,10 @@ function columns(s: Screen): Cols {
   const status = Math.max(width('STATUS'), ...rows.map(r => width(r.status)));
   const where = Math.max(width('WHERE'), ...rows.map(r => width(whereText(r, false))));
   const ctx = Math.max(3, ...rows.map(r => width(formatCtx(r.ctx))));
-  const wait = width('WAITING');
-  const cols = {sess, status, where, ctx, wait};
-  const total = () => 2 + cols.sess + cols.status + cols.where + cols.ctx + cols.wait + GAP.length * 4;
+  // 見出しより広く取り、CTX との間を空ける(利用者と合意した画面の幅。サイクル8までの WAITING の列と同じ)
+  const age = 7;
+  const cols = {sess, status, where, ctx, age};
+  const total = () => 2 + cols.sess + cols.status + cols.where + cols.ctx + cols.age + GAP.length * 4;
   // 端末の幅が足りないときは WHERE から詰める
   if (total() > s.width) cols.where = Math.max(width('WHERE'), cols.where - (total() - s.width));
   if (total() > s.width) cols.sess = Math.max(width('SESSION') + 3, cols.sess - (total() - s.width));
@@ -104,7 +104,7 @@ function clip(line: string, w: number): string {
 }
 
 function header(c: Cols, w: number): string {
-  const h = `  ${padEnd('SESSION', c.sess)}${GAP}${padEnd('STATUS', c.status)}${GAP}${padEnd('WHERE', c.where)}${GAP}${padStart('CTX', c.ctx)}${GAP}${padStart('WAITING', c.wait)}`;
+  const h = `  ${padEnd('SESSION', c.sess)}${GAP}${padEnd('STATUS', c.status)}${GAP}${padEnd('WHERE', c.where)}${GAP}${padStart('CTX', c.ctx)}${GAP}${padStart('AGE', c.age)}`;
   return color.bold(clip(h.trimEnd(), w));
 }
 
@@ -120,9 +120,9 @@ function rowLine(r: ScreenRow, c: Cols, selected: boolean, w: number): string {
   const where = padEnd(whereText(r, !plain), c.where);
   const gutter = selected ? (plain ? '> ' : `${color.cyan(color.bold('>'))} `) : '  ';
   const ctx = padStart(formatCtx(r.ctx), c.ctx);
-  const wait = padStart(formatWaiting(r.waiting), c.wait);
+  const age = padStart(formatAge(r.age), c.age);
   const statusCell = plain ? status : toneColor[r.tone](status);
-  const line = `${gutter}${sess}${GAP}${statusCell}${GAP}${where}${GAP}${ctx}${GAP}${wait}`;
+  const line = `${gutter}${sess}${GAP}${statusCell}${GAP}${where}${GAP}${ctx}${GAP}${age}`;
   const out = clip(line, w);
   return plain ? color.dim(out) : out;
 }
@@ -157,7 +157,6 @@ const cleanRow = (r: ScreenRow): ScreenRow => ({
   name: clean(r.name),
   line: r.line === undefined ? undefined : clean(r.line),
   running: r.running?.map(clean),
-  done: r.done?.map(clean),
   note: r.note === undefined ? undefined : clean(r.note),
   where: {
     ...r.where,

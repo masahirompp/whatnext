@@ -104,7 +104,7 @@ export class RealHarness extends Harness {
     const i = ls.findIndex(l => /^[> ] /.test(l) && l.includes(name));
     if (i < 0) return [];
     const out: string[] = [];
-    // 行は CTX と WAITING の列で終わる。注記の行はそうならない
+    // 行は CTX と AGE の列で終わる。注記の行はそうならない
     const isRow = (l: string) => /\s(-|\d+k?|\d+\.\dM)\s+(-|<1m|\d+[mhd])$/.test(l);
     for (let j = i + 1; j < ls.length; j++) {
       const l = ls[j];

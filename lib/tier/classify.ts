@@ -16,7 +16,7 @@ export interface AgentRow {
 
 export type Tier = 'permission' | 'question' | 'sandbox' | 'failed' | 'review' | 'working' | 'waiting' | 'stopped';
 
-/** 優先度ラダーの順。 */
+/** サイクル8までの一覧の並びの順(今の一覧の並びには使わない)。 */
 export const TIERS: readonly Tier[] = [
   'permission',
   'question',

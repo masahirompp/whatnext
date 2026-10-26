@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {stripAnsi, width} from '../../lib/text/text.js';
-import {formatCtx, formatWaiting, menuLines, render} from '../../src/screen/screen.js';
+import {formatAge, formatCtx, menuLines, render} from '../../src/screen/screen.js';
 import type {Screen, ScreenRow} from '../../src/screen/types.js';
 
 const row = (sid: string, over: Partial<ScreenRow> = {}): ScreenRow => ({
@@ -29,7 +29,7 @@ const example: Screen = {
         row('fix-login', {
           where: {branch: 'fix-login', pr: {number: 12, state: 'open'}},
           ctx: 91000,
-          waiting: 5 * 60000,
+          age: 5 * 60000,
           hasChildren: true,
           line: '変更点は3つです。',
         }),
@@ -38,7 +38,7 @@ const example: Screen = {
           tone: 'working',
           where: {branch: 'fix-login', worktree: true},
           ctx: 40000,
-          waiting: 2 * 60000,
+          age: 2 * 60000,
           depth: 1,
           last: false,
           line: '→ レビューして',
@@ -53,15 +53,15 @@ const example: Screen = {
           ancestorsLast: [false],
           line: '→ iterate',
         }),
-        row('bump shared lib', {status: 'Stopped', tone: 'stopped', where: {repo: 'lib'}, waiting: 3600000, depth: 1}),
+        row('bump shared lib', {status: 'Stopped', tone: 'stopped', where: {repo: 'lib'}, age: 3600000, depth: 1}),
         row('add metrics', {
           status: 'Working',
           tone: 'working',
           ctx: 12000,
-          waiting: 10000,
+          age: 10000,
           running: ['npm run e2e', 'make'],
         }),
-        row('alpha', {ctx: 8000, waiting: 3 * 3600000, note: "waiting for Bob's API change", done: ['x', 'y']}),
+        row('alpha', {ctx: 8000, age: 3 * 3600000, note: "waiting for Bob's API change"}),
       ],
     },
     {
@@ -72,7 +72,7 @@ const example: Screen = {
           tone: 'permission',
           where: {branch: 'auth-mw'},
           ctx: 22000,
-          waiting: 9 * 60000,
+          age: 9 * 60000,
           line: 'Bash: rm -rf node_modules',
         }),
       ],
@@ -85,7 +85,7 @@ const example: Screen = {
 describe('画面の組み立て', () => {
   it('区切りの見出し、入れ子の線、注記を描く', () => {
     expect(plain(example)).toEqual([
-      '  SESSION                                           STATUS      WHERE                 CTX  WAITING',
+      '  SESSION                                           STATUS      WHERE                 CTX      AGE',
       '── app ─────────────────────────────────────────────────────────────────────────────────────────────',
       '> fix-login                                         Review      fix-login #12 (open)  91k       5m',
       '  │ 変更点は3つです。',
@@ -97,12 +97,12 @@ describe('画面の組み立て', () => {
       '  add metrics                                       Working                           12k      <1m',
       '    ⚙ npm run e2e · make',
       '  alpha                                             Review                             8k       3h',
-      '    ↳ x, y done',
       "    ↳ waiting for Bob's API change",
       '',
       '── infra ───────────────────────────────────────────────────────────────────────────────────────────',
       '  refactor the auth middleware so that it is long…  Permission  auth-mw               22k       9m',
       '    Bash: rm -rf node_modules',
+      '',
       'session 42% · week 18%',
       '↑↓ select · Enter attach · e note · f wait for',
     ]);
@@ -123,7 +123,7 @@ describe('画面の組み立て', () => {
   it('端末の幅が足りないときは WHERE から詰める', () => {
     const lines = plain({...example, width: 80});
     expect(lines[2]).toBe('> fix-login                                      Review      fix-…  91k       5m');
-    expect(lines[16]).toBe('  refactor the auth middleware so that it is l…  Permission  auth…  22k       9m');
+    expect(lines[15]).toBe('  refactor the auth middleware so that it is l…  Permission  auth…  22k       9m');
   });
   it('収まらないときは選んだ行が見えるように窓を動かし、通し番号を出す(24)', () => {
     const rows = Array.from({length: 30}, (_, i) => row(`s${i}`));
@@ -162,7 +162,7 @@ describe('画面の組み立て', () => {
       keys: '',
     };
     expect(plain(s)).toEqual([
-      '  SESSION  STATUS  WHERE  CTX  WAITING',
+      '  SESSION  STATUS  WHERE  CTX      AGE',
       '── app ───────────────────────────────────────────',
       '> a        Review           -        -',
       '',
@@ -180,12 +180,12 @@ describe('画面の組み立て', () => {
     const lines = plain({width: 40, height: 5, groups: [], message: 'No sessions.', keys: 'k'});
     expect(lines).toEqual(['No sessions.', '', '', '', 'k']);
   });
-  it('待機時間と CTX の表記', () => {
-    expect(formatWaiting(undefined)).toBe('-');
-    expect(formatWaiting(30_000)).toBe('<1m');
-    expect(formatWaiting(5 * 60_000)).toBe('5m');
-    expect(formatWaiting(2 * 3600_000)).toBe('2h');
-    expect(formatWaiting(3 * 86400_000)).toBe('3d');
+  it('作ってからの時間と CTX の表記', () => {
+    expect(formatAge(undefined)).toBe('-');
+    expect(formatAge(30_000)).toBe('<1m');
+    expect(formatAge(5 * 60_000)).toBe('5m');
+    expect(formatAge(2 * 3600_000)).toBe('2h');
+    expect(formatAge(3 * 86400_000)).toBe('3d');
     expect(formatCtx(undefined)).toBe('-');
     expect(formatCtx(36_400)).toBe('36k');
     expect(formatCtx(1_234_567)).toBe('1.2M');

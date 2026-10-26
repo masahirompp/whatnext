@@ -274,6 +274,25 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     );
     expect(await tr.firstPrompt('nope', true)).toBe('late');
   });
+
+  it('作った時刻は、時刻を持つ最初の行の時刻。なければ undefined で、あとから書かれれば読み直す', async () => {
+    const {dir, file} = await transcriptDir([
+      {type: 'mode', mode: 'default'},
+      {type: 'queue-operation', timestamp: T(3)},
+      {type: 'user', timestamp: T(5), message: {content: 'hi'}},
+    ]);
+    const tr = new Transcripts(dir);
+    expect(await tr.createdAt('sid-1')).toBe(Date.parse(T(3)));
+    await writeFile(file, `${JSON.stringify({type: 'user', timestamp: T(9), message: {content: 'x'}})}\n`);
+    expect(await tr.createdAt('sid-1')).toBe(Date.parse(T(3)));
+    const none = await transcriptDir([{type: 'mode', mode: 'default'}]);
+    const tr2 = new Transcripts(none.dir);
+    expect(await tr2.createdAt('sid-1')).toBeUndefined();
+    // 大きさが変わらなければ読み直さない
+    expect(await tr2.createdAt('sid-1')).toBeUndefined();
+    await writeFile(none.file, `${JSON.stringify({type: 'user', timestamp: T(7), message: {content: 'x'}})}\n`);
+    expect(await tr2.createdAt('sid-1')).toBe(Date.parse(T(7)));
+  });
 });
 
 describe('プロセス表', () => {
