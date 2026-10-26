@@ -135,24 +135,6 @@ describe('待ち先', () => {
     expect(h.state().waits[sid('a')]).toEqual([sid('q')]);
   });
 
-  it('78: 待ちが明けた待ち元の WAITING は、待ち先が終わった時刻から数える', async () => {
-    h = new Harness();
-    const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
-    const turn = (m: number, text: string) => [
-      {type: 'user', message: {role: 'user', content: '進めて'}, timestamp: ago(m + 1)},
-      {type: 'assistant', message: {role: 'assistant', content: [{type: 'text', text}]}, timestamp: ago(m)},
-    ];
-    h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta', state: 'working', status: 'busy'})]);
-    h.writeState({version: 3, notes: {}, waits: {[sid('a')]: [sid('b')]}, seen: {}});
-    h.transcript(sid('a'), turn(180, '実装しました'));
-    await h.start();
-    expect(h.screen()).toMatch(/alpha +Waiting.* 3h/);
-    h.transcript(sid('b'), turn(5, 'レビューしました'));
-    h.update('beta', {state: 'done', status: 'idle'});
-    await h.refresh();
-    expect(h.screen()).toMatch(/alpha +Review.* 5m/);
-  });
-
   it('72: (tty) の行で f を押すと断る', async () => {
     h = new Harness();
     h.agents([tty('q', {name: 'poke'})]);

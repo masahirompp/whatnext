@@ -12,7 +12,7 @@ import {GUIDE, LIST} from '../../lib/tmux/tmux.js';
 import type {Observation, ObsRow} from '../input/observe.js';
 import {locate} from '../input/where.js';
 import {followCursor, initialCursor} from '../model/cursor.js';
-import {groupTitles, layout, stageStartsOf} from '../model/layout.js';
+import {groupTitles, layout} from '../model/layout.js';
 import {canLink, cascade, waitCandidates} from '../model/relations.js';
 import type {Inputs, Layout, Row} from '../model/types.js';
 import {validWaits} from '../model/waits.js';
@@ -72,11 +72,8 @@ export class App {
   private spawner = new Map<string, string>();
   private supplied = new Map<string, Supplied>();
   private error?: string;
-  private lastAt?: number;
-  private since = new Map<string, {tier: Tier; observed?: number}>();
-  /** 待ちの段を出たのを見た時刻(レビュー待ちに戻った待ち元だけ)。 */
-  private leftWait = new Map<string, number>();
-  private waitingMs = new Map<string, number | undefined>();
+  /** 作ってからの時間(ミリ秒)。最後の更新の時点の値で、更新の間は変えない。 */
+  private ageMs = new Map<string, number>();
   private lay: Layout = {groups: [], order: [], parent: new Map(), tier: new Map()};
   private cursor?: string;
   private mode: Mode = {k: 'list'};
@@ -215,8 +212,6 @@ export class App {
     const running = await this.p.tmux.running();
     this.error = undefined;
     const prevLayout = this.lay;
-    const prevAt = this.lastAt;
-    this.lastAt = obs.at;
     const present = new Set(obs.rows.map(r => r.sid));
     // --json から消えたセッションの関係、メモ、時刻を外す(ファイルにはそのまま書く。木にならない関係を整理するのは、
     // 利用者がメモか待ち先を変えたときだけ。DESIGN.md「状態のファイルに書くもの」)
@@ -253,27 +248,14 @@ export class App {
       }
     }
     this.running = running;
-    // 待機時間(悲観的に数え、更新の間は止める)
-    const nextSince = new Map<string, {tier: Tier; observed?: number}>();
-    const own = new Map<string, number | undefined>();
+    // 作ってからの時間。会話記録の時刻、なければ初めて見た時刻から数える
+    this.ageMs.clear();
     for (const r of obs.rows) {
       if (r.tier === null) continue;
-      const before = this.since.get(r.sid);
-      const observed =
-        before && before.tier === r.tier ? before.observed : initial || prevAt === undefined ? undefined : prevAt;
-      nextSince.set(r.sid, {tier: r.tier, observed});
-      const sup = obs.supplied.get(r.sid) ?? {};
-      const hook = r.tier === 'working' ? sup.prompt?.at : r.tier === 'stopped' ? undefined : sup.haltAt;
-      own.set(r.sid, hook ?? observed ?? (r.tier === 'stopped' ? sup.haltAt : undefined));
+      const from = obs.created.get(r.sid) ?? this.persisted.seen.get(r.sid)?.first ?? obs.at;
+      this.ageMs.set(r.sid, Math.max(0, obs.at - from));
     }
-    this.since = nextSince;
-    // 更新の間に待ちが明けた待ち元は、前回の更新時刻から自分の段にいたとみなす(悲観的に数える)
-    this.relayout(initial ? null : (prevAt ?? null));
-    // 待ちが明けた待ち元は、待ちが明けた時刻から数える
-    this.waitingMs.clear();
-    for (const [sid, at] of stageStartsOf(this.inputs(), own, this.leftWait)) {
-      this.waitingMs.set(sid, at === undefined ? undefined : Math.max(0, obs.at - at));
-    }
+    this.relayout();
     // カーソル
     if (initial || this.cursor === undefined) {
       this.cursor = initialCursor(this.lay, this.persisted.seen);
@@ -325,19 +307,9 @@ export class App {
     return {rows, waits: this.persisted.waits, spawner: this.spawner, times: this.persisted.seen};
   }
 
-  /**
-   * 並びを導き直す。待ちの段を出て自分の段(レビュー待ち)に戻った待ち元には、出たのを見た時刻(`seenAt`。
-   * 分からなければ null)を付け、レビュー待ちを離れたら外す。待ち先の時刻が分からないときの、待機時間の起点の補い。
-   */
-  private relayout(seenAt: number | null = this.p.now()): void {
-    const prev = this.lay;
+  private relayout(): void {
     this.lay = layout(this.inputs());
     for (const r of this.rows.values()) this.nameCache.set(r.sid, r.name);
-    for (const sid of [...this.leftWait.keys()]) if (this.lay.tier.get(sid) !== 'review') this.leftWait.delete(sid);
-    if (seenAt === null) return;
-    for (const [sid, t] of this.lay.tier) {
-      if (t === 'review' && prev.tier.get(sid) === 'waiting') this.leftWait.set(sid, seenAt);
-    }
   }
 
   private save(annotated: boolean): void {
@@ -483,7 +455,7 @@ export class App {
         pr,
       },
       ctx: this.supplied.get(sid)?.ctx,
-      waiting: this.waitingMs.get(sid),
+      age: this.ageMs.get(sid),
       line: this.lineOf(r, tier === 'waiting' ? tierOf(r.tier) : tier),
       running: r.id ? this.running.get(r.id) : undefined,
       note: n.spawned ? undefined : this.persisted.notes.get(sid),

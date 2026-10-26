@@ -19,8 +19,8 @@ export interface ScreenRow {
     pr?: {number: number; state: 'open' | 'draft' | 'merged' | 'closed'};
   };
   ctx?: number;
-  /** 待機時間(ミリ秒)。分からなければ undefined。 */
-  waiting?: number;
+  /** 作ってからの時間(ミリ秒)。 */
+  age?: number;
   /** 一言。 */
   line?: string;
   /** 作業台で動いているもの。 */

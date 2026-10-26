@@ -1,5 +1,5 @@
 import type {Group, Inputs, Layout, Node, Row, Tier, Times} from './types.js';
-import {deriveTiers, stageStarts, validWaits} from './waits.js';
+import {deriveTiers, validWaits} from './waits.js';
 
 /** 見出しと名前の順(人の読み方の順。PRODUCT.md「リポジトリの区切りと並び」)。 */
 export const byReading = (a: string, b: string): number => {
@@ -121,15 +121,4 @@ export function layout(inp: Inputs): Layout {
     for (const r of rs) walk(r, 0, true, []);
   }
   return {groups, order, parent, tier};
-}
-
-/** 各行の今の段に入った時刻。待ちが明けた待ち元は、待ちが明けた時刻にする(`stageStarts`)。 */
-export function stageStartsOf(
-  inp: Inputs,
-  own: ReadonlyMap<string, number | undefined>,
-  leftWait: ReadonlyMap<string, number | undefined>,
-): Map<string, number | undefined> {
-  const all = new Map(inp.rows.map(r => [r.sid, r]));
-  const waits = validWaits(inp.waits, all, new Set(inp.spawner.keys()));
-  return stageStarts(waits, deriveTiers(all, waits), own, leftWait);
 }

@@ -83,37 +83,3 @@ export function deriveTiers(
   for (const sid of rows.keys()) visit(sid);
   return tier;
 }
-
-/**
- * 待ちが明けて自分の段(レビュー待ち)に戻った待ち元の、今の段に入った時刻(PRODUCT.md「更新と待機時間」)。
- * 自分の時刻、終わった待ち先の時刻(待ち先も待ち元なら、その導いた時刻)、待ちの段を出たのを見た時刻のうち、最も遅いもの。
- * 待ち元でない行と、レビュー待ちでない待ち元は、自分の時刻のまま。
- */
-export function stageStarts(
-  waits: ReadonlyMap<string, readonly string[]>,
-  tier: ReadonlyMap<string, Tier | null>,
-  own: ReadonlyMap<string, number | undefined>,
-  leftWait: ReadonlyMap<string, number | undefined>,
-): Map<string, number | undefined> {
-  const out = new Map<string, number | undefined>();
-  const visit = (sid: string): number | undefined => {
-    if (out.has(sid)) return out.get(sid);
-    out.set(sid, own.get(sid)); // 一周は validWaits で落としてあるが、念のため先に置く
-    // 待ち先をすべて外したか、すべて削除されて待ちが解けた待ち元は、待ち先がなくても見た時刻で補う
-    if (tier.get(sid) !== 'review' || (!waits.has(sid) && !leftWait.has(sid))) return own.get(sid);
-    let ended: number | undefined;
-    for (const t of waits.get(sid) ?? []) {
-      // 一覧に出ていない待ち先(対象外)は時刻が分からないので数えない
-      const ta = tier.get(t) ? visit(t) : undefined;
-      if (ta !== undefined && (ended === undefined || ta > ended)) ended = ta;
-    }
-    // 待ち先の時刻がどれも分からないときだけ、待ちの段を出たのを見た時刻(前回の更新時刻。粗い)で補う
-    ended ??= leftWait.get(sid);
-    const mine = own.get(sid);
-    const at = ended === undefined || (mine !== undefined && mine > ended) ? mine : ended;
-    out.set(sid, at);
-    return at;
-  };
-  for (const sid of own.keys()) visit(sid);
-  return out;
-}

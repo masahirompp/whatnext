@@ -10,7 +10,28 @@ let h: Harness;
 afterEach(() => h?.cleanup());
 
 describe('一覧と並び', () => {
-  it('1・61: リポジトリの区切りにまとまり、段、待機時間、名前、場所が出る。見出しは選べない', async () => {
+  it('78: AGE は会話記録の最初の時刻から数え、会話記録がなければ初めて見た時刻から数える。状態が変わっても数え直さない', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta', state: 'working', status: 'busy'})]);
+    const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+    h.transcript(sid('a'), [
+      {type: 'mode', mode: 'default'},
+      {type: 'user', message: {role: 'user', content: '直して'}, timestamp: ago(2 * 24 * 60)},
+      {
+        type: 'assistant',
+        message: {role: 'assistant', content: [{type: 'text', text: '直しました'}]},
+        timestamp: ago(3),
+      },
+    ]);
+    await h.start();
+    expect(h.screen()).toMatch(/alpha +Review.* 2d$/m);
+    expect(h.screen()).toMatch(/beta +Working.* <1m$/m);
+    h.update('alpha', {state: 'working', status: 'busy'});
+    await h.refresh();
+    expect(h.screen()).toMatch(/alpha +Working.* 2d$/m);
+  });
+
+  it('1・61: リポジトリの区切りにまとまり、段、作ってからの時間、名前、場所が出る。見出しは選べない', async () => {
     h = new Harness();
     const app = h.repo('app');
     const infra = h.repo('infra');
@@ -27,7 +48,7 @@ describe('一覧と並び', () => {
     ]);
     await h.start();
     const s = h.screen();
-    expect(s).toMatch(/^ {2}SESSION +STATUS +WHERE +CTX +WAITING/m);
+    expect(s).toMatch(/^ {2}SESSION +STATUS +WHERE +CTX +AGE/m);
     expect(s).toMatch(/^── app ─+$/m);
     expect(s).toMatch(/^── infra ─+$/m);
     expect(s.indexOf('── app')).toBeLessThan(s.indexOf('── infra'));

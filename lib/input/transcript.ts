@@ -159,6 +159,7 @@ export class Transcripts {
   private files = new Map<string, FileState>();
   private paths = new Map<string, string>();
   private firsts = new Map<string, {text?: string; size: number}>();
+  private created = new Map<string, number>();
 
   constructor(private readonly configDir: string) {}
 
@@ -265,8 +266,39 @@ export class Transcripts {
     }
   }
 
+  /** セッションを作った時刻(先頭から、`timestamp` を持つ最初の行)。先頭から最大 2MB を読む。一度見つけたら読み直さない。 */
+  async createdAt(sid: string): Promise<number | undefined> {
+    const known = this.created.get(sid);
+    if (known !== undefined) return known;
+    try {
+      const path = await this.locate(sid);
+      if (!path) return undefined;
+      const s = await stat(path);
+      const text = await readRange(path, 0, Math.min(s.size, HEAD));
+      for (const line of completeLines(text, 0).lines) {
+        if (!line.includes('"timestamp"')) continue;
+        let o: Record<string, unknown>;
+        try {
+          o = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (!o || typeof o !== 'object') continue;
+        const at = ts(o);
+        if (at !== undefined) {
+          this.created.set(sid, at);
+          return at;
+        }
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** 一覧に出なくなったセッションの記憶を捨てる。 */
   forget(keep: ReadonlySet<string>): void {
-    for (const m of [this.files, this.paths, this.firsts]) for (const k of m.keys()) if (!keep.has(k)) m.delete(k);
+    for (const m of [this.files, this.paths, this.firsts, this.created])
+      for (const k of m.keys()) if (!keep.has(k)) m.delete(k);
   }
 }

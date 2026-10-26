@@ -8,7 +8,7 @@ When you split work across sessions (an implementation and its review, a big tas
 
 ## Principles
 
-- **Reads session state from `claude agents --json` alone.** No screen scraping. To show what each session is doing and how long it has waited, whatnext also reads hook events from sessions it started and, for other sessions, Claude Code's own conversation transcripts (`~/.claude/projects`) — read-only. Account usage comes from `claude`'s own `/usage`, which calls no model.
+- **Reads session state from `claude agents --json` alone.** No screen scraping. To show what each session is doing and how long ago it was started, whatnext also reads hook events from sessions it started and, for other sessions, Claude Code's own conversation transcripts (`~/.claude/projects`) — read-only. Account usage comes from `claude`'s own `/usage`, which calls no model.
 - **Sessions whatnext starts send their context size (OpenTelemetry) and hook events to whatnext on 127.0.0.1:14318, only while whatnext is running.** Nothing leaves your machine and nothing is stored.
 - **Keeps almost no state.** Sessions keep running after you quit whatnext, and sessions started elsewhere show up too. Your settings are never modified. The only file whatnext writes is `~/.local/state/whatnext/state.json` (or under `$XDG_STATE_HOME`), which keeps your notes, wait-for links and the order of the list across restarts.
 - **Never answers for you.** No input injection or auto-approval — you attach and act yourself.

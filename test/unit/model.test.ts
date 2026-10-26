@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {followCursor, initialCursor} from '../../src/model/cursor.js';
-import {groupTitles, layout, stageStartsOf} from '../../src/model/layout.js';
+import {groupTitles, layout} from '../../src/model/layout.js';
 import {canLink, cascade, waitCandidates} from '../../src/model/relations.js';
 import type {Inputs, Row, Tier, Times} from '../../src/model/types.js';
 
@@ -246,45 +246,6 @@ describe('入れ子の線の情報', () => {
       ['D', 2, true, [false], false],
       ['C', 1, true, [], false],
     ]);
-  });
-});
-
-describe('待ちが明けた待ち元の待機時間の起点(78)', () => {
-  const own = (o: Record<string, number | undefined>) => new Map(Object.entries(o));
-  const none = new Map<string, number>();
-  it('待ち先が終わった時刻が待ち元の時刻より遅ければ、その時刻から数える。複数なら最も遅いもの', () => {
-    const inp = inputs([bg('A', 'review'), bg('B', 'review'), bg('C', 'stopped')], {A: ['B', 'C']});
-    const s = stageStartsOf(inp, own({A: 10, B: 50, C: 30}), none);
-    expect(s.get('A')).toBe(50);
-    expect(s.get('B')).toBe(50);
-  });
-  it('待ち先が待ち元より先に終わっていれば(待っていなかった)、待ち元の時刻のまま', () => {
-    const inp = inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']});
-    expect(stageStartsOf(inp, own({A: 40, B: 20}), none).get('A')).toBe(40);
-  });
-  it('待ちの段にいる間と、待ち元が自分で別の段にいるときは変えない', () => {
-    const waiting = inputs([bg('A', 'review'), bg('B', 'working')], {A: ['B']});
-    expect(stageStartsOf(waiting, own({A: 10, B: 50}), none).get('A')).toBe(10);
-    const asking = inputs([bg('A', 'question'), bg('B', 'review')], {A: ['B']});
-    expect(stageStartsOf(asking, own({A: 10, B: 50}), none).get('A')).toBe(10);
-  });
-  it('待ち先の待ち先が後で終わっていれば、その時刻まで下る', () => {
-    const inp = inputs([bg('A', 'review'), bg('B', 'review'), bg('C', 'review')], {A: ['B'], B: ['C']});
-    expect(stageStartsOf(inp, own({A: 10, B: 20, C: 60}), none).get('A')).toBe(60);
-  });
-  it('待ち先の時刻が分からないとき(一覧から外れた、削除された)は、待ちの段を出たのを見た時刻で補う', () => {
-    const inp = inputs([bg('A', 'review'), tty('Q', null)], {A: ['Q']});
-    expect(stageStartsOf(inp, own({A: 10}), new Map([['A', 70]])).get('A')).toBe(70);
-    expect(stageStartsOf(inp, own({A: 10}), none).get('A')).toBe(10);
-    // 待ち先をすべて外して待ちが解けたときも、見た時刻で補う
-    expect(stageStartsOf(inputs([bg('A', 'review')]), own({A: 10}), new Map([['A', 70]])).get('A')).toBe(70);
-    // 待ち先の時刻が分かっていれば、見た時刻より優先する
-    const known = inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']});
-    expect(stageStartsOf(known, own({A: 10, B: 50}), new Map([['A', 70]])).get('A')).toBe(50);
-  });
-  it('待ち元の時刻が分からなくても、待ち先の時刻があればそれを使う', () => {
-    const inp = inputs([bg('A', 'review'), bg('B', 'review')], {A: ['B']});
-    expect(stageStartsOf(inp, own({A: undefined, B: 50}), none).get('A')).toBe(50);
   });
 });
 
