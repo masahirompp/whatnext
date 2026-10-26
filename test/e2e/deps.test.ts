@@ -394,7 +394,7 @@ describe('起動された行', () => {
     expect(h.screen()).toMatch(/orchestrator +Review/);
   });
 
-  it('69: 起動された行では f も e も断り、ほかの行のメニューに並ばない。起動元を消すとき巻き込みを聞かず、残った行は (tty) で出る', async () => {
+  it('69: 起動された行はほかの行のメニューに並ばない。起動元を消すとき巻き込みを聞かず、残った行は (tty) で出る', async () => {
     h = new Harness();
     h.agents([
       bg('p', {name: 'orchestrator', state: 'done', pid: 100}),
@@ -403,11 +403,6 @@ describe('起動された行', () => {
     ]);
     h.procs([[300, 100]]);
     await h.start();
-    await h.select('worker');
-    await h.keys('f');
-    await h.waitFor(/worker was started by another session\. It can't wait for other sessions\./);
-    await h.keys('e');
-    await h.waitFor(/worker was started by another session\. It can't have a note\./);
     await h.select('other');
     await h.keys('f');
     const m = await h.waitFor(/other waits for:/);
@@ -425,26 +420,57 @@ describe('起動された行', () => {
     expect(h.screen()).toMatch(/^[> ] worker \(tty\)/m);
   });
 
-  it('70: 選んでいた起動された行が消えると起動元に移り、直後の Ctrl+X は受け付けない', async () => {
+  it('70: ↑ と ↓ は起動された行を飛ばし、起動された行を選べない', async () => {
     h = new Harness();
     h.agents([
-      bg('w', {name: 'waiter', state: 'done'}),
+      bg('p', {name: 'orchestrator', state: 'working', status: 'busy', pid: 100}),
+      tty('s', {name: 'worker', pid: 300, status: 'busy', waitingFor: undefined}),
+      tty('t', {name: 'worker-2', pid: 500, status: 'busy', waitingFor: undefined}),
+      bg('o', {name: 'other', state: 'done'}),
+    ]);
+    h.procs([
+      [300, 100],
+      [500, 300],
+    ]);
+    await h.start();
+    await h.select('orchestrator');
+    const s = h.screen();
+    const i = s.indexOf('> orchestrator');
+    expect(s.slice(i)).toMatch(
+      /^> orchestrator[^\n]*\n(?:[^\n]*\n)*? {2}└ worker \(sub\)[^\n]*\n {4}└ worker-2 \(sub\)/m,
+    );
+    const below = s.indexOf('other') > i;
+    await h.keys(below ? 'Down' : 'Up');
+    await h.waitFor(/^> other/m);
+    await h.keys(below ? 'Up' : 'Down');
+    await h.waitFor(/^> orchestrator/m);
+    for (let k = 0; k < 5; k++) await h.keys('Down');
+    await h.refresh();
+    expect(h.screen()).not.toMatch(/^> .*\(sub\)/m);
+    for (let k = 0; k < 5; k++) await h.keys('Up');
+    await h.refresh();
+    expect(h.screen()).not.toMatch(/^> .*\(sub\)/m);
+  });
+
+  it('70(続き): 選んでいた行が起動された行と分かると隣の行に移り、直後の Ctrl+X は受け付けない', async () => {
+    h = new Harness();
+    h.agents([
       bg('p', {name: 'orchestrator', state: 'working', status: 'busy', pid: 100}),
       tty('s', {name: 'worker', pid: 300, status: 'busy', waitingFor: undefined}),
     ]);
-    h.procs([[300, 100]]);
-    h.writeState({version: 3, notes: {}, waits: {[sid('w')]: [sid('p')]}, seen: {}});
+    h.procs([[300, 1]]);
     await h.start();
     await h.select('worker');
-    h.remove('worker');
+    h.procs([[300, 100]]);
     await h.refresh();
-    expect(h.screen()).toMatch(/^> └ orchestrator/m);
+    expect(h.screen()).toMatch(/^> orchestrator/m);
+    expect(h.screen()).toMatch(/^ {2}└ worker \(sub\)/m);
     await h.keys('C-x');
-    await h.waitFor(/Ctrl\+X ignored: worker left the list and the selection moved\./);
+    await h.waitFor(/Ctrl\+X ignored: worker turned out to be started by another session and the selection moved\./);
     expect(h.calls().some(c => c.args[0] === 'stop')).toBe(false);
   });
 
-  it('71: 一覧に出ていない対話セッションが起動した行はトップレベルに (sub) で並び、起動元が出ると入れ子に入る', async () => {
+  it('71: 一覧に出ていない対話セッションが起動した行はトップレベルに (sub) で並び、選べない。起動元が出ると入れ子に入る', async () => {
     h = new Harness();
     h.agents([
       tty('q', {name: 'quiet', pid: 100, status: 'idle', waitingFor: undefined}),
@@ -452,15 +478,18 @@ describe('起動された行', () => {
     ]);
     h.procs([[300, 100]]);
     await h.start();
-    expect(h.screen()).toMatch(/^> worker \(sub\)/m);
+    // 選べる行がないので、カーソルはどこにもない
+    expect(h.screen()).toMatch(/^ {2}worker \(sub\)/m);
+    expect(h.screen()).not.toMatch(/^> /m);
     await h.keys('f');
-    await h.waitFor(/can't wait for other sessions/);
     await h.keys('e');
-    await h.waitFor(/can't have a note/);
+    // f と e のあとで更新が済むのを待ってから確かめる(メモの入力欄が開いていれば r は入力欄に入り、更新は終わらない)
+    await h.refresh();
+    expect(h.screen()).not.toMatch(/waits for:|Note for|can't/);
     h.update('quiet', {status: 'busy'});
     await h.refresh();
-    expect(h.screen()).toMatch(/^[> ] quiet \(tty\) +Working/m);
-    expect(h.screen()).toMatch(/^[> ] └ worker \(sub\)/m);
+    expect(h.screen()).toMatch(/^> quiet \(tty\) +Working/m);
+    expect(h.screen()).toMatch(/^ {2}└ worker \(sub\)/m);
   });
 
   it('77(単体寄り): MCP_CALLER_PID の行を起動元にする。値がないか一致しない行は (tty) で出る', async () => {

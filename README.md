@@ -42,7 +42,7 @@ Keys in the list:
 
 While attached, `ctrl+q` followed by the same letter with ctrl held does the same thing (`ctrl+q ctrl+l` goes back to the list, `ctrl+q ctrl+e` opens the note of the session). The keys are shown at the bottom of the session's screen.
 
-Rows marked `(tty)` are interactive sessions, and rows marked `(sub)` are `claude` processes that another row started (from a skill, a script or an MCP server). Both can be selected but not attached. A `(tty)` row can be waited for but cannot wait for other sessions (`f` declines), and `(sub)` rows take no notes or wait-for links.
+Rows marked `(tty)` are interactive sessions, and rows marked `(sub)` are `claude` processes that another row started (from a skill, a script or an MCP server). Neither can be attached. A `(tty)` row can be selected, take a note and be waited for, but cannot wait for other sessions (`f` declines). `(sub)` rows cannot be selected: `↑` and `↓` skip them, so they take no notes or wait-for links.
 
 ### Nesting `claude -p` started by an MCP server
 

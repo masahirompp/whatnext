@@ -185,39 +185,79 @@ export function render(raw: Screen): string[] {
     const c = columns(s);
     top.push(header(c, w));
     const body: string[] = [];
-    let cursorBlock: [number, number] = [0, 0];
+    // 選んだ行の塊(行、注記、入力欄)。窓には必ず入れる
+    let block: [number, number] = [0, 0];
+    // 各行を見せる役の、選べる行。起動された行は選べないので、選べる行のどれかに付けて一緒に見せる。
+    // こうしないと窓の外に残って見る手段がなくなる。区切りの中では直前の選べる行に、区切りの頭は
+    // その区切りの最初の選べる行に、選べる行のない区切りは直前の区切りの最後の選べる行
+    // (なければ次の区切りの最初の選べる行)に付ける
+    const owner: (string | undefined)[] = [];
+    type Section = {from: number; first?: string; last?: string};
+    const sections: Section[] = [];
+    // 選べる行(起動された行は選べない)。<通し番号>/<総数> もこれで数える
     const rowIndex: string[] = [];
     s.groups.forEach((g, gi) => {
       if (g.rows.length === 0) return;
+      const sec: Section = {from: body.length};
+      sections.push(sec);
       if (gi > 0 && body.length > 0) body.push('');
       body.push(headingLine(g.title, w));
       for (const r of g.rows) {
         const start = body.length;
         const selected = r.sid === s.cursor;
+        // `(sub)` の印は起動された行にだけ付く(app.ts の画面の行の組み立て)
+        if (r.marker !== 'sub') {
+          rowIndex.push(r.sid);
+          sec.first ??= r.sid;
+          sec.last = r.sid;
+        }
         body.push(rowLine(r, c, selected, w));
-        rowIndex.push(r.sid);
         const inline = s.inline?.sid === r.sid ? s.inline.lines : undefined;
         for (const a of annotations(r)) {
           if (inline && a.kind === 'note') continue;
           body.push(annotationLine(r, a.text, w));
         }
         if (inline) for (const l of inline) body.push(clip(`  ${annotationPrefix(r)}${l}`, w));
-        if (selected) cursorBlock = [start, body.length];
+        if (selected) block = [start, body.length];
+        while (owner.length < body.length) owner.push(sec.last);
       }
     });
+    sections.forEach((sec, i) => {
+      const end = sections[i + 1]?.from ?? body.length;
+      const fallback =
+        sec.first ??
+        sections
+          .slice(0, i)
+          .reverse()
+          .find(x => x.last)?.last ??
+        sections.slice(i + 1).find(x => x.first)?.first;
+      for (let j = sec.from; j < end; j++) owner[j] ??= fallback;
+    });
+    // 選んだ行と、それに付く行の範囲。窓に収まるときだけ一緒に入れる
+    let reach: [number, number] = block;
+    if (s.cursor !== undefined) {
+      const r0 = owner.indexOf(s.cursor);
+      const r1 = owner.lastIndexOf(s.cursor) + 1;
+      if (r0 >= 0) reach = [Math.min(r0, block[0]), Math.max(r1, block[1])];
+    }
     const fixed = 1 + bottom.length + footer.length;
     let avail = Math.max(1, h - fixed);
     let pos: string | undefined;
-    if (body.length > avail) {
+    // 選べる行がないときは、通し番号を出さない
+    if (body.length > avail && rowIndex.length > 0) {
       avail = Math.max(1, avail - 1);
       const idx = s.cursor ? rowIndex.indexOf(s.cursor) + 1 : 0;
       pos = `${idx}/${rowIndex.length}`;
     }
     let start = 0;
     if (body.length > avail) {
-      const [b0, b1] = cursorBlock;
-      const blockLen = b1 - b0;
-      start = blockLen >= avail ? b0 : b0 - Math.floor((avail - blockLen) / 2);
+      const [b0, b1] = block;
+      const [r0, r1] = reach;
+      if (r1 - r0 <= avail) start = r0 - Math.floor((avail - (r1 - r0)) / 2);
+      else if (b1 - b0 >= avail) start = b0;
+      // 下に続く起動された行を優先し、余れば上(区切りの頭)も見せる
+      else if (r1 > b1) start = Math.max(r0, Math.min(b0, r1 - avail));
+      else start = Math.max(r0, b1 - avail);
       start = Math.max(0, Math.min(start, body.length - avail));
       // 入力欄は最後の行まで窓に入れる
       if (s.inline && b1 > start + avail) start = Math.max(0, b1 - avail);

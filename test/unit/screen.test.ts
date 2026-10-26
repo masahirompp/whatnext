@@ -133,6 +133,105 @@ describe('画面の組み立て', () => {
     expect(lines[0]).toContain('SESSION');
     expect(lines.length).toBe(10);
   });
+  it('通し番号に起動された行を数えず、選んだ行のすぐ下に続く起動された行も窓に入れる(24)', () => {
+    const rows = [
+      ...Array.from({length: 10}, (_, i) => row(`s${i}`)),
+      row('p'),
+      ...Array.from({length: 4}, (_, i) => row(`w${i}`, {marker: 'sub'})),
+    ];
+    const lines = plain({width: 60, height: 10, cursor: 'p', groups: [{title: 'app', rows}], keys: 'k'});
+    expect(lines).toContain('11/11');
+    expect(lines.some(l => l.startsWith('> p'))).toBe(true);
+    expect(lines.some(l => l.startsWith('  w3 (sub)'))).toBe(true);
+    // 最初の選べる行の上にある起動された行と見出しも窓に入れる
+    const head = [
+      ...Array.from({length: 4}, (_, i) => row(`w${i}`, {marker: 'sub'})),
+      ...Array.from({length: 10}, (_, i) => row(`s${i}`)),
+    ];
+    const top = plain({width: 60, height: 10, cursor: 's0', groups: [{title: 'app', rows: head}], keys: 'k'});
+    expect(top[1]).toMatch(/^── app/);
+    expect(top).toContain('1/10');
+  });
+  it('続く起動された行が窓に収まらないときも、選んだ行とメモの入力欄を見せる', () => {
+    const rows = [row('s0'), row('p'), ...Array.from({length: 12}, (_, i) => row(`w${i}`, {marker: 'sub'}))];
+    const lines = plain({
+      width: 60,
+      height: 10,
+      cursor: 'p',
+      inline: {sid: 'p', lines: ['Note for p: x█']},
+      groups: [{title: 'app', rows}],
+      keys: 'k',
+    });
+    expect(lines.some(l => l.startsWith('> p'))).toBe(true);
+    expect(lines.some(l => l.includes('Note for p: x'))).toBe(true);
+  });
+  it('区切りの頭の起動された行が窓に収まらないときも、選んだ行を見せる', () => {
+    const rows = [...Array.from({length: 12}, (_, i) => row(`w${i}`, {marker: 'sub'})), row('p'), row('q')];
+    const lines = plain({width: 60, height: 10, cursor: 'p', groups: [{title: 'app', rows}], keys: 'k'});
+    expect(lines.some(l => l.startsWith('> p'))).toBe(true);
+    expect(lines).toContain('1/2');
+  });
+  it('続く起動された行は区切りを越えて数えない', () => {
+    const a = [...Array.from({length: 6}, (_, i) => row(`a${i}`)), row('p')];
+    const b = [...Array.from({length: 8}, (_, i) => row(`w${i}`, {marker: 'sub'})), row('q')];
+    const lines = plain({
+      width: 60,
+      height: 10,
+      cursor: 'p',
+      groups: [
+        {title: 'a', rows: a},
+        {title: 'b', rows: b},
+      ],
+      keys: 'k',
+    });
+    // p を窓の中ほどに置く(b の起動された行の側へ寄せない)
+    const i = lines.findIndex(l => l.startsWith('> p'));
+    expect(i).toBeGreaterThan(1);
+    expect(i).toBeLessThan(7);
+    expect(lines.some(l => l.startsWith('  a5'))).toBe(true);
+  });
+  it('起動された行だけの区切りは、直前の区切りの最後の選べる行と一緒に見せる', () => {
+    const a = Array.from({length: 8}, (_, i) => row(`a${i}`));
+    const b = Array.from({length: 3}, (_, i) => row(`w${i}`, {marker: 'sub'}));
+    const c = Array.from({length: 8}, (_, i) => row(`c${i}`));
+    const groups = [
+      {title: 'a', rows: a},
+      {title: 'b', rows: b},
+      {title: 'c', rows: c},
+    ];
+    const lines = plain({width: 60, height: 12, cursor: 'a7', groups, keys: 'k'});
+    expect(lines.some(l => l.startsWith('> a7'))).toBe(true);
+    expect(lines.some(l => l.startsWith('  w2 (sub)'))).toBe(true);
+    // 先頭の区切りが起動された行だけなら、次の区切りの最初の選べる行と一緒に見せる
+    const head = plain({width: 60, height: 12, cursor: 'c0', groups: [groups[1], groups[2], groups[0]], keys: 'k'});
+    expect(head[1]).toMatch(/^── b/);
+    expect(head.some(l => l.startsWith('> c0'))).toBe(true);
+  });
+  it('頭と下の起動された行が全部は収まらないとき、下を優先して余りで頭も見せる', () => {
+    const rows = [
+      row('h0', {marker: 'sub'}),
+      row('p'),
+      ...Array.from({length: 5}, (_, i) => row(`w${i}`, {marker: 'sub'})),
+    ];
+    const lines = plain({
+      width: 60,
+      height: 10,
+      cursor: 'p',
+      groups: [
+        {title: 'app', rows},
+        {title: 'z', rows: [row('z0')]},
+      ],
+      keys: 'k',
+    });
+    expect(lines.some(l => l.startsWith('  h0 (sub)'))).toBe(true);
+    expect(lines.some(l => l.startsWith('  w4 (sub)'))).toBe(true);
+  });
+  it('選べる行がないときは通し番号を出さない', () => {
+    const rows = Array.from({length: 12}, (_, i) => row(`w${i}`, {marker: 'sub'}));
+    const lines = plain({width: 60, height: 8, cursor: undefined, groups: [{title: 'app', rows}], keys: 'k'});
+    expect(lines.some(l => /^\d+\/\d+$/.test(l))).toBe(false);
+    expect(lines.some(l => l.startsWith('  w0 (sub)'))).toBe(true);
+  });
   it('メモの入力欄は行と注記の直下に出て、↳ メモの行を置き換える(15)', () => {
     const s: Screen = {
       width: 60,

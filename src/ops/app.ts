@@ -11,7 +11,7 @@ import {focusWorkbench, splitWorkbench} from '../../lib/tmux/ghostty.js';
 import {GUIDE, LIST} from '../../lib/tmux/tmux.js';
 import type {Observation, ObsRow} from '../input/observe.js';
 import {locate} from '../input/where.js';
-import {followCursor, initialCursor} from '../model/cursor.js';
+import {followCursor, initialCursor, selectableOrder} from '../model/cursor.js';
 import {groupTitles, layout} from '../model/layout.js';
 import {canLink, cascade, waitCandidates} from '../model/relations.js';
 import type {Inputs, Layout, Row} from '../model/types.js';
@@ -85,7 +85,7 @@ export class App {
   private manualQueued = false;
   private refreshTimer?: NodeJS.Timeout;
   private armed?: {sid: string; until: number};
-  private guard?: {until: number; name: string};
+  private guard?: {until: number; name: string; why: string};
   private stopping = new Map<string, Promise<void>>();
   private deleting = new Set<string>();
   private pendingLinks: {waiter: string; id: string}[] = [];
@@ -259,13 +259,21 @@ export class App {
     // カーソル
     if (initial || this.cursor === undefined) {
       this.cursor = initialCursor(this.lay, this.persisted.seen);
-    } else if (!this.lay.order.includes(this.cursor)) {
+    } else if (!selectableOrder(this.lay).includes(this.cursor)) {
       const goneName = prevLayout.order.includes(this.cursor) ? this.nameOfPrev(this.cursor) : undefined;
+      // 行が残っていても、起動された行と分かったなら選べないので移る
+      const why = this.lay.order.includes(this.cursor)
+        ? 'turned out to be started by another session'
+        : 'left the list';
       const next = followCursor(prevLayout, this.cursor, this.lay);
-      if (next !== this.cursor && goneName) this.guard = {until: this.p.now() + GUARD_MS, name: goneName};
+      if (next !== this.cursor && goneName) this.guard = {until: this.p.now() + GUARD_MS, name: goneName, why};
       this.cursor = next;
       if (this.armed) this.armed = undefined;
     }
+    // メモの入力は、その行が起動された行と分かったら閉じる。起動された行にはメモを付けない。
+    // 一覧から外れただけ(対話セッションが idle になった)なら開いたまま残し、メモを付けられるようにする。
+    // 待ち先の入力は background の行でしか開かず、background の行は起動された行にならない
+    if (this.mode.k === 'note' && this.isSpawned(this.mode.sid)) this.mode = {k: 'list'};
     // 起動した直後のセッションから戻ったときは、その行が観測に現れた更新で選ぶ
     if (this.pendingCursorId) {
       const r = obs.rows.find(x => x.id === this.pendingCursorId && x.tier !== null);
@@ -780,7 +788,8 @@ export class App {
     }
     // --json を読めずエラーだけを出している間は、画面に出ていない行への操作を受け付けない
     if (this.error && str !== 'q' && str !== 'r' && str !== 'n') return;
-    const order = this.lay.order;
+    // 起動された行は飛ばす
+    const order = selectableOrder(this.lay);
     const i = this.cursor ? order.indexOf(this.cursor) : -1;
     if (name === 'up') {
       if (i > 0) this.moveCursor(order[i - 1]);
@@ -823,25 +832,22 @@ export class App {
     else if (str === 'v') void this.openVsCode(sid, {from: 'list'});
   }
 
+  private isSpawned(sid: string): boolean {
+    return this.spawner.has(sid);
+  }
+
   private moveCursor(sid: string): void {
     this.cursor = sid;
     this.guard = undefined;
     this.follow();
   }
 
-  private isSpawned(sid: string): boolean {
-    return this.spawner.has(sid);
-  }
-
   // ---- メモ ----
 
   private openNote(sid: string): void {
     const r = this.rows.get(sid);
-    if (!r) return;
-    if (this.isSpawned(sid)) {
-      this.notify(`${r.name} was started by another session. It can't have a note.`);
-      return;
-    }
+    // 起動された行にはメモを付けない。カーソルは乗らないが、作業台の案内からは届きうる
+    if (!r || this.isSpawned(sid)) return;
     this.mode = {k: 'note', sid, text: this.persisted.notes.get(sid) ?? ''};
   }
 
@@ -863,10 +869,6 @@ export class App {
   private openWait(sid: string): void {
     const r = this.rows.get(sid);
     if (!r) return;
-    if (this.isSpawned(sid)) {
-      this.notify(`${r.name} was started by another session. It can't wait for other sessions.`);
-      return;
-    }
     if (r.kind !== 'background') {
       this.notify(`${r.name} is an interactive session. It can't wait for other sessions.`);
       return;
@@ -1038,10 +1040,7 @@ export class App {
 
   private async enter(row: ObsRow): Promise<void> {
     if (row.kind !== 'background' || !row.id) {
-      this.notify(
-        `${row.name}${this.isSpawned(row.sid) ? ' (sub)' : ''} runs in ${clean(row.cwd)} (pid ${row.pid ?? '-'}).`,
-        8000,
-      );
+      this.notify(`${row.name} runs in ${clean(row.cwd)} (pid ${row.pid ?? '-'}).`, 8000);
       return;
     }
     await this.attach(row.id, row.cwd, row.sid);
@@ -1207,7 +1206,8 @@ export class App {
       this.mainSession = LIST;
       if (CLAUDE_SESSION.test(from)) this.onReturn(from);
     }
-    if (!sid) return;
+    // 作業台の案内は、起動された行と分かったばかりの行を指していることがある。カーソルは起動された行に置かない
+    if (!sid || this.isSpawned(sid)) return;
     this.cursor = sid;
     this.mode = {k: 'list'};
     if (action === 'note') this.openNote(sid);
@@ -1226,7 +1226,7 @@ export class App {
     if (this.deleting.has(sid)) return;
     const now = this.p.now();
     if (this.guard && now < this.guard.until) {
-      this.notify(`Ctrl+X ignored: ${this.guard.name} left the list and the selection moved.`);
+      this.notify(`Ctrl+X ignored: ${this.guard.name} ${this.guard.why} and the selection moved.`);
       return;
     }
     if (this.armed?.sid === sid && (now < this.armed.until || this.stopping.has(sid))) {
