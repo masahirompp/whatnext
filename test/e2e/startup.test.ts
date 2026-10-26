@@ -3,7 +3,7 @@ import {join} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
 import {bg, CLI, Harness, REPO, sleep} from './harness.js';
 
-// 起動時と全体、Usage、更新(PRODUCT.md「全体」「更新と待機時間」「Usage の表示」)。
+// 起動時と全体、Usage、更新(PRODUCT.md「全体」「更新」「Usage の表示」)。
 
 let h: Harness;
 afterEach(() => h?.cleanup());

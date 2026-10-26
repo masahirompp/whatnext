@@ -248,11 +248,11 @@ export class App {
       }
     }
     this.running = running;
-    // 作ってからの時間。会話記録の時刻、なければ初めて見た時刻から数える
+    // 作ってからの時間。会話記録の時刻と初めて見た時刻の早いほうから数える(会話記録は、初めて見たあとにできることがある)
     this.ageMs.clear();
     for (const r of obs.rows) {
       if (r.tier === null) continue;
-      const from = obs.created.get(r.sid) ?? this.persisted.seen.get(r.sid)?.first ?? obs.at;
+      const from = Math.min(obs.created.get(r.sid) ?? obs.at, this.persisted.seen.get(r.sid)?.first ?? obs.at);
       this.ageMs.set(r.sid, Math.max(0, obs.at - from));
     }
     this.relayout();

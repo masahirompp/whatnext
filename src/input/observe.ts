@@ -78,9 +78,11 @@ export class Observer {
       rows
         .filter(r => r.tier !== null)
         .map(async r => {
-          const tr = await this.transcripts.read(r.sid).catch(() => undefined);
+          const [tr, c] = await Promise.all([
+            this.transcripts.read(r.sid).catch(() => undefined),
+            this.transcripts.createdAt(r.sid),
+          ]);
           supplied.set(r.sid, supplement(this.hooks.get(r.sid), tr, this.hooks.ctxOf(r.sid)));
-          const c = await this.transcripts.createdAt(r.sid).catch(() => undefined);
           if (c !== undefined) created.set(r.sid, c);
         }),
     );

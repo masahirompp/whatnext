@@ -288,6 +288,8 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     const none = await transcriptDir([{type: 'mode', mode: 'default'}]);
     const tr2 = new Transcripts(none.dir);
     expect(await tr2.createdAt('sid-1')).toBeUndefined();
+    // 大きさが変わらなければ読み直さない
+    expect(await tr2.createdAt('sid-1')).toBeUndefined();
     await writeFile(none.file, `${JSON.stringify({type: 'user', timestamp: T(7), message: {content: 'x'}})}\n`);
     expect(await tr2.createdAt('sid-1')).toBe(Date.parse(T(7)));
   });

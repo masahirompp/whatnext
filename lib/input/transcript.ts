@@ -1,4 +1,4 @@
-// 入力: 会話記録(`<設定>/projects/*/<sessionId>.jsonl`)から一言、待機時間、作業したかを補う(ADR-0011)。
+// 入力: 会話記録(`<設定>/projects/*/<sessionId>.jsonl`)から一言を補い、セッションを作った時刻を取る(ADR-0011)。
 // 読むだけで書き込まない。読んだ値はメモリにだけ持つ。
 
 import {open, readdir, stat} from 'node:fs/promises';
@@ -159,7 +159,7 @@ export class Transcripts {
   private files = new Map<string, FileState>();
   private paths = new Map<string, string>();
   private firsts = new Map<string, {text?: string; size: number}>();
-  private created = new Map<string, number>();
+  private created = new Map<string, {at?: number; size: number}>();
 
   constructor(private readonly configDir: string) {}
 
@@ -266,14 +266,15 @@ export class Transcripts {
     }
   }
 
-  /** セッションを作った時刻(先頭から、`timestamp` を持つ最初の行)。先頭から最大 2MB を読む。一度見つけたら読み直さない。 */
+  /** セッションを作った時刻(先頭から、`timestamp` を持つ最初の行)。先頭から最大 2MB を読む。一度見つけたら読み直さず、見つからなければファイルが伸びるまで読み直さない。 */
   async createdAt(sid: string): Promise<number | undefined> {
     const known = this.created.get(sid);
-    if (known !== undefined) return known;
+    if (known?.at !== undefined) return known.at;
     try {
       const path = await this.locate(sid);
       if (!path) return undefined;
       const s = await stat(path);
+      if (known && known.size === s.size) return undefined;
       const text = await readRange(path, 0, Math.min(s.size, HEAD));
       for (const line of completeLines(text, 0).lines) {
         if (!line.includes('"timestamp"')) continue;
@@ -286,10 +287,11 @@ export class Transcripts {
         if (!o || typeof o !== 'object') continue;
         const at = ts(o);
         if (at !== undefined) {
-          this.created.set(sid, at);
+          this.created.set(sid, {at, size: s.size});
           return at;
         }
       }
+      this.created.set(sid, {size: s.size});
       return undefined;
     } catch {
       return undefined;

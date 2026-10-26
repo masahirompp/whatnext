@@ -10,10 +10,17 @@ let h: Harness;
 afterEach(() => h?.cleanup());
 
 describe('一覧と並び', () => {
-  it('78: AGE は会話記録の最初の時刻から数え、会話記録がなければ初めて見た時刻から数える。状態が変わっても数え直さない', async () => {
+  it('78: AGE は会話記録の最初の時刻と初めて見た時刻の早いほうから数える。段が変わっても attach しても数え直さない', async () => {
     h = new Harness();
-    h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta', state: 'working', status: 'busy'})]);
+    h.agents([
+      bg('a', {name: 'alpha'}),
+      bg('b', {name: 'beta', state: 'working', status: 'busy'}),
+      bg('c', {name: 'gamma'}),
+    ]);
     const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+    // gamma は3時間前に初めて見ていて、会話記録はそのあと(1時間前)にできた
+    h.writeState({version: 3, notes: {}, waits: {}, seen: {[sid('c')]: {first: Date.now() - 3 * 3600000}}});
+    h.transcript(sid('c'), [{type: 'user', message: {role: 'user', content: '始めて'}, timestamp: ago(60)}]);
     h.transcript(sid('a'), [
       {type: 'mode', mode: 'default'},
       {type: 'user', message: {role: 'user', content: '直して'}, timestamp: ago(2 * 24 * 60)},
@@ -26,8 +33,15 @@ describe('一覧と並び', () => {
     await h.start();
     expect(h.screen()).toMatch(/alpha +Review.* 2d$/m);
     expect(h.screen()).toMatch(/beta +Working.* <1m$/m);
+    expect(h.screen()).toMatch(/gamma +Review.* 3h$/m);
     h.update('alpha', {state: 'working', status: 'busy'});
     await h.refresh();
+    expect(h.screen()).toMatch(/alpha +Working.* 2d$/m);
+    await h.select('alpha');
+    await h.keys('Enter');
+    await h.waitFor(/fake claude attached/);
+    await h.keys('C-q', 'C-l');
+    await h.waitFor(/^> alpha/m);
     expect(h.screen()).toMatch(/alpha +Working.* 2d$/m);
   });
 
