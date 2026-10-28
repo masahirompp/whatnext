@@ -95,7 +95,7 @@ export interface ServerConfigInput {
 }
 
 /**
- * 作業台の画面のステータス行。作業台ではウィンドウの一覧のあとに、作業台の中を分ける tmux の既定のキーを続ける。
+ * 作業台の画面のステータス行。作業台ではウィンドウの一覧のあとに、分割とウィンドウの tmux の既定のキーを続ける。
  * prefix の `C-q` はこのモジュールが固定しているので、キーの文言もここに置く。案内のセッションにはキーを出さない。
  */
 export function workbenchStatusFormat(session: string): string {
@@ -105,7 +105,7 @@ export function workbenchStatusFormat(session: string): string {
   return `${head}  #{W:#{window_index}:#{window_name}#{?window_active,*,} } · ^Q%% split │ · ^Q" split ─ · ^Qc window`;
 }
 
-/** 作業台と案内のセッションに入れるオプション(名前を除く)。続けてコマンドをつなげるよう、末尾に `;` を置く。 */
+/** 作業台と案内のセッションに入れるオプション(名前を除く)。 */
 function workbenchOptionArgs(session: string): string[] {
   const t = `=${session}:`;
   return [
@@ -116,7 +116,7 @@ function workbenchOptionArgs(session: string): string[] {
     ...['set', '-t', t, 'status-style', 'default', ';'],
     ...['set', '-t', t, 'set-titles', 'on', ';'],
     ...['set', '-t', t, 'set-titles-string', 'whatnext workbench', ';'],
-    ...['set', '-t', t, 'status-format[0]', workbenchStatusFormat(session), ';'],
+    ...['set', '-t', t, 'status-format[0]', workbenchStatusFormat(session)],
   ];
 }
 
@@ -345,13 +345,17 @@ export class Tmux {
   }
 
   async workbenchOptions(session: string, name: string): Promise<void> {
-    await this.t([...workbenchOptionArgs(session), ...['set', '-t', `=${session}:`, '@wn_name', escapeFormat(name)]]);
+    await this.t([
+      ...workbenchOptionArgs(session),
+      ';',
+      ...['set', '-t', `=${session}:`, '@wn_name', escapeFormat(name)],
+    ]);
   }
 
   /** 前の tmux サーバから引き継いだ作業台に、今の版のオプションを入れ直す。名前(`@wn_name`)は前のものを使う。 */
   async refreshWorkbenches(sessions: readonly string[]): Promise<void> {
-    if (sessions.length === 0) return;
-    await this.t(sessions.flatMap(s => workbenchOptionArgs(s)).slice(0, -1));
+    // 1回の tmux にまとめると、途中のセッションが消えていたときに後ろが実行されないので、分けて送る
+    for (const s of sessions) await this.t(workbenchOptionArgs(s));
   }
 
   /** 信頼の確認を出すセッション(中で対話モードの `claude` が動く)。断って終わると一覧に戻す。 */
