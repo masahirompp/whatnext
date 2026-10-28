@@ -23,6 +23,8 @@ describe('作業台の画面', () => {
     await h.startWorkbench();
     await h.waitFor(/No workbench for alpha yet\.\nEnter: open a shell in .*app/, 5000, 'wb');
     expect(h.screen('wb')).toMatch(/workbench: alpha/);
+    // 案内のセッションには分割のキーを出さない
+    expect(h.screen('wb')).not.toMatch(/\^Q% split/);
     await h.select('beta');
     await h.waitFor(/No workbench for beta yet/, 5000, 'wb');
     await h.select('poke');
@@ -132,6 +134,9 @@ describe('作業台の画面', () => {
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
     await h.waitFor(/⌂ workbench \(shell\)/, 10000);
+    // 窓が2つでも、キーは窓の一覧のあとに続く
+    h.inner('new-window', '-t', '=sh-a0000000:');
+    await h.waitFor(/workbench: alpha {2}0:\S+ 1:\S+\* {2}· \^Q% split │/, 5000, 'wb');
   });
 
   it('30: 作業台で動いているものが一覧に ⚙ で出て、終わると次の更新で消える', async () => {
