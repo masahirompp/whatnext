@@ -105,7 +105,7 @@ export function workbenchStatusFormat(session: string): string {
   return `${head}  #{W:#{window_index}:#{window_name}#{?window_active,*,} } · ^Q%% split │ · ^Q" split ─ · ^Qc window`;
 }
 
-/** 作業台と案内のセッションに入れるオプション(名前を除く)。 */
+/** 作業台と案内のセッションに入れるオプション(名前を除く)。そのまま1回の tmux で送れるよう、末尾に `;` を付けない。 */
 function workbenchOptionArgs(session: string): string[] {
   const t = `=${session}:`;
   return [
