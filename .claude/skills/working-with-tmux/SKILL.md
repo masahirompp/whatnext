@@ -38,6 +38,7 @@ description: whatnext の作業台(専用の tmux サーバ、作業台の画面
 
 ## ステータス行
 - `status 2` にすると、`status-format[0]` が上の行、`[1]` が下の行になる(`status-position bottom` のとき)。`[1]` の既定はウィンドウの一覧なので、左右を出すなら `#[align=left]#{T;=/#{status-left-length}:status-left}#[align=right]...` を自分で書く。
+- `status-format` は strftime を通るので、`%` はそのままでは消える(`^Q% split` が `^Q split` になる)。`%%` と書く(tmux 3.7c)。
 - `#{@opt}` で出したオプションの値の中の `#[fg=red]` は色として効き、`##` は `#` になる。利用者由来の文字列(セッション名、依頼)は `#` を `##` にしてから置く。
 - `status-right` は `status-right-length` の上限で切れる(端末の幅より先に切れて、幅で切れているように見えた)。
 - 右寄せを `#{=/#{client_width}/…:status-right}` で切ると、先頭の1文字が欠けた。`#{e|-:#{client_width},1}` にすると欠けない。`#{=/N/…:var}` の N には入れ子の書式が使え、表示幅(全角は2桁)で切れる。

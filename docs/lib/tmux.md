@@ -28,7 +28,7 @@
 - 問い合わせ：`hasSession`、`sessions`、`clients`（`tty`、`session`、`termname`、`pid`）、`option`。
 - 設定：`setOption`、`unsetOption`、`sourceConfig(text)`（新しいサーバに初めて流し込むと、`table wnq doesn't exist` で 0 以外を返すが、キー、フック、オプションは入る。サイクル9で確かめた。#275）、`takeRequests()`（頼みごとを書かれた順に取り出して消す）。
 - クライアント：`switchClient(tty, target)`、`detachClient(tty)`、`display(tty, text, ms?)`（短い知らせ。`#` は書式にならないよう直す）。
-- セッション：`ensureClaudeSession(id, cwd, size)`（claude の画面。ステータス行2行。`claude attach` が 0 以外で終わったら、キーを待ってから一覧に戻す）、`setSummary(id, text)`、`createWorkbench(id, cwd, name)`（`sh-<id>`。prefix `ctrl+q`、マウス on、タイトル `whatnext workbench`、ステータス行1行）、`workbenchOptions(session, name)`、`setSessionName(session, name)`、`newTrustSession(dir)`、`killSession`、`killServer`、`signalGuide()`（案内のセッションのプログラムに読み直しを促す。送るシグナルは契約にないので、案内のプログラムは知らせだけに頼らず、自分でも読み直す。#275）。
+- セッション：`ensureClaudeSession(id, cwd, size)`（claude の画面。ステータス行2行。`claude attach` が 0 以外で終わったら、キーを待ってから一覧に戻す）、`setSummary(id, text)`、`createWorkbench(id, cwd, name)`（`sh-<id>`。prefix `ctrl+q`、マウス on、タイトル `whatnext workbench`、ステータス行1行。作業台では窓の一覧のあとに分割とウィンドウのキーを続ける）、`workbenchOptions(session, name)`、`setSessionName(session, name)`、`newTrustSession(dir)`、`killSession`、`killServer`、`signalGuide()`（案内のセッションのプログラムに読み直しを促す。送るシグナルは契約にないので、案内のプログラムは知らせだけに頼らず、自分でも読み直す。#275）。
 - `running()`：作業台ごとに、シェル以外で動いているもののコマンド行（パイプは ` | ` でつなぐ）。戻りは `Map<string, string[]>` で、キーは作業台のセッションの `<id>`（`sh-` を付けない）である（サイクル9で使って確かめた。#275）。`parsePs(text)` と `foregroundCommand(procs, shellPid)` はその判定。作業台のペインの直接の子だけを見る。
 
 ## 文字列の補助

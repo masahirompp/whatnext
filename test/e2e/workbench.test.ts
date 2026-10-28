@@ -114,7 +114,7 @@ describe('作業台の画面', () => {
     // 作業台がないとき、claude の画面のステータス行の左は空
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
-    await h.waitFor(/workbench: alpha {2}0:\S+\*/, 5000, 'wb');
+    await h.waitFor(/workbench: alpha {2}0:\S+\* {2}· \^Q% split │ · \^Q" split ─ · \^Qc window/, 5000, 'wb');
     await h.type('sleep 1003', 'wb');
     await h.keysTo('wb', 'Enter');
     await h.waitFor(/⚙ sleep 1003/, 10000);

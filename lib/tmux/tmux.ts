@@ -336,7 +336,8 @@ export class Tmux {
         'status-format[0]',
         session === GUIDE
           ? '#[align=left,fg=colour8]workbench: #{@wn_name}'
-          : '#[align=left,fg=colour8]workbench: #{@wn_name}  #{W:#{window_index}:#{window_name}#{?window_active,*,} }',
+          : // status-format は strftime を通るので、% は %% と書く
+            '#[align=left,fg=colour8]workbench: #{@wn_name}  #{W:#{window_index}:#{window_name}#{?window_active,*,} } · ^Q%% split │ · ^Q" split ─ · ^Qc window',
       ],
     ]);
   }
