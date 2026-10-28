@@ -24,7 +24,7 @@ describe('作業台の画面', () => {
     await h.waitFor(/No workbench for alpha yet\.\nEnter: open a shell in .*app/, 5000, 'wb');
     expect(h.screen('wb')).toMatch(/workbench: alpha/);
     // 案内のセッションには分割のキーを出さない
-    expect(h.screen('wb')).not.toMatch(/\^Q% split/);
+    expect(h.screen('wb')).not.toMatch(/split|window/);
     await h.select('beta');
     await h.waitFor(/No workbench for beta yet/, 5000, 'wb');
     await h.select('poke');
@@ -134,9 +134,12 @@ describe('作業台の画面', () => {
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
     await h.waitFor(/⌂ workbench \(shell\)/, 10000);
-    // 窓が2つでも、キーは窓の一覧のあとに続く
-    h.inner('new-window', '-t', '=sh-a0000000:');
+    // 案内した ^Qc と ^Q" が効き、ウィンドウが2つでもキーはウィンドウの一覧のあとに続く
+    await h.keysTo('wb', 'C-q', 'c');
     await h.waitFor(/workbench: alpha {2}0:\S+ 1:\S+\* {2}· \^Q% split │/, 5000, 'wb');
+    await h.keysTo('wb', 'C-q', '"');
+    await sleep(500);
+    expect(h.inner('list-panes', '-t', '=sh-a0000000:1', '-F', '#{pane_id}').trim().split('\n').length).toBe(2);
   });
 
   it('30: 作業台で動いているものが一覧に ⚙ で出て、終わると次の更新で消える', async () => {

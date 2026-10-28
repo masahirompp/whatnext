@@ -95,6 +95,17 @@ export interface ServerConfigInput {
 }
 
 /** 一覧が `source-file -` で流し込む設定。 */
+/**
+ * 作業台の画面のステータス行。作業台ではウィンドウの一覧のあとに、作業台の中を分ける tmux の既定のキーを続ける。
+ * prefix の `C-q` はこのモジュールが固定しているので、キーの文言もここに置く。案内のセッションにはキーを出さない。
+ */
+export function workbenchStatusFormat(session: string): string {
+  const head = '#[align=left,fg=colour8]workbench: #{@wn_name}';
+  if (session === GUIDE) return head;
+  // status-format は strftime を通るので、% は %% と書く
+  return `${head}  #{W:#{window_index}:#{window_name}#{?window_active,*,} } · ^Q%% split │ · ^Q" split ─ · ^Qc window`;
+}
+
 export function serverConfig(c: ServerConfigInput): string {
   const S = c.socket;
   const req = (args: string) => callScript(S, '@wn_req_sh', args);
@@ -334,10 +345,7 @@ export class Tmux {
         '-t',
         t,
         'status-format[0]',
-        session === GUIDE
-          ? '#[align=left,fg=colour8]workbench: #{@wn_name}'
-          : // status-format は strftime を通るので、% は %% と書く
-            '#[align=left,fg=colour8]workbench: #{@wn_name}  #{W:#{window_index}:#{window_name}#{?window_active,*,} } · ^Q%% split │ · ^Q" split ─ · ^Qc window',
+        workbenchStatusFormat(session),
       ],
     ]);
   }

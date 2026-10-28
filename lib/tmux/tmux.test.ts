@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {foregroundCommand, parsePs, serverConfig} from './tmux.js';
+import {foregroundCommand, GUIDE, parsePs, serverConfig, workbenchStatusFormat} from './tmux.js';
 
 describe('作業台で動いているもの (シナリオ 30)', () => {
   const ps = [
@@ -47,5 +47,17 @@ describe('専用サーバの設定', () => {
     expect(conf).toContain("set -g @wn_keys '^Q^L back · ^Q^V VS Code'");
     expect(conf).toContain('set -g @wn_pid 42');
     expect(conf).toContain("set-environment -g WHATNEXT_ROLE 'list'");
+  });
+});
+
+describe('作業台のステータス行 (シナリオ 49)', () => {
+  it('作業台ではウィンドウの一覧のあとに分割とウィンドウのキーを続け、% は %% と書く', () => {
+    expect(workbenchStatusFormat('sh-a0000000')).toMatch(
+      /workbench: #\{@wn_name\} {2}#\{W:.*\} · \^Q%% split │ · \^Q" split ─ · \^Qc window$/,
+    );
+  });
+
+  it('案内のセッションにはセッション名だけを出す', () => {
+    expect(workbenchStatusFormat(GUIDE)).toBe('#[align=left,fg=colour8]workbench: #{@wn_name}');
   });
 });
