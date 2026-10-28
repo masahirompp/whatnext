@@ -138,8 +138,10 @@ describe('作業台の画面', () => {
     await h.keysTo('wb', 'C-q', 'c');
     await h.waitFor(/workbench: alpha {2}0:\S+ 1:\S+\* {2}· \^Q% split │/, 5000, 'wb');
     await h.keysTo('wb', 'C-q', '"');
-    await sleep(500);
-    expect(h.inner('list-panes', '-t', '=sh-a0000000:1', '-F', '#{pane_id}').trim().split('\n').length).toBe(2);
+    // 上下に分かれるので、2つのペインの上端が違う
+    const tops = () =>
+      new Set(h.inner('list-panes', '-t', '=sh-a0000000:1', '-F', '#{pane_top}').trim().split('\n')).size;
+    await h.waitFor(() => tops() === 2, 5000);
   });
 
   it('30: 作業台で動いているものが一覧に ⚙ で出て、終わると次の更新で消える', async () => {
@@ -303,6 +305,8 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.select('beta');
     await h.keys('w');
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1007', 'Enter');
+    // 前の版で作った作業台のステータス行に見立てる
+    h.inner('set', '-t', '=sh-a0000000:', 'status-format[0]', 'old');
     await sleep(500);
     const pid = Number(h.inner('show', '-gv', '@wn_pid').trim());
     process.kill(pid, 'SIGKILL');
@@ -314,6 +318,7 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.keys('Enter');
     await h.waitFor(/SESSION/);
     expect(h.inner('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_current_command}').trim()).toBe('sleep');
+    expect(h.inner('show', '-v', '-t', '=sh-a0000000:', 'status-format[0]')).toMatch(/\^Q%% split/);
     // n なら止める
     process.kill(Number(h.inner('show', '-gv', '@wn_pid').trim()), 'SIGKILL');
     await h.waitFor(/\[exit 0\]/);
