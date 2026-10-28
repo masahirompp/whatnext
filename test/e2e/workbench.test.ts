@@ -23,6 +23,8 @@ describe('作業台の画面', () => {
     await h.startWorkbench();
     await h.waitFor(/No workbench for alpha yet\.\nEnter: open a shell in .*app/, 5000, 'wb');
     expect(h.screen('wb')).toMatch(/workbench: alpha/);
+    // 案内のセッションには分割とウィンドウのキーを出さず、セッション名だけを出す
+    expect(h.lines('wb').at(-1)?.trimEnd()).toMatch(/workbench: alpha$/);
     await h.select('beta');
     await h.waitFor(/No workbench for beta yet/, 5000, 'wb');
     await h.select('poke');
@@ -114,7 +116,7 @@ describe('作業台の画面', () => {
     // 作業台がないとき、claude の画面のステータス行の左は空
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
-    await h.waitFor(/workbench: alpha {2}0:\S+\*/, 5000, 'wb');
+    await h.waitFor(/workbench: alpha {2}0:\S+\* {2}· \^Q% split │ · \^Q" split ─ · \^Qc window/, 5000, 'wb');
     await h.type('sleep 1003', 'wb');
     await h.keysTo('wb', 'Enter');
     await h.waitFor(/⚙ sleep 1003/, 10000);
@@ -132,6 +134,14 @@ describe('作業台の画面', () => {
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
     await h.waitFor(/⌂ workbench \(shell\)/, 10000);
+    // 案内した ^Qc と ^Q" が効き、ウィンドウが2つでもキーはウィンドウの一覧のあとに続く
+    await h.keysTo('wb', 'C-q', 'c');
+    await h.waitFor(/workbench: alpha {2}0:\S+ 1:\S+\* {2}· \^Q% split │/, 5000, 'wb');
+    await h.keysTo('wb', 'C-q', '"');
+    // 上下に分かれるので、2つのペインの上端が違う
+    const tops = () =>
+      new Set(h.inner('list-panes', '-t', '=sh-a0000000:1', '-F', '#{pane_top}').trim().split('\n')).size;
+    await h.waitFor(() => tops() === 2, 5000);
   });
 
   it('30: 作業台で動いているものが一覧に ⚙ で出て、終わると次の更新で消える', async () => {
@@ -295,6 +305,8 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.select('beta');
     await h.keys('w');
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1007', 'Enter');
+    // 前の版で作った作業台のステータス行に見立てる
+    h.inner('set', '-t', '=sh-a0000000:', 'status-format[0]', 'old');
     await sleep(500);
     const pid = Number(h.inner('show', '-gv', '@wn_pid').trim());
     process.kill(pid, 'SIGKILL');
@@ -306,6 +318,7 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.keys('Enter');
     await h.waitFor(/SESSION/);
     expect(h.inner('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_current_command}').trim()).toBe('sleep');
+    expect(h.inner('show', '-v', '-t', '=sh-a0000000:', 'status-format[0]')).toMatch(/\^Q%% split/);
     // n なら止める
     process.kill(Number(h.inner('show', '-gv', '@wn_pid').trim()), 'SIGKILL');
     await h.waitFor(/\[exit 0\]/);

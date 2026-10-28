@@ -94,6 +94,32 @@ export interface ServerConfigInput {
   keysHelp: string;
 }
 
+/**
+ * 作業台の画面のステータス行。作業台ではウィンドウの一覧のあとに、分割とウィンドウの tmux の既定のキーを続ける。
+ * prefix の `C-q` はこのモジュールが固定しているので、キーの文言もここに置く。案内のセッションにはキーを出さない。
+ */
+export function workbenchStatusFormat(session: string): string {
+  const head = '#[align=left,fg=colour8]workbench: #{@wn_name}';
+  if (session === GUIDE) return head;
+  // status-format は strftime を通るので、% は %% と書く
+  return `${head}  #{W:#{window_index}:#{window_name}#{?window_active,*,} } · ^Q%% split │ · ^Q" split ─ · ^Qc window`;
+}
+
+/** 作業台と案内のセッションに入れるオプション(名前を除く)。そのまま1回の tmux で送れるよう、末尾に `;` を付けない。 */
+function workbenchOptionArgs(session: string): string[] {
+  const t = `=${session}:`;
+  return [
+    ...['set', '-t', t, 'prefix', 'C-q', ';'],
+    ...['set', '-t', t, 'mouse', 'on', ';'],
+    ...['set', '-t', t, 'status', 'on', ';'],
+    ...['set', '-t', t, 'status-interval', '3', ';'],
+    ...['set', '-t', t, 'status-style', 'default', ';'],
+    ...['set', '-t', t, 'set-titles', 'on', ';'],
+    ...['set', '-t', t, 'set-titles-string', 'whatnext workbench', ';'],
+    ...['set', '-t', t, 'status-format[0]', workbenchStatusFormat(session)],
+  ];
+}
+
 /** 一覧が `source-file -` で流し込む設定。 */
 export function serverConfig(c: ServerConfigInput): string {
   const S = c.socket;
@@ -319,26 +345,17 @@ export class Tmux {
   }
 
   async workbenchOptions(session: string, name: string): Promise<void> {
-    const t = `=${session}:`;
     await this.t([
-      ...['set', '-t', t, 'prefix', 'C-q', ';'],
-      ...['set', '-t', t, 'mouse', 'on', ';'],
-      ...['set', '-t', t, 'status', 'on', ';'],
-      ...['set', '-t', t, 'status-interval', '3', ';'],
-      ...['set', '-t', t, 'status-style', 'default', ';'],
-      ...['set', '-t', t, 'set-titles', 'on', ';'],
-      ...['set', '-t', t, 'set-titles-string', 'whatnext workbench', ';'],
-      ...['set', '-t', t, '@wn_name', escapeFormat(name), ';'],
-      ...[
-        'set',
-        '-t',
-        t,
-        'status-format[0]',
-        session === GUIDE
-          ? '#[align=left,fg=colour8]workbench: #{@wn_name}'
-          : '#[align=left,fg=colour8]workbench: #{@wn_name}  #{W:#{window_index}:#{window_name}#{?window_active,*,} }',
-      ],
+      ...workbenchOptionArgs(session),
+      ';',
+      ...['set', '-t', `=${session}:`, '@wn_name', escapeFormat(name)],
     ]);
+  }
+
+  /** 前の tmux サーバから引き継いだ作業台に、今の版のオプションを入れ直す。名前(`@wn_name`)は前のものを使う。 */
+  async refreshWorkbenches(sessions: readonly string[]): Promise<void> {
+    // 1回の tmux にまとめると、途中のセッションが消えていたときに後ろが実行されないので、分けて送る
+    for (const s of sessions) await this.t(workbenchOptionArgs(s));
   }
 
   /** 信頼の確認を出すセッション(中で対話モードの `claude` が動く)。断って終わると一覧に戻す。 */

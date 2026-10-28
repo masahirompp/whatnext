@@ -144,7 +144,12 @@ export class App {
       `${n} ${n === 1 ? 'command is' : 'commands are'} still running from a previous whatnext: ${list.join(', ')}. Keep them? [Y/n]`,
       true,
     );
-    if (!yes) for (const s of keep) await this.killSafely(s);
+    if (yes) {
+      // 前の版で作った作業台にも、今の版のオプションを入れる
+      await this.p.tmux.refreshWorkbenches(keep);
+    } else {
+      for (const s of keep) await this.killSafely(s);
+    }
   }
 
   /** セッションを畳む。クライアントが映していれば、先に別のセッションへ切り替える(`detach-on-destroy on` なので、先に畳むとクライアントごと離れる)。 */
