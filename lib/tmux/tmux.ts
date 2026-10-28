@@ -105,6 +105,21 @@ export function workbenchStatusFormat(session: string): string {
   return `${head}  #{W:#{window_index}:#{window_name}#{?window_active,*,} } · ^Q%% split │ · ^Q" split ─ · ^Qc window`;
 }
 
+/** 作業台と案内のセッションに入れるオプション(名前を除く)。続けてコマンドをつなげるよう、末尾に `;` を置く。 */
+function workbenchOptionArgs(session: string): string[] {
+  const t = `=${session}:`;
+  return [
+    ...['set', '-t', t, 'prefix', 'C-q', ';'],
+    ...['set', '-t', t, 'mouse', 'on', ';'],
+    ...['set', '-t', t, 'status', 'on', ';'],
+    ...['set', '-t', t, 'status-interval', '3', ';'],
+    ...['set', '-t', t, 'status-style', 'default', ';'],
+    ...['set', '-t', t, 'set-titles', 'on', ';'],
+    ...['set', '-t', t, 'set-titles-string', 'whatnext workbench', ';'],
+    ...['set', '-t', t, 'status-format[0]', workbenchStatusFormat(session), ';'],
+  ];
+}
+
 /** 一覧が `source-file -` で流し込む設定。 */
 export function serverConfig(c: ServerConfigInput): string {
   const S = c.socket;
@@ -330,18 +345,13 @@ export class Tmux {
   }
 
   async workbenchOptions(session: string, name: string): Promise<void> {
-    const t = `=${session}:`;
-    await this.t([
-      ...['set', '-t', t, 'prefix', 'C-q', ';'],
-      ...['set', '-t', t, 'mouse', 'on', ';'],
-      ...['set', '-t', t, 'status', 'on', ';'],
-      ...['set', '-t', t, 'status-interval', '3', ';'],
-      ...['set', '-t', t, 'status-style', 'default', ';'],
-      ...['set', '-t', t, 'set-titles', 'on', ';'],
-      ...['set', '-t', t, 'set-titles-string', 'whatnext workbench', ';'],
-      ...['set', '-t', t, '@wn_name', escapeFormat(name), ';'],
-      ...['set', '-t', t, 'status-format[0]', workbenchStatusFormat(session)],
-    ]);
+    await this.t([...workbenchOptionArgs(session), ...['set', '-t', `=${session}:`, '@wn_name', escapeFormat(name)]]);
+  }
+
+  /** 前の tmux サーバから引き継いだ作業台に、今の版のオプションを入れ直す。名前(`@wn_name`)は前のものを使う。 */
+  async refreshWorkbenches(sessions: readonly string[]): Promise<void> {
+    if (sessions.length === 0) return;
+    await this.t(sessions.flatMap(s => workbenchOptionArgs(s)).slice(0, -1));
   }
 
   /** 信頼の確認を出すセッション(中で対話モードの `claude` が動く)。断って終わると一覧に戻す。 */

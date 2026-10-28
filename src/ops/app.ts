@@ -8,7 +8,7 @@ import {firstLine, leadLine} from '../../lib/input/text.js';
 import {color} from '../../lib/text/text.js';
 import {statusLabel, type Tier} from '../../lib/tier/classify.js';
 import {focusWorkbench, splitWorkbench} from '../../lib/tmux/ghostty.js';
-import {GUIDE, LIST, workbenchStatusFormat} from '../../lib/tmux/tmux.js';
+import {GUIDE, LIST} from '../../lib/tmux/tmux.js';
 import type {Observation, ObsRow} from '../input/observe.js';
 import {locate} from '../input/where.js';
 import {followCursor, initialCursor, selectableOrder} from '../model/cursor.js';
@@ -144,10 +144,12 @@ export class App {
       `${n} ${n === 1 ? 'command is' : 'commands are'} still running from a previous whatnext: ${list.join(', ')}. Keep them? [Y/n]`,
       true,
     );
-    if (!yes) for (const s of keep) await this.killSafely(s);
-    // 前の版で作った作業台にも、今の版のステータス行を入れる
-    else
-      for (const s of keep) await this.p.tmux.t(['set', '-t', `=${s}:`, 'status-format[0]', workbenchStatusFormat(s)]);
+    if (yes) {
+      // 前の版で作った作業台にも、今の版のオプションを入れる
+      await this.p.tmux.refreshWorkbenches(keep);
+    } else {
+      for (const s of keep) await this.killSafely(s);
+    }
   }
 
   /** セッションを畳む。クライアントが映していれば、先に別のセッションへ切り替える(`detach-on-destroy on` なので、先に畳むとクライアントごと離れる)。 */

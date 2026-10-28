@@ -24,7 +24,7 @@ describe('作業台の画面', () => {
     await h.waitFor(/No workbench for alpha yet\.\nEnter: open a shell in .*app/, 5000, 'wb');
     expect(h.screen('wb')).toMatch(/workbench: alpha/);
     // 案内のセッションには分割のキーを出さない
-    expect(h.screen('wb')).not.toMatch(/split|window/);
+    expect(h.lines('wb').at(-1)).not.toMatch(/\^Q/);
     await h.select('beta');
     await h.waitFor(/No workbench for beta yet/, 5000, 'wb');
     await h.select('poke');
