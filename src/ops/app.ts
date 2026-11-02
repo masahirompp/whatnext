@@ -21,7 +21,7 @@ import type {Screen, ScreenRow} from '../screen/types.js';
 import {emptyState, type PersistedState} from '../state/state.js';
 import {filterItems} from './filter.js';
 import {ATTACH_KEYS, type AttachAction, GUIDE_CREATE, isAttachAction, LIST_KEYS_HELP} from './keys.js';
-import {GUIDE_OPTION, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
+import {GUIDE_OPTION, GUIDE_REFRESH, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
 import type {Ports} from './ports.js';
 
 // 一覧の状態の遷移と、外部に頼む作業(PRODUCT.md「操作」「作業台」「依存（待ち先と起動された行）」)。
@@ -1153,6 +1153,12 @@ export class App {
   private async request(line: string): Promise<void> {
     this.p.log(`request ${line}`);
     const parts = line.trim().split(/\s+/);
+    if (parts[0] === GUIDE_REFRESH) {
+      // 作り直した案内のセッションには名前がない。同じ中身でも書き直させる
+      this.lastGuide = undefined;
+      this.follow();
+      return;
+    }
     if (parts[0] === 'agentview') {
       // 空のプロンプトの ← で Agent View に入った。claude attach を畳んで一覧に戻す
       const session = parts[1];
@@ -1434,6 +1440,8 @@ export class App {
         : await splitWorkbench(this.p.run, this.p.workbenchCommand, {
             WHATNEXT_TMUX_SOCKET: this.p.socket,
             WHATNEXT_PORT: String(this.p.port),
+            // 失敗したときにキーを待たせる(`exec` で動くので、終わると分割ごと閉じる)
+            WHATNEXT_WORKBENCH_SPLIT: '1',
           });
       this.p.log(`ghostty ${res}`);
       if (res === 'focused' || res === 'split') {

@@ -1,5 +1,6 @@
+import {execFileSync} from 'node:child_process';
 import {describe, expect, it} from 'vitest';
-import {foregroundCommand, GUIDE, parsePs, serverConfig, workbenchStatusFormat} from './tmux.js';
+import {foregroundCommand, GUIDE, parsePs, scripts, serverConfig, workbenchStatusFormat} from './tmux.js';
 
 describe('作業台で動いているもの (シナリオ 30)', () => {
   const ps = [
@@ -59,5 +60,23 @@ describe('作業台のステータス行 (シナリオ 49)', () => {
 
   it('案内のセッションにはセッション名だけを出す', () => {
     expect(workbenchStatusFormat(GUIDE)).toBe('#[align=left,fg=colour8]workbench: #{@wn_name}');
+  });
+});
+
+describe('ペインが終わったときの処理', () => {
+  const body = scripts('wn')['@wn_paned_sh'] ?? '';
+
+  it('sh の文法として正しい', () => {
+    for (const [name, b] of Object.entries(scripts('wn'))) {
+      expect(() => execFileSync('sh', ['-n', '-c', b]), name).not.toThrow();
+    }
+  });
+
+  it('案内のセッションは畳まずに起動し直し、5回を超えたら畳む', () => {
+    const guide = body.slice(body.indexOf(`${GUIDE})`), body.lastIndexOf('*)'));
+    expect(guide).toContain('respawn-pane -t "$p"');
+    expect(guide).toContain('-lt 5');
+    expect(guide).toContain('kill-pane -t "$p"');
+    expect(guide).toContain('@wn_guide_died');
   });
 });

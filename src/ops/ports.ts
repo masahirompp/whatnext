@@ -28,7 +28,7 @@ export interface Ports {
   socket: string;
   port: number;
   version: string;
-  /** `whatnext workbench` を動かすコマンド(Ghostty の分割に打ち込む)。 */
+  /** `whatnext workbench` を動かすコマンド(Ghostty の分割に打ち込む)。`exec` は付けない(`splitWorkbench` が付ける)。 */
   workbenchCommand: string;
   /** whatnext を起動したディレクトリ。 */
   launchDir: string;

@@ -226,6 +226,34 @@ describe('作業台の画面', () => {
     expect(h.sessions()).not.toContain('sh-a0000000');
     await h.waitFor(/No workbench for beta/, 5000, 'wb');
   });
+
+  it('案内のセッションが消えていても、whatnext workbench は作り直して開き、名前も出る', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    h.inner('kill-session', '-t', '=wbguide');
+    expect(h.sessions()).not.toContain('wbguide');
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    await h.waitFor(/workbench: alpha/, 5000, 'wb');
+    expect(wbClient()?.session).toBe('wbguide');
+  });
+
+  it('案内のプログラムが終わっても、案内のセッションは残り、起動し直す', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    const pid = () => Number(h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim());
+    const before = pid();
+    process.kill(before, 'SIGKILL');
+    await h.waitFor(() => pid() > 0 && pid() !== before, 8000);
+    expect(h.sessions()).toContain('wbguide');
+    expect(wbClient()?.session).toBe('wbguide');
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    expect(h.inner('show', '-gv', '@wn_guide_died')).toMatch(/signal=kill/);
+  });
 });
 
 describe('終了と、端末のウィンドウを閉じたとき', () => {

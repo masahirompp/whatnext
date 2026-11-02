@@ -7,13 +7,14 @@ import {run} from '../../lib/input/exec.js';
 import {HookStore} from '../../lib/input/hooks.js';
 import {launchSettings, openReceiver, probe} from '../../lib/input/receiver.js';
 import {Transcripts} from '../../lib/input/transcript.js';
-import {GUIDE, LIST, serverConfig, shq, Tmux} from '../../lib/tmux/tmux.js';
+import {GUIDE, LIST, serverConfig, Tmux} from '../../lib/tmux/tmux.js';
 import {Observer} from '../input/observe.js';
 import {Locations, Prs} from '../input/where.js';
 import {App} from '../ops/app.js';
 import {ATTACH_KEYS, ATTACH_KEYS_HELP} from '../ops/keys.js';
 import {StateFile, statePath} from '../state/state.js';
-import {type Env, paneCommand, tmuxEnv} from './env.js';
+import {type Env, tmuxEnv, workbenchCommand} from './env.js';
+import {ensureGuide} from './guide.js';
 
 // 一覧の役(専用の tmux サーバのセッション `list` の中で動く)。本物の口を差し込んで App を動かす。
 
@@ -62,9 +63,7 @@ export async function startList(env: Env): Promise<number> {
   );
   if (r.code !== 0) log(`sourceConfig failed: ${r.stderr}`);
   await tmux.t(['set', '-w', '-t', `=${LIST}:`, 'remain-on-exit', 'off']);
-  if (!(await tmux.hasSession(GUIDE))) {
-    await tmux.t(['new-session', '-d', '-s', GUIDE, '-c', homedir(), paneCommand(env, 'guide')]);
-  }
+  await ensureGuide(tmux, env);
   await tmux.workbenchOptions(GUIDE, '');
 
   const transcripts = new Transcripts(configDir);
@@ -85,7 +84,7 @@ export async function startList(env: Env): Promise<number> {
     socket: env.socket,
     port: env.port,
     version: env.version,
-    workbenchCommand: `exec ${shq(env.node)} ${shq(env.cli)} workbench`,
+    workbenchCommand: workbenchCommand(env),
     launchDir: process.cwd(),
     claudeJson,
     home: homedir(),
