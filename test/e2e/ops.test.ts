@@ -100,6 +100,18 @@ describe('新しいセッションの起動', () => {
     expect(h.calls().find(c => c.args[0] === '--bg')?.args).not.toContain('--model');
   });
 
+  it('8: 一覧の n では、候補の先頭がカーソルのあるセッションのリポジトリ', async () => {
+    h = new Harness();
+    const app = h.repo('app');
+    const lib = h.repo('lib');
+    h.agents([bg('a', {cwd: app, name: 'alpha'}), bg('l', {cwd: lib, name: 'libby'})]);
+    await h.start({cwd: app});
+    await h.select('libby');
+    await h.keys('n');
+    const s = await h.waitFor(/New session in:/);
+    expect(panel(s, /New session in:/).slice(1, 3)).toEqual(['> lib', '  app']);
+  });
+
   it('8: 起動の出力から id を読めないときは、出力を残してキーを待つ', async () => {
     h = new Harness();
     h.conf({bgNoId: true});

@@ -849,7 +849,7 @@ export class App {
       return;
     }
     if (str === 'n') {
-      this.openNew();
+      this.openNew(undefined, sid);
       return;
     }
     if (!row || !sid) return;
