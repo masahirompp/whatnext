@@ -313,6 +313,13 @@ describe('作業台の画面', () => {
     expect(pane('#{pane_dead}')).toBe('1');
     expect(h.sessions()).toContain('wbguide');
     expect(wbClient()?.session).toBe('wbguide');
+    // whatnext を起動し直すと、案内は出直し、数え直す
+    process.kill(Number(h.inner('show', '-gv', '@wn_pid').trim()), 'SIGKILL');
+    await h.waitFor(/\[exit 0\]/);
+    await h.start();
+    await h.waitFor(() => pane('#{pane_dead}') === '0', 5000);
+    expect(pane('#{@wn_respawned}')).toBe('');
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
   });
 
   it('whatnext workbench がつなげなかったときは、tmux のエラーと理由を消さずに残し、1 で終わる', async () => {

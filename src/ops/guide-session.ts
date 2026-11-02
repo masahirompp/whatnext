@@ -28,16 +28,18 @@ export async function hasGuide(tmux: Tmux): Promise<boolean> {
 }
 
 /**
- * 案内のセッションに新しいウィンドウを足して案内を動かし、映すウィンドウをそこへ移す。印は同じ1回の tmux で付ける
- * (分けると、すぐ終わる案内が印の付く前に `pane-died` で閉じられる)。そのあと、死んだまま残った印のないペインを片付ける。
+ * 案内のプログラムを動かす tmux のコマンド(`new-session` か `new-window`)に、印を付ける `set -p` を続ける。
+ * 印は同じ1回の tmux で付ける(分けると、すぐ終わる案内が印の付く前に `pane-died` で閉じられる)。
  */
-async function addGuideWindow(tmux: Tmux, command: string, cwd: string, deadOthers: string[]): Promise<boolean> {
-  const r = await tmux.t([
-    ...['new-window', '-t', `=${GUIDE}:`, '-c', cwd, command, ';'],
-    ...['set', '-p', '-t', `=${GUIDE}:`, GUIDE_PANE, '1'],
-  ]);
+const withGuideMark = (create: string[]): string[] => [
+  ...create,
+  ';',
+  ...['set', '-p', '-t', `=${GUIDE}:`, GUIDE_PANE, '1'],
+];
+
+/** 案内のプログラムのペインがあるときに、死んだまま残った印のないペイン(利用者が分割したもの)を片付ける。 */
+async function clearDeadOthers(tmux: Tmux, deadOthers: string[]): Promise<void> {
   for (const id of deadOthers) await tmux.t(['kill-pane', '-t', id]);
-  return r.code === 0;
 }
 
 /**
@@ -45,19 +47,23 @@ async function addGuideWindow(tmux: Tmux, command: string, cwd: string, deadOthe
  * - セッションがなければ作り、作業台の画面のオプションを入れる。一覧がないとき(終わったあと)は作らない
  *   (`new-session` は、サーバがなければ設定のないサーバを立ち上げてしまう)
  * - セッションはあるが印のあるペインがなければ、新しいウィンドウで案内を動かす
- * 起動し直しをやめて死んだまま残した案内のペインは、あるものとして扱う。名前(`@wn_name`)は一覧が入れる。
+ * 起動し直しをやめて死んだまま残した案内のペインは、あるものとして扱う。死んだまま残った印のないペインは片付ける。
+ * 名前(`@wn_name`)は一覧が入れる。
  */
 export async function ensureGuide(tmux: Tmux, command: string, cwd: string): Promise<'exists' | 'created' | 'failed'> {
   const panes = await guidePanes(tmux);
   if (panes.session) {
-    if (panes.guide) return 'exists';
-    return (await addGuideWindow(tmux, command, cwd, panes.deadOthers)) ? 'created' : 'failed';
+    if (!panes.guide) {
+      // 新しいウィンドウで案内を動かし、映すウィンドウをそこへ移す。利用者のペインは止めない
+      const w = await tmux.t(withGuideMark(['new-window', '-t', `=${GUIDE}:`, '-c', cwd, command]));
+      // 作れなかったときは片付けない(最後のペインを閉じると、案内のセッションが消える)
+      if (w.code !== 0) return 'failed';
+    }
+    await clearDeadOthers(tmux, panes.deadOthers);
+    return panes.guide ? 'exists' : 'created';
   }
   if (!(await tmux.hasSession(LIST))) return 'failed';
-  const r = await tmux.t([
-    ...['new-session', '-d', '-s', GUIDE, '-c', cwd, command, ';'],
-    ...['set', '-p', '-t', `=${GUIDE}:`, GUIDE_PANE, '1'],
-  ]);
+  const r = await tmux.t(withGuideMark(['new-session', '-d', '-s', GUIDE, '-c', cwd, command]));
   // 同時に作られたときは、相手が作ったものを使う
   if (r.code !== 0) return (await hasGuide(tmux)) ? 'exists' : 'failed';
   await tmux.workbenchOptions(GUIDE, '');
@@ -77,6 +83,7 @@ export async function startGuide(tmux: Tmux, command: string, cwd: string): Prom
       ...['respawn-pane', '-k', '-t', panes.guide, command, ';'],
       ...['set', '-pu', '-t', panes.guide, GUIDE_RESPAWNED],
     ]);
+    await clearDeadOthers(tmux, panes.deadOthers);
   }
   // 前の版の案内のセッションにも、今の版のオプションを入れ直す
   if (panes.session) await tmux.workbenchOptions(GUIDE, '');

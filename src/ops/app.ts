@@ -169,11 +169,21 @@ export class App {
     await t.killSession(session);
   }
 
+  private guideCheck?: Promise<boolean>;
+
   /**
-   * 案内のセッションが消えていたら、一覧の版の案内で作り直す(作業台の画面を案内へ切り替える前と、tmux からの知らせのたび)。
-   * 作り直した案内には名前がないので、同じ中身でも書き直させる。
+   * 案内のプログラムのペインがなければ、一覧の版の案内で作り直す(作業台の画面を案内へ切り替える前と、tmux からの知らせのたび)。
+   * 作り直したら true を返す。作り直した案内には名前がないので、同じ中身でも書き直させる。
+   * 知らせの連鎖と追従の連鎖から同時に呼ばれても、確かめて作るのは1つにまとめる(2つ作らないため)。
    */
-  private async recreateGuideIfGone(): Promise<boolean> {
+  private recreateGuideIfGone(): Promise<boolean> {
+    this.guideCheck ??= this.recreateGuideOnce().finally(() => {
+      this.guideCheck = undefined;
+    });
+    return this.guideCheck;
+  }
+
+  private async recreateGuideOnce(): Promise<boolean> {
     // 終わる途中では作らない(サーバを畳んだあとに作ると、設定のないサーバが立ち上がる)
     if (this.quitting) return false;
     if ((await ensureGuide(this.p.tmux, this.p.guideCommand, this.p.home)) !== 'created') return false;
