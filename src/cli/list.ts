@@ -7,11 +7,11 @@ import {run} from '../../lib/input/exec.js';
 import {HookStore} from '../../lib/input/hooks.js';
 import {launchSettings, openReceiver, probe} from '../../lib/input/receiver.js';
 import {Transcripts} from '../../lib/input/transcript.js';
-import {GUIDE, LIST, serverConfig, Tmux} from '../../lib/tmux/tmux.js';
+import {LIST, serverConfig, Tmux} from '../../lib/tmux/tmux.js';
 import {Observer} from '../input/observe.js';
 import {Locations, Prs} from '../input/where.js';
 import {App} from '../ops/app.js';
-import {ensureGuide, reviveGuide} from '../ops/guide-session.js';
+import {startGuide} from '../ops/guide-session.js';
 import {ATTACH_KEYS, ATTACH_KEYS_HELP} from '../ops/keys.js';
 import {StateFile, statePath} from '../state/state.js';
 import {type Env, paneCommand, tmuxEnv, workbenchCommand} from './env.js';
@@ -64,11 +64,7 @@ export async function startList(env: Env): Promise<number> {
   if (r.code !== 0) log(`sourceConfig failed: ${r.stderr}`);
   await tmux.t(['set', '-w', '-t', `=${LIST}:`, 'remain-on-exit', 'off']);
   const guideCommand = paneCommand(env, 'guide');
-  // 前からある案内のセッションにも、今の版のオプションを入れ直す
-  if ((await ensureGuide(tmux, guideCommand, homedir())) === 'exists') {
-    await tmux.workbenchOptions(GUIDE, '');
-    await reviveGuide(tmux);
-  }
+  await startGuide(tmux, guideCommand, homedir());
 
   const transcripts = new Transcripts(configDir);
   const app_ = new App({

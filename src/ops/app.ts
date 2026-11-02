@@ -162,7 +162,7 @@ export class App {
     for (const c of clients) {
       if (c.session !== session) continue;
       if (c.tty === wb) {
-        await this.keepGuide();
+        if (await this.keepGuide()) this.follow();
         await t.switchClient(c.tty, GUIDE);
       } else if (c.tty === main) await t.switchClient(c.tty, LIST);
     }

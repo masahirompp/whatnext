@@ -2,7 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {homedir} from 'node:os';
 import {run} from '../../lib/input/exec.js';
 import {GUIDE, LIST, Tmux} from '../../lib/tmux/tmux.js';
-import {ensureGuide} from '../ops/guide-session.js';
+import {ensureGuide, hasGuide} from '../ops/guide-session.js';
 import {MAIN_TTY, WB_TTY} from '../ops/names.js';
 import {type Env, myTty, paneCommand, tmuxEnv} from './env.js';
 
@@ -30,6 +30,8 @@ export async function workbench(env: Env): Promise<number> {
   // tmux は、つなげなかったときと、whatnext の終了でサーバごと閉じたときに 1 で終わる。一覧が残っていれば前者。
   // シグナルで終わったとき(status が null)は、つながったあとに止められたので、失敗にしない
   if (res.error || (res.status !== null && res.status !== 0 && (await tmux.hasSession(LIST)))) {
+    // つながったあとに 0 以外で終わったときも、古いタイトルの分割へ移らないよう、タイトルは消す
+    process.stdout.write('\x1b]2;\x07');
     process.stderr.write(`whatnext: could not open the workbench screen (tmux session "${GUIDE}").\n`);
     return await exitWithError();
   }
@@ -39,11 +41,11 @@ export async function workbench(env: Env): Promise<number> {
 }
 
 /**
- * 案内のセッションがなければ、一覧に知らせて一覧の版で作り直させる(一覧は知らせのたびに確かめる)。
+ * 案内のプログラムのペインがなければ、一覧に知らせて一覧の版で作り直させる(一覧は知らせのたびに確かめる)。
  * 一覧が作らないとき(案内を作り直さない古い版の一覧)は、自分で作る。
  */
 async function waitForGuide(tmux: Tmux, env: Env): Promise<boolean> {
-  if (await tmux.hasSession(GUIDE)) return true;
+  if (await hasGuide(tmux)) return true;
   const pid = Number(await tmux.option('@wn_pid'));
   if (pid > 0) {
     try {
@@ -51,7 +53,7 @@ async function waitForGuide(tmux: Tmux, env: Env): Promise<boolean> {
     } catch {}
     for (let i = 0; i < 20; i++) {
       await new Promise(r => setTimeout(r, 100));
-      if (await tmux.hasSession(GUIDE)) return true;
+      if (await hasGuide(tmux)) return true;
     }
   }
   return (await ensureGuide(tmux, paneCommand(env, 'guide'), homedir())) !== 'failed';

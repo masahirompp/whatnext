@@ -490,7 +490,7 @@ claude の画面の幅は、分割の比率の分だけ減る。一時的に片�
 - whatnext が動いていないときに `whatnext workbench` を実行すると、`whatnext is not running. Start whatnext first.` と示して終了する（終了コード 1）。
 - whatnext は動いているのに作業台の画面につなげなかったときは、`whatnext: could not open the workbench screen (tmux session "wbguide").` と示して終了する（終了コード 1）。tmux のエラー（`can't find session` など）も消さずに残す。案内を作れなかったときは `whatnext: could not create the workbench guide (tmux session "wbguide").` と示して終了する（終了コード 1）。
 - Ghostty の `ctrl+q ctrl+w` と一覧の `w` で作った分割では、`whatnext workbench` が上のどれかで失敗したら（whatnext が動いていないときも）、`Press any key to close.` と示してキーを待ってから閉じる。待たないと分割ごと閉じて、エラーが読めない。
-- 作業台の画面の案内は、何かの理由で落ちても、whatnext を起動し直さずに出直す。案内が出ないせいで作業台の画面が開かない、ということはない。ただし、起動してすぐ落ちることが続くとき（1分以内に続けて6回）は出直すのをやめ、作業台の画面には案内の代わりに落ちたときの出力が残る。whatnext を起動し直すと、また出直す。
+- 作業台の画面の案内は、何かの理由で落ちても、whatnext を起動し直さずに出直す。案内が出ないせいで作業台の画面が開かない、ということはない。ただし、起動してすぐ落ちることが続くとき（出直してから1分以内にまた落ちることが、6回続いたとき）は出直すのをやめ、作業台の画面には案内の代わりに落ちたときの出力が残る。whatnext を起動し直すと、また出直す。
 - 端末は問わない。whatnext は端末の機能に頼らず、専用の tmux のクライアントを1つ増やすだけなので。例外は、Ghostty で押した `ctrl+q ctrl+w` と一覧の `w` が分割を作ることだけである。確かめるのは Ghostty で行う。
 - **キーの起点は `ctrl+q` の1つだけにする。** attach している間は、claude の画面でも作業台の画面でも次のキーが効く。
 
