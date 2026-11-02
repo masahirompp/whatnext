@@ -232,10 +232,29 @@ describe('作業台の画面', () => {
     h.agents([bg('a', {name: 'alpha'})]);
     await h.start();
     h.inner('kill-session', '-t', '=wbguide');
-    expect(h.sessions()).not.toContain('wbguide');
     await h.startWorkbench();
     await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
     await h.waitFor(/workbench: alpha/, 5000, 'wb');
+    expect(wbClient()?.session).toBe('wbguide');
+  });
+
+  it('作業台を映している間に案内のセッションが消えても、一覧が作り直し、最後のシェルを抜けると案内に戻る', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    await h.keysTo('wb', 'Enter');
+    await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
+    const before = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim();
+    h.inner('kill-session', '-t', '=wbguide');
+    await h.waitFor(() => {
+      const now = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim();
+      return now !== '' && now !== before;
+    }, 5000);
+    await h.type('exit', 'wb');
+    await h.keysTo('wb', 'Enter');
+    await h.waitFor(/Workbench closed\.\nNo workbench for alpha yet/, 5000, 'wb');
     expect(wbClient()?.session).toBe('wbguide');
   });
 
@@ -253,6 +272,35 @@ describe('作業台の画面', () => {
     expect(wbClient()?.session).toBe('wbguide');
     await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
     expect(h.inner('show', '-gv', '@wn_guide_died')).toMatch(/signal=kill/);
+  });
+
+  it('whatnext workbench がつなげなかったときは、tmux のエラーと理由を消さずに残し、1 で終わる', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    // 端末がないと tmux の attach は `open terminal failed` で失敗する
+    let out = '';
+    let code = 0;
+    try {
+      execFileSync('sh', ['-c', `${h.envLine()} node '${CLI}' workbench </dev/null 2>&1`], {encoding: 'utf8'});
+    } catch (e) {
+      const err = e as {stdout: string; status: number};
+      out = err.stdout;
+      code = err.status;
+    }
+    expect(code).toBe(1);
+    expect(out).toMatch(/open terminal failed/);
+    expect(out).toContain('whatnext: could not open the workbench screen (tmux session "wbguide").');
+    expect(out).not.toContain('\x1b[1A');
+  });
+
+  it('Ghostty の分割から起動して失敗したときは、キーを待ってから終わる', async () => {
+    h = new Harness();
+    h.open('wb', `${h.envLine({WHATNEXT_WORKBENCH_SPLIT: '1'})} node '${CLI}' workbench`, {cols: 80, rows: 10});
+    await h.waitFor(/whatnext is not running\. Start whatnext first\.\nPress any key to close\./, 5000, 'wb');
+    expect(h.screen('wb')).not.toMatch(/\[exit/);
+    await h.keysTo('wb', 'x');
+    await h.waitFor(/\[exit 1\]/, 5000, 'wb');
   });
 });
 

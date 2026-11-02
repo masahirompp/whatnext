@@ -11,10 +11,10 @@ import {GUIDE, LIST, serverConfig, Tmux} from '../../lib/tmux/tmux.js';
 import {Observer} from '../input/observe.js';
 import {Locations, Prs} from '../input/where.js';
 import {App} from '../ops/app.js';
+import {ensureGuide} from '../ops/guide-session.js';
 import {ATTACH_KEYS, ATTACH_KEYS_HELP} from '../ops/keys.js';
 import {StateFile, statePath} from '../state/state.js';
-import {type Env, tmuxEnv, workbenchCommand} from './env.js';
-import {ensureGuide} from './guide.js';
+import {type Env, paneCommand, tmuxEnv, workbenchCommand} from './env.js';
 
 // 一覧の役(専用の tmux サーバのセッション `list` の中で動く)。本物の口を差し込んで App を動かす。
 
@@ -63,8 +63,9 @@ export async function startList(env: Env): Promise<number> {
   );
   if (r.code !== 0) log(`sourceConfig failed: ${r.stderr}`);
   await tmux.t(['set', '-w', '-t', `=${LIST}:`, 'remain-on-exit', 'off']);
-  await ensureGuide(tmux, env);
-  await tmux.workbenchOptions(GUIDE, '');
+  const guideCommand = paneCommand(env, 'guide');
+  // 前からある案内のセッションにも、今の版のオプションを入れ直す
+  if ((await ensureGuide(tmux, guideCommand, homedir())) === 'exists') await tmux.workbenchOptions(GUIDE, '');
 
   const transcripts = new Transcripts(configDir);
   const app_ = new App({
@@ -85,6 +86,7 @@ export async function startList(env: Env): Promise<number> {
     port: env.port,
     version: env.version,
     workbenchCommand: workbenchCommand(env),
+    guideCommand,
     launchDir: process.cwd(),
     claudeJson,
     home: homedir(),

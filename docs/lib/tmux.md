@@ -16,7 +16,7 @@
   - `env` の環境変数（`set-environment -g`）。
   - `ctrl+q` のあとのキー：`keys`（`AttachKeyBinding` の列。`letter`、`action`、`bare`）ごとに `ctrl+q ctrl+<letter>` を割り当て、`bare` なら `ctrl+q <letter>` も同じにする。どのキーを置くかは使う側が決める。
   - 一覧に知らせるフック（`client-session-changed`、`client-attached`、`client-detached`、`session-closed`、`client-focus-in`、← の `pane-title-changed`）と、作業台の最後のシェルの `pane-died`。
-  - `pane-died` は、作業台（`sh-<id>`）では生きているペインがあれば閉じ、最後なら作業台の画面を案内に切り替えてからセッションを畳む。案内のセッション（`GUIDE`）では畳まずに 1 秒おいて `respawn-pane` で起動し直し、終わったときの時刻と終了の状態と画面の末尾を `@wn_guide_died` に残す。起動し直すのはペインごとに 5 回までで、超えたら畳む（起動してすぐ終わるときに回り続けないため）。ほかのペインは閉じる。
+  - `pane-died` は、作業台（`sh-<id>`）では生きているペインがあれば閉じ、最後なら作業台の画面を案内に切り替えてからセッションを畳む。案内のセッション（`GUIDE`）では畳まずに1秒おいて `respawn-pane` で起動し直し、終わったときの時刻と終了の状態と画面の末尾（30行）を `@wn_guide_died` に残す。前の起動し直しから60秒以内に続けて終わった回を数え（ペインのオプション `@wn_respawned` に回数と時刻を置く）、続けて5回起動し直したあとにまた終わったら畳む（起動してすぐ終わるときに回り続けないため）。畳んだ案内のセッションを作り直すのは使う側である。ほかのペインは閉じる。
   - 一覧のセッションでは `ctrl+q` を効かせない（`key-table wnlist`）。
 - `scripts(socket)`：キーとフックが呼ぶ sh の本文（頼みごと、`pane-died` の後始末、claude の画面の作業台の欄）。`Tmux.sourceConfig` が設定と一緒に置く。
 - `terminal-features`（色の `RGB`、リンクの `hyperlinks`）は、サーバを作る `new-session` で入れる必要があり（DESIGN.md「一覧と作業台の仕組み」）、この設定には含まない。

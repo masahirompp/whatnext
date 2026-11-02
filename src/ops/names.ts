@@ -8,8 +8,6 @@ export const WB_TTY = '@wn_wb_tty';
 export const NEWER = '@wn_newer';
 /** 作業台の画面の案内に出すもの(JSON の GuideState)。 */
 export const GUIDE_OPTION = '@wn_guide';
-/** `whatnext workbench` が案内のセッションを作り直したときに一覧に渡す頼みごと(名前と中身を入れ直させる)。 */
-export const GUIDE_REFRESH = 'guide';
 
 export type GuideState =
   | {kind: 'none'; name: string; path: string; closed?: boolean}

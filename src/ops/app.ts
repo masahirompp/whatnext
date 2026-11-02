@@ -20,8 +20,9 @@ import {clean, frame, menuLines, render} from '../screen/screen.js';
 import type {Screen, ScreenRow} from '../screen/types.js';
 import {emptyState, type PersistedState} from '../state/state.js';
 import {filterItems} from './filter.js';
+import {ensureGuide} from './guide-session.js';
 import {ATTACH_KEYS, type AttachAction, GUIDE_CREATE, isAttachAction, LIST_KEYS_HELP} from './keys.js';
-import {GUIDE_OPTION, GUIDE_REFRESH, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
+import {GUIDE_OPTION, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
 import type {Ports} from './ports.js';
 
 // 一覧の状態の遷移と、外部に頼む作業(PRODUCT.md「操作」「作業台」「依存（待ち先と起動された行）」)。
@@ -158,10 +159,23 @@ export class App {
     const [clients, main, wb] = await Promise.all([t.clients(), t.option(MAIN_TTY), t.option(WB_TTY)]);
     for (const c of clients) {
       if (c.session !== session) continue;
-      if (c.tty === wb) await t.switchClient(c.tty, GUIDE);
-      else if (c.tty === main) await t.switchClient(c.tty, LIST);
+      if (c.tty === wb) {
+        await this.keepGuide();
+        await t.switchClient(c.tty, GUIDE);
+      } else if (c.tty === main) await t.switchClient(c.tty, LIST);
     }
     await t.killSession(session);
+  }
+
+  /**
+   * 案内のセッションが消えていたら、一覧の版の案内で作り直す(作業台の画面を案内へ切り替える前と、tmux からの知らせのたび)。
+   * 作り直した案内には名前がないので、同じ中身でも書き直させる。
+   */
+  private async keepGuide(): Promise<boolean> {
+    if ((await ensureGuide(this.p.tmux, this.p.guideCommand, this.p.home)) !== 'created') return false;
+    this.p.log('guide recreated');
+    this.lastGuide = undefined;
+    return true;
   }
 
   // ---- 更新 ----
@@ -1139,6 +1153,8 @@ export class App {
   }
 
   private async afterSignal(reqs: string[], wbTty: string | undefined, closed: string | undefined): Promise<void> {
+    // 案内のセッションが消えると `session-closed` で知らせが届く。`whatnext workbench` も、なければ知らせてくる
+    const guideRecreated = await this.keepGuide();
     const wbChanged = wbTty !== this.wbTty;
     this.wbTty = wbTty;
     if (closed) {
@@ -1146,19 +1162,13 @@ export class App {
       for (const id of closed.split(/\s+/).filter(Boolean)) this.closedWorkbench.add(id);
     }
     for (const r of reqs) await this.request(r);
-    if (wbChanged || closed) this.follow();
+    if (wbChanged || closed || guideRecreated) this.follow();
     this.draw();
   }
 
   private async request(line: string): Promise<void> {
     this.p.log(`request ${line}`);
     const parts = line.trim().split(/\s+/);
-    if (parts[0] === GUIDE_REFRESH) {
-      // 作り直した案内のセッションには名前がない。同じ中身でも書き直させる
-      this.lastGuide = undefined;
-      this.follow();
-      return;
-    }
     if (parts[0] === 'agentview') {
       // 空のプロンプトの ← で Agent View に入った。claude attach を畳んで一覧に戻す
       const session = parts[1];
@@ -1483,6 +1493,7 @@ export class App {
     }
     this.guideTarget = row?.sid;
     if (target === GUIDE) {
+      await this.keepGuide();
       const text = JSON.stringify(g);
       if (text !== this.lastGuide) {
         this.lastGuide = text;

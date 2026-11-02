@@ -28,8 +28,10 @@ export interface Ports {
   socket: string;
   port: number;
   version: string;
-  /** `whatnext workbench` を動かすコマンド(Ghostty の分割に打ち込む)。`exec` は付けない(`splitWorkbench` が付ける)。 */
+  /** `whatnext workbench` を動かすコマンド(Ghostty の分割に打ち込む)。 */
   workbenchCommand: string;
+  /** 案内のプログラムを動かすコマンド(案内のセッションが消えていたら、一覧がこれで作り直す)。 */
+  guideCommand: string;
   /** whatnext を起動したディレクトリ。 */
   launchDir: string;
   /** `~/.claude.json` の置き場所(`CLAUDE_CONFIG_DIR` があればその下)。 */

@@ -1,27 +1,13 @@
-import {homedir} from 'node:os';
 import {emitKeypressEvents} from 'node:readline';
 import {run} from '../../lib/input/exec.js';
 import {color, truncate} from '../../lib/text/text.js';
-import {GUIDE, Tmux} from '../../lib/tmux/tmux.js';
+import {Tmux} from '../../lib/tmux/tmux.js';
 import {GUIDE_CREATE} from '../ops/keys.js';
 import {GUIDE_OPTION, type GuideState} from '../ops/names.js';
 import {clean, frame} from '../screen/screen.js';
-import {type Env, paneCommand, tmuxEnv} from './env.js';
+import {type Env, tmuxEnv} from './env.js';
 
 // 作業台の画面の案内(案内のセッションの中で動く)。何を出すかは一覧が `@wn_guide` に置く。
-
-/**
- * 案内のセッションがなければ作る(一覧の起動時と、`whatnext workbench` の attach の前)。
- * 作ったときは作業台の画面のオプションも入れる。名前(`@wn_name`)は一覧が入れ直す。
- */
-export async function ensureGuide(tmux: Tmux, env: Env): Promise<'exists' | 'created' | 'failed'> {
-  if (await tmux.hasSession(GUIDE)) return 'exists';
-  const r = await tmux.t(['new-session', '-d', '-s', GUIDE, '-c', homedir(), paneCommand(env, 'guide')]);
-  // 同時に作られたときは、相手が作ったものを使う
-  if (r.code !== 0) return (await tmux.hasSession(GUIDE)) ? 'exists' : 'failed';
-  await tmux.workbenchOptions(GUIDE, '');
-  return 'created';
-}
 
 export function guideLines(g: GuideState): string[] {
   if (g.kind === 'tty') return [`${clean(g.name)} is an interactive session. It has no workbench.`];

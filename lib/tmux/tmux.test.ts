@@ -1,4 +1,7 @@
 import {execFileSync} from 'node:child_process';
+import {chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {foregroundCommand, GUIDE, parsePs, scripts, serverConfig, workbenchStatusFormat} from './tmux.js';
 
@@ -72,11 +75,39 @@ describe('ペインが終わったときの処理', () => {
     }
   });
 
-  it('案内のセッションは畳まずに起動し直し、5回を超えたら畳む', () => {
-    const guide = body.slice(body.indexOf(`${GUIDE})`), body.lastIndexOf('*)'));
-    expect(guide).toContain('respawn-pane -t "$p"');
-    expect(guide).toContain('-lt 5');
-    expect(guide).toContain('kill-pane -t "$p"');
-    expect(guide).toContain('@wn_guide_died');
+  /** 偽の tmux(呼ばれた引数を記録し、`@wn_respawned` には `stored` を返す)で、案内のペインが終わったときの処理を動かす。 */
+  const runGuideDied = (stored: string): string[] => {
+    const dir = mkdtempSync(join(tmpdir(), 'wn-paned-'));
+    const log = join(dir, 'calls.log');
+    writeFileSync(
+      join(dir, 'tmux'),
+      `#!/bin/sh\necho "$*" >> ${JSON.stringify(log)}\ncase "$*" in *@wn_respawned*) case "$*" in *show*) printf '%s' ${JSON.stringify(stored)};; esac;; esac\nexit 0\n`,
+    );
+    chmodSync(join(dir, 'tmux'), 0o755);
+    execFileSync('sh', ['-c', body, 'wn', GUIDE, '%7'], {env: {...process.env, PATH: `${dir}:${process.env.PATH}`}});
+    const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean);
+    rmSync(dir, {recursive: true, force: true});
+    return calls;
+  };
+  const now = () => Math.floor(Date.now() / 1000);
+
+  it('案内のセッションは畳まずに起動し直し、終わったときの様子を残す', () => {
+    const calls = runGuideDied('');
+    expect(calls).toContainEqual(expect.stringMatching(/^-L wn set -p -t %7 @wn_respawned 1 \d+$/));
+    expect(calls).toContain('-L wn respawn-pane -t %7');
+    expect(calls).not.toContainEqual(expect.stringMatching(/kill-pane/));
+    expect(calls).toContainEqual(expect.stringMatching(/^-L wn set -g @wn_guide_died /));
+  });
+
+  it('60秒以内に続けて5回起動し直したあとにまた終わったら畳む', () => {
+    const calls = runGuideDied(`5 ${now() - 10}`);
+    expect(calls).toContain('-L wn kill-pane -t %7');
+    expect(calls).not.toContain('-L wn respawn-pane -t %7');
+  });
+
+  it('前の起動し直しから60秒を過ぎていれば、数え直して起動し直す', () => {
+    const calls = runGuideDied(`5 ${now() - 120}`);
+    expect(calls).toContainEqual(expect.stringMatching(/^-L wn set -p -t %7 @wn_respawned 1 \d+$/));
+    expect(calls).toContain('-L wn respawn-pane -t %7');
   });
 });

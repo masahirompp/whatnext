@@ -46,14 +46,17 @@ export function scripts(socket: string): Record<string, string> {
       `    ${T} kill-session -t "=$s"`,
       '  fi;;',
       // 案内のプログラムが終わっても、案内のセッションは畳まずに起動し直す(畳むと `whatnext workbench` がつなげない)。
-      // 起動してすぐ終わるときに回り続けないよう、ペインごとに5回までにする。終わったときの画面の末尾を残す
+      // 起動してすぐ終わるときに回り続けないよう、前の起動し直しから60秒以内に続けて終わった回を数え、5回を超えたら畳む。
+      // 終わったときの画面の末尾(Node の例外の種類とメッセージが入る程度)を残す
       `${GUIDE})`,
-      `  ${T} set -g @wn_guide_died "$(date '+%Y-%m-%d %H:%M:%S') $(${T} display -p -t "$p" 'status=#{pane_dead_status} signal=#{pane_dead_signal}') $(${T} capture-pane -p -t "$p" | grep -v '^$' | tail -5 | tr '\\n' ' ')"`,
-      `  n=$(${T} show -pqv -t "$p" @wn_respawned 2>/dev/null)`,
+      `  ${T} set -g @wn_guide_died "$(date '+%Y-%m-%d %H:%M:%S') $(${T} display -p -t "$p" 'status=#{pane_dead_status} signal=#{pane_dead_signal}') $(${T} capture-pane -p -t "$p" | grep -v '^$' | tail -30 | tr '\\n' ' ')"`,
+      `  r=$(${T} show -pqv -t "$p" @wn_respawned 2>/dev/null)`,
+      `  n=$(echo "$r" | cut -s -d ' ' -f 1); at=$(echo "$r" | cut -s -d ' ' -f 2); now=$(date +%s)`,
       // biome-ignore lint/suspicious/noTemplateCurlyInString: sh のパラメータ展開
-      '  n=${n:-0}',
+      '  n=${n:-0}; at=${at:-0}',
+      '  [ $((now - at)) -gt 60 ] && n=0',
       '  if [ "$n" -lt 5 ]; then',
-      `    ${T} set -p -t "$p" @wn_respawned $((n + 1))`,
+      `    ${T} set -p -t "$p" @wn_respawned "$((n + 1)) $now"`,
       '    sleep 1',
       `    ${T} respawn-pane -t "$p"`,
       '  else',
