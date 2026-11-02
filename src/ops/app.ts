@@ -849,7 +849,8 @@ export class App {
       return;
     }
     if (str === 'n') {
-      this.openNew();
+      // エラーを出している間は行が画面に出ていないので、見えない行のリポジトリを先頭にしない
+      this.openNew(undefined, this.error ? undefined : sid);
       return;
     }
     if (!row || !sid) return;
