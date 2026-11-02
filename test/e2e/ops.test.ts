@@ -110,6 +110,14 @@ describe('新しいセッションの起動', () => {
     await h.keys('n');
     const s = await h.waitFor(/New session in:/);
     expect(panel(s, /New session in:/).slice(1, 3)).toEqual(['> lib', '  app']);
+    // --json を読めずにエラーを出している間は、見えない行のリポジトリを先頭にしない
+    await h.keys('Escape');
+    h.conf({agentsFail: true});
+    await h.keys('r');
+    await h.waitFor(/Could not read claude agents --json/);
+    await h.keys('n');
+    const s2 = await h.waitFor(/New session in:/);
+    expect(panel(s2, /New session in:/)[1]).toBe('> app');
   });
 
   it('8: 起動の出力から id を読めないときは、出力を残してキーを待つ', async () => {
