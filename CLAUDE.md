@@ -48,7 +48,7 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 
 ### ブランチ・マージ方針
 
-- PR は使わない。短命ブランチ(worktree)で作業し、ローカルチェック(build、`npm run check`(biome の書式と lint)、テストがあればテスト)通過を条件にローカルで main にマージする
+- 短命ブランチ(worktree)で作業し、ローカルチェック(build、`npm run check`(biome の書式と lint)、テストがあればテスト)通過を条件に main にマージする。マージは、ローカルで行っても、PR を作って GitHub で行ってもよい。review-loop でセルフレビューを回すときは、スキルが PR を前提にするので PR を使う
 - 1つのセッションで順に進めるときは、main に直接コミットしてよい。短命ブランチ(worktree)は、並列に進めるときに使う。どちらでも、コミットの前にローカルチェック(build、`npm run check`(biome の書式と lint)、テストがあればテスト)を通し、「main は常に起動する」を守る
 - 不変条件: main は常に起動する
 
