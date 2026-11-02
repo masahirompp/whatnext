@@ -20,6 +20,7 @@ import {clean, frame, menuLines, render} from '../screen/screen.js';
 import type {Screen, ScreenRow} from '../screen/types.js';
 import {emptyState, type PersistedState} from '../state/state.js';
 import {filterItems} from './filter.js';
+import {ensureGuide} from './guide-session.js';
 import {ATTACH_KEYS, type AttachAction, GUIDE_CREATE, isAttachAction, LIST_KEYS_HELP} from './keys.js';
 import {GUIDE_OPTION, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
 import type {Ports} from './ports.js';
@@ -106,6 +107,8 @@ export class App {
   private closedWorkbench = new Set<string>();
   private paste?: string;
   private quitting = false;
+  /** 前の知らせのときに、作業台の画面のクライアントがつながっていたか。 */
+  private wbAttached = false;
   private initialized = false;
 
   constructor(private readonly p: Ports) {}
@@ -158,10 +161,35 @@ export class App {
     const [clients, main, wb] = await Promise.all([t.clients(), t.option(MAIN_TTY), t.option(WB_TTY)]);
     for (const c of clients) {
       if (c.session !== session) continue;
-      if (c.tty === wb) await t.switchClient(c.tty, GUIDE);
-      else if (c.tty === main) await t.switchClient(c.tty, LIST);
+      if (c.tty === wb) {
+        if (await this.recreateGuideIfGone()) this.follow();
+        await t.switchClient(c.tty, GUIDE);
+      } else if (c.tty === main) await t.switchClient(c.tty, LIST);
     }
     await t.killSession(session);
+  }
+
+  private guideCheck?: Promise<boolean>;
+
+  /**
+   * 案内のプログラムのペインがなければ、一覧の版の案内で作り直す(作業台の画面を案内へ切り替える前と、tmux からの知らせのたび)。
+   * 作り直したら true を返す。作り直した案内には名前がないので、同じ中身でも書き直させる。
+   * 知らせの連鎖と追従の連鎖から同時に呼ばれても、確かめて作るのは1つにまとめる(2つ作らないため)。
+   */
+  private recreateGuideIfGone(): Promise<boolean> {
+    this.guideCheck ??= this.recreateGuideOnce().finally(() => {
+      this.guideCheck = undefined;
+    });
+    return this.guideCheck;
+  }
+
+  private async recreateGuideOnce(): Promise<boolean> {
+    // 終わる途中では作らない(サーバを畳んだあとに作ると、設定のないサーバが立ち上がる)
+    if (this.quitting) return false;
+    if ((await ensureGuide(this.p.tmux, this.p.guideCommand, this.p.home)) !== 'created') return false;
+    this.p.log('guide recreated');
+    this.lastGuide = undefined;
+    return true;
   }
 
   // ---- 更新 ----
@@ -1135,10 +1163,21 @@ export class App {
       if (before && CLAUDE_SESSION.test(before)) this.pendingReturn = before;
       this.mainSession = undefined;
     }
-    await this.afterSignal(reqs, wbTty, closed);
+    const wbAttached = !!wbTty && clients.some(c => c.tty === wbTty);
+    await this.afterSignal(reqs, wbTty, closed, wbAttached);
   }
 
-  private async afterSignal(reqs: string[], wbTty: string | undefined, closed: string | undefined): Promise<void> {
+  private async afterSignal(
+    reqs: string[],
+    wbTty: string | undefined,
+    closed: string | undefined,
+    wbAttached: boolean,
+  ): Promise<void> {
+    // 作業台の画面がつながった知らせでは追従する(つながる前の知らせで tty の変化を使い切ると、つながったあとに切り替わらない)
+    const wbArrived = wbAttached && !this.wbAttached;
+    this.wbAttached = wbAttached;
+    // 案内のセッションが消えると `session-closed` で知らせが届く。`whatnext workbench` も、なければ知らせてくる
+    const guideRecreated = await this.recreateGuideIfGone();
     const wbChanged = wbTty !== this.wbTty;
     this.wbTty = wbTty;
     if (closed) {
@@ -1146,7 +1185,7 @@ export class App {
       for (const id of closed.split(/\s+/).filter(Boolean)) this.closedWorkbench.add(id);
     }
     for (const r of reqs) await this.request(r);
-    if (wbChanged || closed) this.follow();
+    if (wbChanged || wbArrived || closed || guideRecreated) this.follow();
     this.draw();
   }
 
@@ -1434,6 +1473,8 @@ export class App {
         : await splitWorkbench(this.p.run, this.p.workbenchCommand, {
             WHATNEXT_TMUX_SOCKET: this.p.socket,
             WHATNEXT_PORT: String(this.p.port),
+            // 失敗したときにキーを待たせる(`exec` で動くので、終わると分割ごと閉じる)
+            WHATNEXT_WORKBENCH_SPLIT: '1',
           });
       this.p.log(`ghostty ${res}`);
       if (res === 'focused' || res === 'split') {
@@ -1475,6 +1516,7 @@ export class App {
     }
     this.guideTarget = row?.sid;
     if (target === GUIDE) {
+      await this.recreateGuideIfGone();
       const text = JSON.stringify(g);
       if (text !== this.lastGuide) {
         this.lastGuide = text;

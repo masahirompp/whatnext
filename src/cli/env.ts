@@ -103,3 +103,8 @@ export function paneCommand(env: Env, role: 'list' | 'guide', pe: NodeJS.Process
     .map(([k, v]) => `${k}=${shq(v as string)}`);
   return `exec env ${assigns.join(' ')} ${shq(env.node)} ${shq(env.cli)}`;
 }
+
+/** Ghostty の分割に打ち込む `whatnext workbench`。`exec` は `splitWorkbench` が付けるので、ここでは付けない。 */
+export function workbenchCommand(env: Pick<Env, 'node' | 'cli'>): string {
+  return `${shq(env.node)} ${shq(env.cli)} workbench`;
+}

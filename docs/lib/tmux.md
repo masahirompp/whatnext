@@ -8,6 +8,7 @@
 - claude の画面のセッションは `<id>`（中で `claude attach <id>`）、作業台は `sh-<id>`、信頼の確認は `trust-<乱数>`。
 - 一覧のプロセスの pid は `@wn_pid`、版は `@wn_version`、claude の画面のステータス行のキーの説明は `@wn_keys`、概要の行は `@wn_summary`（セッションのオプション）に置く。
 - キーとフックは、頼みごとを `@wn_req_<秒>_<pid>` に書いてから一覧に SIGUSR2 を送る。頼みごとの形は `key <action> <セッション名> <client_tty>`、`focus <client_tty>`、`agentview <セッション名>`。作業台の最後のシェルが終わったときは `@wn_closed` に `<id>` を書く。
+- 案内のプログラムのペインには、印 `GUIDE_PANE`（`@wn_guide_pane`、ペインのオプション。値は `1`）を付ける。付けるのは使う側である。`pane-died` は、案内のセッションのうち印のあるペインだけを起動し直し、ペインのオプション `GUIDE_RESPAWNED`（`@wn_respawned`。`<回数> <最後に起動し直すと決めた UNIX 秒>`。起動し直す1秒前の時刻）で数える。使う側が案内のペインを起動し直すときは、`GUIDE_RESPAWNED` を消して数え直させる（消さないと、前の回数のまま数える）。案内のペインが終わったときの様子は、サーバ全体のオプション `@wn_guide_died` に置く（書式としては展開しない値なので、書式に出すときは `escapeFormat` を通す）。
 
 ## 設定（`serverConfig`、`scripts`）
 
@@ -16,6 +17,7 @@
   - `env` の環境変数（`set-environment -g`）。
   - `ctrl+q` のあとのキー：`keys`（`AttachKeyBinding` の列。`letter`、`action`、`bare`）ごとに `ctrl+q ctrl+<letter>` を割り当て、`bare` なら `ctrl+q <letter>` も同じにする。どのキーを置くかは使う側が決める。
   - 一覧に知らせるフック（`client-session-changed`、`client-attached`、`client-detached`、`session-closed`、`client-focus-in`、← の `pane-title-changed`）と、作業台の最後のシェルの `pane-died`。
+  - `pane-died` は、作業台（`sh-<id>`）では生きているペインがあれば閉じ、最後なら作業台の画面を案内に切り替えてからセッションを畳む。案内のセッション（`GUIDE`）の、印（`GUIDE_PANE`）のあるペインは、畳まずに1秒おいて `respawn-pane` で起動し直し、終わったときの時刻と終了の状態と画面の末尾（30行）を `@wn_guide_died` に残す。前の起動し直しから60秒以内に続けて終わった回を数え、続けて5回起動し直したあとにまた終わったら、起動し直さずに死んだペインのまま残す（起動してすぐ終わるときに回り続けないため。畳むと使う側が作り直して数え直しになる）。死んだまま残したペインを起動し直すのは使う側である。案内のセッションの印のないペインは閉じる。ただし案内のセッションの最後の生きたペインなら、閉じずに死んだまま残す（閉じると案内のセッションが消え、作業台の画面ごと離れるため。片付けるのは使う側である）。ほかのペインは閉じる。
   - 一覧のセッションでは `ctrl+q` を効かせない（`key-table wnlist`）。
 - `scripts(socket)`：キーとフックが呼ぶ sh の本文（頼みごと、`pane-died` の後始末、claude の画面の作業台の欄）。`Tmux.sourceConfig` が設定と一緒に置く。
 - `terminal-features`（色の `RGB`、リンクの `hyperlinks`）は、サーバを作る `new-session` で入れる必要があり（DESIGN.md「一覧と作業台の仕組み」）、この設定には含まない。
@@ -39,9 +41,9 @@
 ## Ghostty（`ghostty.ts`）
 
 - `focusWorkbench(run)`：名前が `whatnext workbench` の Ghostty の分割へフォーカスを移す。
-- `splitWorkbench(run, command, env)`：前面の Ghostty の、フォーカスのある分割を右に分割し、`command` を打ち込む（[ADR-0015](../adr/0015-ghostty-split-for-workbench-on-ctrl-q-ctrl-w.md)）。
+- `splitWorkbench(run, command, env)`：前面の Ghostty の、フォーカスのある分割を右に分割し、` exec <command>` と改行を打ち込む（先頭の空白でシェルの履歴に残さない。`exec` はこの関数が付けるので、`command` に `exec` を付けない）（[ADR-0015](../adr/0015-ghostty-split-for-workbench-on-ctrl-q-ctrl-w.md)）。
 - 結果は `focused`、`split`、`none`（作業台の画面がない）、`notfront`（Ghostty が前面にない）、`failed`。Ghostty の端末で押したときだけ呼ぶかは、使う側が `client_termname` で決める。
 
 ## テスト
 
-単体のテスト（`lib/tmux/tmux.test.ts`）は、設定の中身とプロセス表の判定だけを確かめる。tmux を実際に動かす確かめは、使う側の画面の通し（サイクル9の `test/e2e/`）が担う。
+単体のテスト（`lib/tmux/tmux.test.ts`、`lib/tmux/ghostty.test.ts`）は、Ghostty の分割に打ち込む文字列、設定の中身、sh の本文の文法、プロセス表の判定と、偽の `tmux` を `PATH` に置いて動かす `pane-died` の案内のペインの扱い（起動し直し、数え方、数でない値、印のないペイン、案内のセッションの最後のペイン）を確かめる。tmux を実際に動かす確かめは、使う側の画面の通し（サイクル9の `test/e2e/`）が担う。

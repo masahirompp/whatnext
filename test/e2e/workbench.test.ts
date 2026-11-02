@@ -226,6 +226,130 @@ describe('作業台の画面', () => {
     expect(h.sessions()).not.toContain('sh-a0000000');
     await h.waitFor(/No workbench for beta/, 5000, 'wb');
   });
+
+  it('案内のセッションが消えていても、whatnext workbench は作り直して開き、名前も出る', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    h.inner('kill-session', '-t', '=wbguide');
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    await h.waitFor(/workbench: alpha/, 5000, 'wb');
+    expect(wbClient()?.session).toBe('wbguide');
+  });
+
+  it('作業台を映している間に案内のセッションが消えても、一覧が作り直し、最後のシェルを抜けると案内に戻る', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    await h.keysTo('wb', 'Enter');
+    await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
+    const before = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim();
+    h.inner('kill-session', '-t', '=wbguide');
+    await h.waitFor(() => {
+      const now = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim();
+      return now !== '' && now !== before;
+    }, 5000);
+    await h.type('exit', 'wb');
+    await h.keysTo('wb', 'Enter');
+    await h.waitFor(/Workbench closed\.\nNo workbench for alpha yet/, 5000, 'wb');
+    expect(wbClient()?.session).toBe('wbguide');
+  });
+
+  it('案内のプログラムが終わっても、案内のセッションは残り、起動し直す', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    const pid = () => Number(h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim());
+    const before = pid();
+    process.kill(before, 'SIGKILL');
+    await h.waitFor(() => pid() > 0 && pid() !== before, 8000);
+    expect(h.sessions()).toContain('wbguide');
+    expect(wbClient()?.session).toBe('wbguide');
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    expect(h.inner('show', '-gv', '@wn_guide_died')).toMatch(/signal=kill/);
+  });
+
+  it('案内のセッションで分割して案内のペインだけを閉じても、カーソルを動かすと案内が戻り、分割で動かしていたものは止めない', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta'})]);
+    await h.start();
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    const guide = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
+    await h.keysTo('wb', 'C-q', '%');
+    await sleep(500);
+    await h.type('sleep 1004', 'wb');
+    await h.keysTo('wb', 'Enter');
+    await sleep(300);
+    const mine = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
+    h.inner('kill-pane', '-t', guide);
+    await h.select('beta');
+    await h.waitFor(/No workbench for beta yet/, 5000, 'wb');
+    const panes = h.inner('list-panes', '-s', '-t', '=wbguide', '-F', '#{pane_id} #{pane_dead} #{@wn_guide_pane}');
+    expect(panes).toMatch(/^%\d+ 0 1$/m);
+    expect(panes).toContain(`${mine} 0 `);
+    expect(h.inner('display', '-p', '-t', mine, '#{pane_current_command}').trim()).toBe('sleep');
+  });
+
+  it('案内のプログラムが続けて落ちると、6回目で起動し直すのをやめ、死んだペインのまま作業台の画面に残る', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    const pane = (f: string) => h.inner('display', '-p', '-t', '=wbguide:0.0', f).trim();
+    for (let i = 0; i < 6; i++) {
+      const pid = Number(pane('#{pane_pid}'));
+      process.kill(pid, 'SIGKILL');
+      if (i < 5) await h.waitFor(() => pane('#{pane_dead}') === '0' && Number(pane('#{pane_pid}')) !== pid, 8000);
+    }
+    await h.waitFor(() => pane('#{pane_dead}') === '1', 5000);
+    await sleep(2500);
+    expect(pane('#{pane_dead}')).toBe('1');
+    expect(h.sessions()).toContain('wbguide');
+    expect(wbClient()?.session).toBe('wbguide');
+    // whatnext を起動し直すと、案内は出直し、数え直す
+    process.kill(Number(h.inner('show', '-gv', '@wn_pid').trim()), 'SIGKILL');
+    await h.waitFor(/\[exit 0\]/);
+    await h.start();
+    await h.waitFor(() => pane('#{pane_dead}') === '0', 5000);
+    expect(pane('#{@wn_respawned}')).toBe('');
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+  });
+
+  it('whatnext workbench がつなげなかったときは、tmux のエラーと理由を消さずに残し、1 で終わる', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    // 端末がないと tmux の attach は `open terminal failed` で失敗する
+    let out = '';
+    let code = 0;
+    try {
+      execFileSync('sh', ['-c', `${h.envLine()} node '${CLI}' workbench </dev/null 2>&1`], {encoding: 'utf8'});
+    } catch (e) {
+      const err = e as {stdout: string; status: number};
+      out = err.stdout;
+      code = err.status;
+    }
+    expect(code).toBe(1);
+    expect(out).toMatch(/open terminal failed/);
+    expect(out).toContain('whatnext: could not open the workbench screen (tmux session "wbguide").');
+    expect(out).not.toContain('\x1b[1A');
+  });
+
+  it('Ghostty の分割から起動して失敗したときは、キーを待ってから終わる', async () => {
+    h = new Harness();
+    h.open('wb', `${h.envLine({WHATNEXT_WORKBENCH_SPLIT: '1'})} node '${CLI}' workbench`, {cols: 80, rows: 10});
+    await h.waitFor(/whatnext is not running\. Start whatnext first\.\nPress any key to close\./, 5000, 'wb');
+    expect(h.screen('wb')).not.toMatch(/\[exit/);
+    await h.keysTo('wb', 'x');
+    await h.waitFor(/\[exit 1\]/, 5000, 'wb');
+  });
 });
 
 describe('終了と、端末のウィンドウを閉じたとき', () => {
