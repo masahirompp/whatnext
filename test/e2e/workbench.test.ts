@@ -274,6 +274,25 @@ describe('作業台の画面', () => {
     expect(h.inner('show', '-gv', '@wn_guide_died')).toMatch(/signal=kill/);
   });
 
+  it('案内のプログラムが続けて落ちると、6回目で起動し直すのをやめ、死んだペインのまま作業台の画面に残る', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start();
+    await h.startWorkbench();
+    await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
+    const pane = (f: string) => h.inner('display', '-p', '-t', '=wbguide:0.0', f).trim();
+    for (let i = 0; i < 6; i++) {
+      const pid = Number(pane('#{pane_pid}'));
+      process.kill(pid, 'SIGKILL');
+      if (i < 5) await h.waitFor(() => pane('#{pane_dead}') === '0' && Number(pane('#{pane_pid}')) !== pid, 8000);
+    }
+    await h.waitFor(() => pane('#{pane_dead}') === '1', 5000);
+    await sleep(2500);
+    expect(pane('#{pane_dead}')).toBe('1');
+    expect(h.sessions()).toContain('wbguide');
+    expect(wbClient()?.session).toBe('wbguide');
+  });
+
   it('whatnext workbench がつなげなかったときは、tmux のエラーと理由を消さずに残し、1 で終わる', async () => {
     h = new Harness();
     h.agents([bg('a', {name: 'alpha'})]);

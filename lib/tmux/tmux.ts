@@ -11,6 +11,8 @@ export interface Client {
 
 export const LIST = 'list';
 export const GUIDE = 'wbguide';
+/** 案内のプログラムのペインに付ける印(ペインのオプション)。`pane-died` はこの印のあるペインだけを起動し直す。 */
+export const GUIDE_PANE = '@wn_guide_pane';
 
 /** 利用者由来の文字列を tmux の書式に置くときは `#` を `##` にする。 */
 export const escapeFormat = (s: string): string => s.replace(/#/g, '##');
@@ -45,22 +47,25 @@ export function scripts(socket: string): Record<string, string> {
       '    fi',
       `    ${T} kill-session -t "=$s"`,
       '  fi;;',
-      // 案内のプログラムが終わっても、案内のセッションは畳まずに起動し直す(畳むと `whatnext workbench` がつなげない)。
-      // 起動してすぐ終わるときに回り続けないよう、前の起動し直しから60秒以内に続けて終わった回を数え、5回を超えたら畳む。
-      // 終わったときの画面の末尾(Node の例外の種類とメッセージが入る程度)を残す
+      // 案内のプログラムのペイン(印 GUIDE_PANE がある)が終わっても、畳まずに起動し直す(畳むと `whatnext workbench` がつなげない)。
+      // 起動してすぐ終わるときに回り続けないよう、前の起動し直しから60秒以内に続けて終わった回を数え、続けて5回起動し直したあとは、
+      // 死んだペインのまま残す(畳むと一覧が作り直して数え直しになる。残せば作業台の画面に最後の出力が見える)。
+      // 終わったときの画面の末尾(Node の例外の種類とメッセージが入る程度)を残す。利用者が案内のセッションで分割したペインは閉じる
       `${GUIDE})`,
-      `  ${T} set -g @wn_guide_died "$(date '+%Y-%m-%d %H:%M:%S') $(${T} display -p -t "$p" 'status=#{pane_dead_status} signal=#{pane_dead_signal}') $(${T} capture-pane -p -t "$p" | grep -v '^$' | tail -30 | tr '\\n' ' ')"`,
-      `  r=$(${T} show -pqv -t "$p" @wn_respawned 2>/dev/null)`,
-      `  n=$(echo "$r" | cut -s -d ' ' -f 1); at=$(echo "$r" | cut -s -d ' ' -f 2); now=$(date +%s)`,
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: sh のパラメータ展開
-      '  n=${n:-0}; at=${at:-0}',
-      '  [ $((now - at)) -gt 60 ] && n=0',
-      '  if [ "$n" -lt 5 ]; then',
-      `    ${T} set -p -t "$p" @wn_respawned "$((n + 1)) $now"`,
-      '    sleep 1',
-      `    ${T} respawn-pane -t "$p"`,
-      '  else',
+      `  if [ "$(${T} show -pqv -t "$p" ${GUIDE_PANE} 2>/dev/null)" != 1 ]; then`,
       `    ${T} kill-pane -t "$p"`,
+      '  else',
+      `    ${T} set -g @wn_guide_died "$(date '+%Y-%m-%d %H:%M:%S') $(${T} display -p -t "$p" 'status=#{pane_dead_status} signal=#{pane_dead_signal}') $(${T} capture-pane -p -t "$p" | grep -v '^$' | tail -30 | tr '\\n' ' ')"`,
+      `    r=$(${T} show -pqv -t "$p" @wn_respawned 2>/dev/null)`,
+      `    n=$(echo "$r" | cut -s -d ' ' -f 1); at=$(echo "$r" | cut -s -d ' ' -f 2); now=$(date +%s)`,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: sh のパラメータ展開
+      '    n=${n:-0}; at=${at:-0}',
+      '    [ $((now - at)) -gt 60 ] && n=0',
+      '    if [ "$n" -lt 5 ]; then',
+      `      ${T} set -p -t "$p" @wn_respawned "$((n + 1)) $now"`,
+      '      sleep 1',
+      `      ${T} respawn-pane -t "$p"`,
+      '    fi',
       '  fi;;',
       `*) ${T} kill-pane -t "$p";;`,
       'esac',

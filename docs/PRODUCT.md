@@ -488,8 +488,9 @@ claude の画面の幅は、分割の比率の分だけ減る。一時的に片�
 - **1つの作業台の中は、作業台の画面の中で tmux の既定のキーで分割し、ウィンドウを増やす**（`ctrl+q %`、`ctrl+q "`、`ctrl+q c` など）。分割とウィンドウの配置は作業台ごとに持つので、セッション A の作業台は分割なし、セッション B の作業台は `docker compose up` と `pnpm test:e2e` の2つに分割、のように分けて使える。作業台の画面がセッションを移ると、それぞれの配置のまま映る。
 - whatnext の画面だけを閉じたときは、作業台の画面はそのまま、最後に映していた作業台を映し続ける。`whatnext` で whatnext の画面を開き直すと、また追従する。作業台だけを使い続けたい場面もあり、残しても害がない。
 - whatnext が動いていないときに `whatnext workbench` を実行すると、`whatnext is not running. Start whatnext first.` と示して終了する（終了コード 1）。
-- whatnext は動いているのに作業台の画面につなげなかったときは、`whatnext: could not open the workbench screen (tmux session "wbguide").` と示して終了する（終了コード 1）。tmux のエラー（`can't find session` など）も消さずに残す。Ghostty の `ctrl+q ctrl+w` と一覧の `w` で作った分割では、失敗したら `Press any key to close.` と示してキーを待ってから閉じる。待たないと分割ごと閉じて、エラーが読めない。
-- 作業台の画面の案内は、何かの理由で落ちても、whatnext を起動し直さずに出直す。案内が出ないせいで作業台の画面が開かない、ということはない。
+- whatnext は動いているのに作業台の画面につなげなかったときは、`whatnext: could not open the workbench screen (tmux session "wbguide").` と示して終了する（終了コード 1）。tmux のエラー（`can't find session` など）も消さずに残す。案内を作れなかったときは `whatnext: could not create the workbench guide (tmux session "wbguide").` と示して終了する（終了コード 1）。
+- Ghostty の `ctrl+q ctrl+w` と一覧の `w` で作った分割では、`whatnext workbench` が上のどれかで失敗したら（whatnext が動いていないときも）、`Press any key to close.` と示してキーを待ってから閉じる。待たないと分割ごと閉じて、エラーが読めない。
+- 作業台の画面の案内は、何かの理由で落ちても、whatnext を起動し直さずに出直す。案内が出ないせいで作業台の画面が開かない、ということはない。ただし、起動してすぐ落ちることが続くとき（1分以内に続けて6回）は出直すのをやめ、作業台の画面には案内の代わりに落ちたときの出力が残る。whatnext を起動し直すと、また出直す。
 - 端末は問わない。whatnext は端末の機能に頼らず、専用の tmux のクライアントを1つ増やすだけなので。例外は、Ghostty で押した `ctrl+q ctrl+w` と一覧の `w` が分割を作ることだけである。確かめるのは Ghostty で行う。
 - **キーの起点は `ctrl+q` の1つだけにする。** attach している間は、claude の画面でも作業台の画面でも次のキーが効く。
 
