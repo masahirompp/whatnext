@@ -274,7 +274,7 @@ describe('作業台の画面', () => {
     expect(h.inner('show', '-gv', '@wn_guide_died')).toMatch(/signal=kill/);
   });
 
-  it('案内のセッションで分割して案内のペインだけを閉じても、カーソルを動かすと案内が戻る', async () => {
+  it('案内のセッションで分割して案内のペインだけを閉じても、カーソルを動かすと案内が戻り、分割で動かしていたものは止めない', async () => {
     h = new Harness();
     h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta'})]);
     await h.start();
@@ -283,10 +283,17 @@ describe('作業台の画面', () => {
     const guide = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
     await h.keysTo('wb', 'C-q', '%');
     await sleep(500);
+    await h.type('sleep 1004', 'wb');
+    await h.keysTo('wb', 'Enter');
+    await sleep(300);
+    const mine = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
     h.inner('kill-pane', '-t', guide);
     await h.select('beta');
     await h.waitFor(/No workbench for beta yet/, 5000, 'wb');
-    expect(h.inner('list-panes', '-s', '-t', '=wbguide', '-F', '#{@wn_guide_pane}')).toMatch(/^1$/m);
+    const panes = h.inner('list-panes', '-s', '-t', '=wbguide', '-F', '#{pane_id} #{pane_dead} #{@wn_guide_pane}');
+    expect(panes).toMatch(/^%\d+ 0 1$/m);
+    expect(panes).toContain(`${mine} 0 `);
+    expect(h.inner('display', '-p', '-t', mine, '#{pane_current_command}').trim()).toBe('sleep');
   });
 
   it('案内のプログラムが続けて落ちると、6回目で起動し直すのをやめ、死んだペインのまま作業台の画面に残る', async () => {

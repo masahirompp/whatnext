@@ -76,10 +76,11 @@ describe('ペインが終わったときの処理', () => {
   });
 
   /**
-   * 偽の tmux(呼ばれた引数を記録し、`@wn_respawned` には `stored` を、印には `marked` なら 1 を返す)で、
+   * 偽の tmux(呼ばれた引数を記録し、`@wn_respawned` には `stored` を、印には `marked` なら 1 を、
+   * ペインの一覧には終わったペインと、`otherAlive` なら生きたペインを返す)で、
    * 案内のセッションのペインが終わったときの処理を動かす。
    */
-  const runGuideDied = (stored: string, marked = true): string[] => {
+  const runGuideDied = (stored: string, marked = true, otherAlive = true): string[] => {
     const dir = mkdtempSync(join(tmpdir(), 'wn-paned-'));
     try {
       const log = join(dir, 'calls.log');
@@ -91,6 +92,7 @@ describe('ペインが終わったときの処理', () => {
           'case "$*" in',
           `  *show*@wn_respawned*) printf '%s' ${JSON.stringify(stored)};;`,
           `  *show*${GUIDE_PANE}*) ${marked ? 'echo 1' : 'true'};;`,
+          `  *list-panes*) printf '1\\n${otherAlive ? '0\\n' : ''}';;`,
           'esac',
           'exit 0',
           '',
@@ -129,5 +131,10 @@ describe('ペインが終わったときの処理', () => {
     const calls = runGuideDied('', false);
     expect(calls).toContain('-L wn kill-pane -t %7');
     expect(calls).not.toContain('-L wn respawn-pane -t %7');
+  });
+
+  it('印のないペインでも、案内のセッションの最後の生きたペインなら閉じずに残す', () => {
+    const calls = runGuideDied('', false, false);
+    expect(calls).not.toContainEqual(expect.stringMatching(/kill-pane|respawn-pane/));
   });
 });

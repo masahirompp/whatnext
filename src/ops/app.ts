@@ -162,7 +162,7 @@ export class App {
     for (const c of clients) {
       if (c.session !== session) continue;
       if (c.tty === wb) {
-        if (await this.keepGuide()) this.follow();
+        if (await this.recreateGuideIfGone()) this.follow();
         await t.switchClient(c.tty, GUIDE);
       } else if (c.tty === main) await t.switchClient(c.tty, LIST);
     }
@@ -173,7 +173,7 @@ export class App {
    * 案内のセッションが消えていたら、一覧の版の案内で作り直す(作業台の画面を案内へ切り替える前と、tmux からの知らせのたび)。
    * 作り直した案内には名前がないので、同じ中身でも書き直させる。
    */
-  private async keepGuide(): Promise<boolean> {
+  private async recreateGuideIfGone(): Promise<boolean> {
     // 終わる途中では作らない(サーバを畳んだあとに作ると、設定のないサーバが立ち上がる)
     if (this.quitting) return false;
     if ((await ensureGuide(this.p.tmux, this.p.guideCommand, this.p.home)) !== 'created') return false;
@@ -1167,7 +1167,7 @@ export class App {
     const wbArrived = wbAttached && !this.wbAttached;
     this.wbAttached = wbAttached;
     // 案内のセッションが消えると `session-closed` で知らせが届く。`whatnext workbench` も、なければ知らせてくる
-    const guideRecreated = await this.keepGuide();
+    const guideRecreated = await this.recreateGuideIfGone();
     const wbChanged = wbTty !== this.wbTty;
     this.wbTty = wbTty;
     if (closed) {
@@ -1506,7 +1506,7 @@ export class App {
     }
     this.guideTarget = row?.sid;
     if (target === GUIDE) {
-      await this.keepGuide();
+      await this.recreateGuideIfGone();
       const text = JSON.stringify(g);
       if (text !== this.lastGuide) {
         this.lastGuide = text;

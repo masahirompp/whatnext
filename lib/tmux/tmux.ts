@@ -13,6 +13,8 @@ export const LIST = 'list';
 export const GUIDE = 'wbguide';
 /** 案内のプログラムのペインに付ける印(ペインのオプション)。`pane-died` はこの印のあるペインだけを起動し直す。 */
 export const GUIDE_PANE = '@wn_guide_pane';
+/** 案内のペインを起動し直した回数と時刻(ペインのオプション)。使う側が起動し直すときは消して数え直させる。 */
+export const GUIDE_RESPAWNED = '@wn_respawned';
 
 /** 利用者由来の文字列を tmux の書式に置くときは `#` を `##` にする。 */
 export const escapeFormat = (s: string): string => s.replace(/#/g, '##');
@@ -53,16 +55,21 @@ export function scripts(socket: string): Record<string, string> {
       // 終わったときの画面の末尾(Node の例外の種類とメッセージが入る程度)を残す。利用者が案内のセッションで分割したペインは閉じる
       `${GUIDE})`,
       `  if [ "$(${T} show -pqv -t "$p" ${GUIDE_PANE} 2>/dev/null)" != 1 ]; then`,
-      `    ${T} kill-pane -t "$p"`,
+      // 印のないペイン(利用者が分割したもの)は閉じる。ただし最後の生きたペインなら、閉じると案内のセッションが消えて
+      // 作業台の画面ごと離れるので、死んだまま残す(一覧が案内を足してから片付ける)
+      `    alive=$(${T} list-panes -s -t "=$s" -F '#{pane_dead}' 2>/dev/null | grep -c '^0$')`,
+      `    [ "$alive" -gt 0 ] && ${T} kill-pane -t "$p"`,
       '  else',
       `    ${T} set -g @wn_guide_died "$(date '+%Y-%m-%d %H:%M:%S') $(${T} display -p -t "$p" 'status=#{pane_dead_status} signal=#{pane_dead_signal}') $(${T} capture-pane -p -t "$p" | grep -v '^$' | tail -30 | tr '\\n' ' ')"`,
-      `    r=$(${T} show -pqv -t "$p" @wn_respawned 2>/dev/null)`,
+      `    r=$(${T} show -pqv -t "$p" ${GUIDE_RESPAWNED} 2>/dev/null)`,
       `    n=$(echo "$r" | cut -s -d ' ' -f 1); at=$(echo "$r" | cut -s -d ' ' -f 2); now=$(date +%s)`,
       // biome-ignore lint/suspicious/noTemplateCurlyInString: sh のパラメータ展開
       '    n=${n:-0}; at=${at:-0}',
+      // 数でない値(手で書き換えたもの)は数え直す
+      `    case "$n$at" in *[!0-9]*) n=0; at=0;; esac`,
       '    [ $((now - at)) -gt 60 ] && n=0',
       '    if [ "$n" -lt 5 ]; then',
-      `      ${T} set -p -t "$p" @wn_respawned "$((n + 1)) $now"`,
+      `      ${T} set -p -t "$p" ${GUIDE_RESPAWNED} "$((n + 1)) $now"`,
       '      sleep 1',
       `      ${T} respawn-pane -t "$p"`,
       '    fi',
