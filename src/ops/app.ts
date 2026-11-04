@@ -918,7 +918,12 @@ export class App {
       if (r.code !== 0) return;
       for (const l of r.stdout.split('\n')) add(l.trim() || undefined);
       if (this.mode === mode) {
+        // 候補が増えても、カーソルは利用者が見ていた候補に残す(Enter ですぐ起動するので、入れ替わると別の場所で起動する)
+        const before = this.dirItems(mode)[mode.sel];
         mode.items = this.labelDirs(paths);
+        const after = this.dirItems(mode);
+        const i = after.findIndex(it => (before?.other ? it.other : it.path === before?.path));
+        if (i >= 0) mode.sel = i;
         this.draw();
       }
     });

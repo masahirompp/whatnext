@@ -31,7 +31,7 @@ afterEach(async () => {
   await removeMine();
 });
 
-/** n で起動したセッションが haiku 以外のモデルで走ったときのモデル名。以後の launchInWork を止める。 */
+/** n で起動したセッションが haiku で走ったと確かめられなかったときの理由。以後の launchInWork を止める。 */
 let wrongModel: string | undefined;
 
 /**
@@ -47,7 +47,7 @@ async function expectHaiku(id: string): Promise<void> {
     model = await modelOf(sid as string);
     if (!model) await sleep(1000);
   }
-  if (model && !/haiku/.test(model)) wrongModel = model;
+  if (!/haiku/.test(model ?? '')) wrongModel = model ?? 'no model in the transcript';
   expect(model).toMatch(/haiku/);
 }
 
