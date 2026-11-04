@@ -22,8 +22,6 @@ describe('待ち先', () => {
     const first = menu.split('\n')[menu.split('\n').findIndex(l => /New session in:/.test(l)) + 1];
     expect(first).toMatch(/^> app$/);
     await h.keys('Enter');
-    await h.waitFor(/Model for/);
-    await h.keys('Enter');
     await h.waitFor(/fake claude attached to/);
     const newId = h.readAgents().find(r => r.cwd === app && r.name !== 'impl')?.id as string;
     expect(newId).toBeTruthy();

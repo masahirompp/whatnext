@@ -55,9 +55,7 @@ type Mode =
   | {k: 'wait'; waiter: string; filter: string; sel: number}
   | {k: 'dir'; filter: string; sel: number; items: DirItem[]; waitFor?: string}
   | {k: 'other'; text: string; error?: string; waitFor?: string; items: DirItem[]}
-  | {k: 'model'; sel: number; dir: string; waitFor?: string; items: DirItem[]}
-  | {k: 'modelInput'; text: string; dir: string; waitFor?: string; items: DirItem[]}
-  | {k: 'starting'; dir: string; model?: string; since: number}
+  | {k: 'starting'; dir: string; since: number}
   | {k: 'output'; lines: string[]};
 
 interface Notice {
@@ -591,25 +589,9 @@ export class App {
           ...(m.error ? [color.red(m.error)] : []),
           color.gray(`Enter confirm (empty: ${this.tilde(this.p.launchDir)}) · Esc back`),
         ];
-      case 'model':
-        return menuLines({
-          title: `Model for ${this.tilde(m.dir)}:`,
-          items: [{label: 'default'}, {label: 'Other...'}],
-          selected: m.sel,
-          hint: 'Enter select · Esc back',
-          maxItems,
-          width: cols,
-        });
-      case 'modelInput':
-        return [`Model: ${m.text}█`, color.gray('Enter start · Esc back')];
       case 'starting': {
         const secs = Math.floor((this.p.now() - m.since) / 1000);
-        return [
-          'New session',
-          `  Directory: ${this.tilde(m.dir)}`,
-          `  Model: ${m.model ?? 'default'}`,
-          `Starting the session... ${secs}s`,
-        ];
+        return ['New session', `  Directory: ${this.tilde(m.dir)}`, `Starting the session... ${secs}s`];
       }
       case 'output':
         return [...m.lines, color.gray('Press any key to go back to the list.')];
@@ -692,7 +674,7 @@ export class App {
   private typeText(text: string): void {
     const m = this.mode;
     if (m.k === 'note') m.text += text;
-    else if (m.k === 'other' || m.k === 'modelInput') m.text += text;
+    else if (m.k === 'other') m.text += text;
     else if (m.k === 'wait' || m.k === 'dir') {
       m.filter += text;
       m.sel = this.firstMatchIndex(m);
@@ -758,7 +740,7 @@ export class App {
           const it = items[m.sel];
           if (!it) return;
           if (it.other) this.mode = {k: 'other', text: m.filter, waitFor: m.waitFor, items: m.items};
-          else if (it.path) this.mode = {k: 'model', sel: 0, dir: it.path, waitFor: m.waitFor, items: m.items};
+          else if (it.path) void this.startSession(it.path, m.waitFor);
         } else if (name === 'backspace') {
           m.filter = dropLast(m.filter);
           m.sel = 0;
@@ -772,7 +754,7 @@ export class App {
         if (name === 'escape') this.mode = {k: 'dir', filter: '', sel: 0, items: m.items, waitFor: m.waitFor};
         else if (name === 'return') {
           const dir = this.resolveDir(m.text);
-          if (typeof dir === 'string') this.mode = {k: 'model', sel: 0, dir, waitFor: m.waitFor, items: m.items};
+          if (typeof dir === 'string') void this.startSession(dir, m.waitFor);
           else m.error = dir.error;
         } else if (key.ctrl && name === 'u') {
           m.text = '';
@@ -784,25 +766,6 @@ export class App {
           m.text += str;
           m.error = undefined;
         }
-        return;
-      }
-      case 'model': {
-        if (name === 'escape') this.mode = {k: 'dir', filter: '', sel: 0, items: m.items, waitFor: m.waitFor};
-        else if (name === 'up' || name === 'down') m.sel = m.sel === 0 ? 1 : 0;
-        else if (name === 'return') {
-          if (m.sel === 0) void this.startSession(m.dir, undefined, m.waitFor);
-          else this.mode = {k: 'modelInput', text: '', dir: m.dir, waitFor: m.waitFor, items: m.items};
-        }
-        return;
-      }
-      case 'modelInput': {
-        if (name === 'escape') this.mode = {k: 'model', sel: 1, dir: m.dir, waitFor: m.waitFor, items: m.items};
-        else if (name === 'return') {
-          const model = m.text.trim();
-          if (model) void this.startSession(m.dir, model, m.waitFor);
-        } else if (key.ctrl && name === 'u') m.text = '';
-        else if (name === 'backspace') m.text = dropLast(m.text);
-        else if (printable) m.text += str;
         return;
       }
       case 'list':
@@ -984,19 +947,18 @@ export class App {
     return {error: `Not a directory: ${t}`};
   }
 
-  private async startSession(dir: string, model: string | undefined, waitFor?: string, retried = false): Promise<void> {
-    this.mode = {k: 'starting', dir, model, since: this.p.now()};
+  private async startSession(dir: string, waitFor?: string, retried = false): Promise<void> {
+    this.mode = {k: 'starting', dir, since: this.p.now()};
     const tick = setInterval(() => this.draw(), 1000);
     try {
       const args = ['--bg'];
-      if (model) args.push('--model', model);
       if (this.p.settings) args.push('--settings', this.p.settings);
       const r = await this.p.run('claude', args, {cwd: dir, timeout: 120_000});
       const out = stripControl(`${r.stdout}${r.stderr}`);
       if (/Workspace not trusted/i.test(out) && !retried) {
         clearInterval(tick);
         const trusted = await this.trust(dir);
-        if (trusted) return this.startSession(dir, model, waitFor, true);
+        if (trusted) return this.startSession(dir, waitFor, true);
         this.mode = {k: 'list'};
         this.notify(`Not trusted: ${this.tilde(dir)}`);
         return;

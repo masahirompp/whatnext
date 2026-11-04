@@ -38,11 +38,6 @@ async function launchHaiku(): Promise<void> {
   await h.keys('C-u');
   await h.type(WORK);
   await h.keys('Enter');
-  await h.waitFor(/Model for/);
-  await h.keys('Down', 'Enter');
-  await h.waitFor(/Model: █/);
-  await h.type('haiku');
-  await h.keys('Enter');
   await h.waitFor(/\^Q\^L back/, 60000);
   await sleep(3000);
 }

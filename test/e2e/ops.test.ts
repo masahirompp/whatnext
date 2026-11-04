@@ -20,7 +20,7 @@ const panel = (s: string, title: RegExp) => {
 };
 
 describe('新しいセッションの起動', () => {
-  it('8・43: 候補を絞り込んで選び、モデルを選ぶと起動して attach し、離脱すると一覧に出る。Esc で1つ前に戻る', async () => {
+  it('8・43: 候補を絞り込んで選ぶと起動して attach し、離脱すると一覧に出る。Esc で1つ前に戻る', async () => {
     h = new Harness();
     const app = h.repo('app');
     const other = h.mkdir('elsewhere');
@@ -57,26 +57,10 @@ describe('新しいセッションの起動', () => {
     await h.waitFor(/Directory: █/);
     await h.type(other);
     await h.keys('Enter');
-    await h.waitFor(/Model for .*elsewhere:/);
-    // Esc で作業ディレクトリの選択に戻る
-    await h.keys('Escape');
-    await h.waitFor(/New session in:/);
-    await h.keys('Down', 'Down', 'Enter');
-    await h.type(other);
-    await h.keys('Enter');
-    await h.waitFor(/Model for/);
-    await h.keys('Down', 'Enter');
-    await h.waitFor(/Model: █/);
-    await h.keys('Enter');
-    expect(h.screen()).toMatch(/Model: █/);
-    await h.keys('Escape');
-    await h.waitFor(/> Other\.\.\./);
-    await h.keys('Enter');
-    await h.type('haiku');
-    await h.keys('Enter');
     await h.waitFor(/fake claude attached to/);
     const bgCall = h.calls().find(c => c.args[0] === '--bg');
-    expect(bgCall?.args).toEqual(expect.arrayContaining(['--bg', '--model', 'haiku', '--settings']));
+    expect(bgCall?.args).toEqual(expect.arrayContaining(['--bg', '--settings']));
+    expect(bgCall?.args).not.toContain('--model');
     expect(bgCall?.cwd).toBe(other);
     await h.keys('C-q', 'C-l');
     await h.waitFor(/── elsewhere/);
@@ -91,13 +75,10 @@ describe('新しいセッションの起動', () => {
     await h.keys('n', 'Down', 'Enter');
     await h.waitFor(/Enter confirm \(empty: .*app\)/);
     await h.keys('Enter');
-    await h.waitFor(/Model for .*app/);
-    await h.keys('Enter');
     const s = await h.waitFor(/Starting the session\.\.\. \d+s/);
     expect(s).toMatch(/Directory: .*app/);
-    expect(s).toMatch(/Model: default/);
+    expect(s).not.toMatch(/Model/);
     await h.waitFor(/fake claude attached/, 10000);
-    expect(h.calls().find(c => c.args[0] === '--bg')?.args).not.toContain('--model');
   });
 
   it('8: 一覧の n では、候補の先頭がカーソルのあるセッションのリポジトリ', async () => {
@@ -124,7 +105,7 @@ describe('新しいセッションの起動', () => {
     h = new Harness();
     h.conf({bgNoId: true});
     await h.start();
-    await h.keys('n', 'Enter', 'Enter');
+    await h.keys('n', 'Enter');
     await h.waitFor(/claude --bg did not start a session:\nsomething went wrong/);
     await h.keys('x');
     await h.waitFor(s => !/did not start/.test(s));
@@ -136,7 +117,7 @@ describe('新しいセッションの起動', () => {
     const no = h.repo('nope');
     h.conf({untrusted: [app, no]});
     await h.start({cwd: app});
-    await h.keys('n', 'Enter', 'Enter');
+    await h.keys('n', 'Enter');
     await h.waitFor(/Do you trust the files in .*app\?/);
     await h.keys('y');
     await h.waitFor(/fake claude attached/, 10000);
@@ -145,7 +126,7 @@ describe('新しいセッションの起動', () => {
     await h.keys('n');
     await h.keys('Down', 'Enter');
     await h.type(no);
-    await h.keys('Enter', 'Enter');
+    await h.keys('Enter');
     await h.waitFor(/Do you trust the files in .*nope\?/);
     await h.keys('n');
     await h.waitFor(/Not trusted: .*nope/);
@@ -156,7 +137,7 @@ describe('新しいセッションの起動', () => {
     h.agents([bg('a', {name: 'impl'})]);
     h.conf({hideNew: true});
     await h.start();
-    await h.keys('f', 'Enter', 'Enter', 'Enter');
+    await h.keys('f', 'Enter', 'Enter');
     await h.waitFor(/fake claude attached/);
     await h.keys('C-q', 'C-l');
     await h.waitFor(/^> impl/m);

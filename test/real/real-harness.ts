@@ -87,6 +87,8 @@ export class RealHarness extends Harness {
       WHATNEXT_PORT: String(this.port),
       XDG_STATE_HOME: join(this.dir, 'state'),
       WHATNEXT_DEBUG_LOG: join(this.dir, 'debug.log'),
+      // n はモデルを選ばないので、whatnext が起動するセッションを環境変数で haiku にする
+      ANTHROPIC_MODEL: 'haiku',
       ...extra,
     };
     const assigns = Object.entries(vars).map(([k, v]) => `${k}='${v}'`);
