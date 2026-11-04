@@ -673,8 +673,7 @@ export class App {
 
   private typeText(text: string): void {
     const m = this.mode;
-    if (m.k === 'note') m.text += text;
-    else if (m.k === 'other') m.text += text;
+    if (m.k === 'note' || m.k === 'other') m.text += text;
     else if (m.k === 'wait' || m.k === 'dir') {
       m.filter += text;
       m.sel = this.firstMatchIndex(m);

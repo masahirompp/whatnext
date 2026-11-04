@@ -1,5 +1,6 @@
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {stripControl} from '../../lib/input/exec.js';
 import {Harness, sleep} from '../e2e/harness.js';
@@ -60,12 +61,33 @@ export function startBg(name: string, prompt?: string, extra: string[] = []): st
 }
 
 /**
- * whatnext の n はモデルを選ばないので、WORK のプロジェクトの設定でモデルを haiku にする。
- * 環境変数(ANTHROPIC_MODEL)で渡すと、whatnext が起こしたデーモンを通して WORK の外のセッションにまで残りうる。
+ * WORK のプロジェクトの設定を書く。毎回中身ごと書き直し、テストのあとも残す(WORK はテスト専用)。
+ * - model: whatnext の n はモデルを選ばないので、n で起動するセッションを haiku にする。環境変数(ANTHROPIC_MODEL)で
+ *   渡すと、whatnext が起こしたデーモンを通して WORK の外のセッションにまで残りうる。効くことは modelOf で確かめる
+ * - permissions.defaultMode: 利用者の既定が auto だと権限の確認が出ず、権限待ちのシナリオが成り立たない
  */
-export function pinHaiku(): void {
+export function writeWorkSettings(): void {
   mkdirSync(join(WORK, '.claude'), {recursive: true});
-  writeFileSync(join(WORK, '.claude', 'settings.local.json'), `${JSON.stringify({model: 'haiku'}, null, 2)}\n`);
+  const settings = {model: 'haiku', permissions: {defaultMode: 'default'}};
+  writeFileSync(join(WORK, '.claude', 'settings.local.json'), `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+/** 会話記録にある応答のモデル名(最後のもの)。見つからなければ undefined。 */
+export function modelOf(sessionId: string): string | undefined {
+  const root = join(homedir(), '.claude', 'projects');
+  for (const d of readdirSync(root)) {
+    const f = join(root, d, `${sessionId}.jsonl`);
+    if (!existsSync(f)) continue;
+    let model: string | undefined;
+    for (const line of readFileSync(f, 'utf8').split('\n')) {
+      try {
+        const m = (JSON.parse(line) as {message?: {model?: string}}).message?.model;
+        if (m && m !== '<synthetic>') model = m;
+      } catch {}
+    }
+    return model;
+  }
+  return undefined;
 }
 
 /** WORK のセッションを止めて消す。 */

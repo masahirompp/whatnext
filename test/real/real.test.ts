@@ -7,13 +7,14 @@ import {
   agents,
   cleanEnv,
   mine,
+  modelOf,
   PERMISSION_PROMPT,
-  pinHaiku,
   RealHarness,
   removeMine,
   startBg,
   WORK,
   waitAgent,
+  writeWorkSettings,
 } from './real-harness.js';
 
 // 実機の通し(DESIGN.md「確かめ方」)。本物の claude(haiku)を使う。流す前に、テストのセッション(wn-real-…)の
@@ -22,7 +23,7 @@ import {
 let h: RealHarness;
 
 beforeAll(async () => {
-  pinHaiku();
+  writeWorkSettings();
   await removeMine();
 });
 afterEach(async () => {
@@ -30,8 +31,8 @@ afterEach(async () => {
   await removeMine();
 });
 
-/** `n` で WORK に haiku のセッションを起動して attach する。 */
-async function launchHaiku(): Promise<void> {
+/** `n` で WORK にセッションを起動して attach する(モデルは WORK の設定で haiku になる)。 */
+async function launchInWork(): Promise<void> {
   await h.keys('n');
   await h.waitFor(/New session in:/);
   await h.type('zzzqqqx');
@@ -70,7 +71,7 @@ describe('whatnext が起動したセッション', () => {
     h = new RealHarness();
     await h.start({size: {cols: 150, rows: 45}});
     const before = new Set(mine().map(a => a.id as string));
-    await launchHaiku();
+    await launchInWork();
     await sendPrompt(PERMISSION_PROMPT('n1'));
     // 概要の行(フックを受けて、更新を待たずに出る)
     await h.waitFor(/[0-9a-f]{8} · Use the Bash tool to run exactly/, 20000);
@@ -97,13 +98,15 @@ describe('whatnext が起動したセッション', () => {
     await refreshUntil(() => /Review/.test(h.row(nm(id)) ?? ''));
     expect(h.notes(nm(id)).join('\n')).toMatch(/finished/);
     expect(h.row(nm(id))).toMatch(/\d+k +(<1m|\dm)$/);
+    // n はモデルを選ばないので、WORK の設定の haiku で走ったことを確かめる
+    expect(modelOf(mine().find(a => a.id === id)?.sessionId as string)).toMatch(/haiku/);
   });
 
   it('34: whatnext を終了している間にターンを終えても、起動し直した最初の一覧に最後の応答の冒頭が出る', async () => {
     h = new RealHarness();
     await h.start({size: {cols: 150, rows: 45}});
     const before = new Set(mine().map(a => a.id as string));
-    await launchHaiku();
+    await launchInWork();
     await sendPrompt('Write about 150 words about green tea. Do not use any tools. Start with the word Tea.');
     await sleep(1500);
     await h.keys('C-q', 'C-l');
@@ -129,7 +132,7 @@ describe('whatnext が起動したセッション', () => {
       await sleep(1500);
       await h.start({size: {cols: 150, rows: 45}});
       const before = new Set(mine().map(a => a.id as string));
-      await launchHaiku();
+      await launchInWork();
       await sendPrompt('Reply with exactly the word: pong');
       await h.keys('C-q', 'C-l');
       const id = await (async () => {

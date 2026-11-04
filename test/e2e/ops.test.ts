@@ -20,7 +20,7 @@ const panel = (s: string, title: RegExp) => {
 };
 
 describe('新しいセッションの起動', () => {
-  it('8・43: 候補を絞り込んで選ぶと起動して attach し、離脱すると一覧に出る。Esc で1つ前に戻る', async () => {
+  it('8・43: 候補を絞り込んで選ぶと起動して attach し、離脱すると一覧に出る。Other... の Esc で候補に戻る', async () => {
     h = new Harness();
     const app = h.repo('app');
     const other = h.mkdir('elsewhere');
