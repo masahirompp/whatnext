@@ -31,15 +31,23 @@ afterEach(async () => {
   await removeMine();
 });
 
-/** n で起動したセッションが haiku で走らなかったときのモデル名。以後の launchInWork を止める。 */
+/** n で起動したセッションが haiku 以外のモデルで走ったときのモデル名。以後の launchInWork を止める。 */
 let wrongModel: string | undefined;
 
-/** n で起動したセッションが WORK の設定の haiku で走ったことを確かめる(#319)。応答が1つ以上あるときに呼ぶ。 */
+/**
+ * n で起動したセッションが WORK の設定の haiku で走ったことを確かめる(#319)。応答が1つ以上あるときに呼ぶ。
+ * launchInWork を使うシナリオはどれも呼ぶ(1つだけ流したときや、先のシナリオが途中で落ちたときも確かめるため)。
+ */
 async function expectHaiku(id: string): Promise<void> {
   const sid = mine().find(a => a.id === id)?.sessionId;
   expect(sid, `no row for ${id}`).toBeTruthy();
-  const model = await modelOf(sid as string);
-  if (!/haiku/.test(model ?? '')) wrongModel = model ?? 'no model in the transcript';
+  // 会話記録の書き出しが遅れることがあるので、モデル名が出るまで読み直す
+  let model: string | undefined;
+  for (let i = 0; i < 10 && !model; i++) {
+    model = await modelOf(sid as string);
+    if (!model) await sleep(1000);
+  }
+  if (model && !/haiku/.test(model)) wrongModel = model;
   expect(model).toMatch(/haiku/);
 }
 
@@ -129,6 +137,7 @@ describe('whatnext が起動したセッション', () => {
     await h.keys('q');
     await h.waitFor(/\[exit 0\]/);
     await waitAgent(a => a.some(x => x.id === id && x.state === 'done'), 90000);
+    await expectHaiku(id);
     await sleep(3000);
     await h.start({size: {cols: 150, rows: 45}});
     expect(h.row(nm(id))).toMatch(/Review.*(<1m|\dm)$/);
@@ -154,6 +163,7 @@ describe('whatnext が起動したセッション', () => {
         return newId(before);
       })();
       await waitAgent(a => a.some(x => x.id === id && x.state === 'done'), 90000);
+      await expectHaiku(id);
       await sleep(3000);
       await refreshUntil(() => /Review/.test(h.row(nm(id)) ?? ''));
       expect(h.notes(nm(id)).join('\n')).toMatch(/pong/);

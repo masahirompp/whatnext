@@ -24,11 +24,18 @@ export interface Agent {
 }
 
 /** Claude Code の中のシェルから起動したときに引き継ぐ印を外す(外さないと対話セッションが --json に出ない。#284)。 */
-const CLEAN = '-u CLAUDE_CODE_CHILD_SESSION -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT';
+const CLEAN = '-u CLAUDE_CODE_CHILD_SESSION -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u ANTHROPIC_MODEL';
 
 export function cleanEnv(): NodeJS.ProcessEnv {
   const e = {...process.env};
-  for (const k of ['CLAUDE_CODE_CHILD_SESSION', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'TMUX', 'TMUX_PANE'])
+  for (const k of [
+    'CLAUDE_CODE_CHILD_SESSION',
+    'CLAUDECODE',
+    'CLAUDE_CODE_ENTRYPOINT',
+    'ANTHROPIC_MODEL',
+    'TMUX',
+    'TMUX_PANE',
+  ])
     delete e[k];
   e.WHATNEXT_ROLE = '';
   return e;

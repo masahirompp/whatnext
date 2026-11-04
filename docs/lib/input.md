@@ -30,7 +30,9 @@
   - `read(sid)`：更新時刻が変わったファイルだけを末尾から読み、`TranscriptFacts`（`prompt`、`haltAt`、`permission`、`question`、`declined`、`error`、`lastText`）を返す。なければ `undefined`。
   - `firstPrompt(sid, force?)`：最初の利用者の指示の1行目。一度見つけたら覚える。`force` で置き場所から探し直す。
   - `createdAt(sid)`：会話記録の先頭から、`timestamp` を持つ最初の行の時刻（エポックミリ秒）。セッションを作った時刻として使う。先頭から最大 2MB を読み、一度見つけたら覚える。ファイルがない、時刻のある行がないときは `undefined`。時刻のある行がなかったときは、ファイルの大きさが変わるまで読み直さない（`firstPrompt` と同じ）。
-  - `locate(sid)`、`forget(keep)`。
+  - `new Transcripts(configDir)`：`configDir` は `projects` を含む置き場所（`CLAUDE_CONFIG_DIR`、なければ `~/.claude`）。呼ぶ側が決めて渡す。
+  - `locate(sid)`：会話記録のファイルのパス。見つからない、または置き場所を読めないときは `undefined`。
+  - `forget(keep)`：`keep` にないセッションの覚えた値を捨てる。
 - 指示とみなす行、除く行、サイドチェーン、中断の扱いは [claude-code-behavior.md](../claude-code-behavior.md)「会話記録」にある。
 - 未確認の観察が2件ある（#253、#244。DESIGN.md「確かめ方」、claude-code-behavior.md）。
 
