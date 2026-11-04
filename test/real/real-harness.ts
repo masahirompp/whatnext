@@ -1,6 +1,9 @@
 import {execFileSync} from 'node:child_process';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {stripControl} from '../../lib/input/exec.js';
+import {Transcripts} from '../../lib/input/transcript.js';
 import {Harness, sleep} from '../e2e/harness.js';
 
 // 実機の通しの口。本物の claude(haiku)を使い、ソケット、ポート、状態のファイルはテスト用に分ける。
@@ -20,13 +23,17 @@ export interface Agent {
   waitingFor?: string;
 }
 
-/** Claude Code の中のシェルから起動したときに引き継ぐ印を外す(外さないと対話セッションが --json に出ない。#284)。 */
-const CLEAN = '-u CLAUDE_CODE_CHILD_SESSION -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT';
+/**
+ * テストの環境から外す変数。
+ * - Claude Code の中のシェルから起動したときに引き継ぐ印(外さないと対話セッションが --json に出ない。#284)
+ * - ANTHROPIC_MODEL(WORK の設定の model より優先され、n で起動するセッションが haiku にならない)
+ */
+const UNSET = ['CLAUDE_CODE_CHILD_SESSION', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'ANTHROPIC_MODEL'];
+const CLEAN = UNSET.map(k => `-u ${k}`).join(' ');
 
 export function cleanEnv(): NodeJS.ProcessEnv {
   const e = {...process.env};
-  for (const k of ['CLAUDE_CODE_CHILD_SESSION', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'TMUX', 'TMUX_PANE'])
-    delete e[k];
+  for (const k of [...UNSET, 'TMUX', 'TMUX_PANE']) delete e[k];
   e.WHATNEXT_ROLE = '';
   return e;
 }
@@ -56,6 +63,32 @@ export function startBg(name: string, prompt?: string, extra: string[] = []): st
   const m = /backgrounded\s*·\s*([0-9a-f]{8})/.exec(stripControl(out));
   if (!m) throw new Error(`no id: ${out}`);
   return m[1];
+}
+
+/**
+ * WORK のプロジェクトの設定を書く。毎回中身ごと書き直し、テストのあとも残す(WORK はテスト専用)。
+ * - model: whatnext の n はモデルを選ばないので、n で起動するセッションを haiku にする。環境変数(ANTHROPIC_MODEL)で
+ *   渡すと、whatnext が起こしたデーモンを通して WORK の外のセッションにまで残りうる。効くことは modelOf で確かめる
+ * - permissions.defaultMode: 利用者の既定が auto だと権限の確認が出ず、権限待ちのシナリオが成り立たない
+ */
+export function writeWorkSettings(): void {
+  mkdirSync(join(WORK, '.claude'), {recursive: true});
+  const settings = {model: 'haiku', permissions: {defaultMode: 'default'}};
+  writeFileSync(join(WORK, '.claude', 'settings.local.json'), `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+/** 会話記録にある応答のモデル名(最後のもの)。会話記録もモデル名もなければ undefined。 */
+export async function modelOf(sessionId: string): Promise<string | undefined> {
+  const path = await new Transcripts(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')).locate(sessionId);
+  if (!path) return undefined;
+  let model: string | undefined;
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    try {
+      const m = (JSON.parse(line) as {message?: {model?: string}}).message?.model;
+      if (m && m !== '<synthetic>') model = m;
+    } catch {}
+  }
+  return model;
 }
 
 /** WORK のセッションを止めて消す。 */

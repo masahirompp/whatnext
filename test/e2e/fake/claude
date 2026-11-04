@@ -71,7 +71,6 @@ if (cmd === '--bg') {
   }
   const id = randomBytes(4).toString('hex');
   const sid = `${id}-${randomUUID().slice(9)}`;
-  const mi = args.indexOf('--model');
   const rows = load();
   rows.push({
     kind: 'background',
@@ -83,7 +82,6 @@ if (cmd === '--bg') {
     pid: 90000 + Math.floor(Math.random() * 9000),
     state: 'blocked',
     status: 'idle',
-    ...(mi >= 0 ? {_fake: {model: args[mi + 1]}} : {}),
   });
   if (!c.hideNew) save(rows);
   else writeFileSync(join(dir, 'hidden.json'), JSON.stringify(rows.at(-1)));
@@ -181,7 +179,7 @@ if (cmd === 'attach') {
     process.stdout.write(s);
   });
   setInterval(() => {}, 1 << 30);
-} else if (cmd === undefined || cmd.startsWith('--model') || cmd === '--') {
+} else if (cmd === undefined || cmd === '--') {
   // 対話モード(信頼の確認)。y で信頼し、ほかのキーで断る
   const cj = process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, '.claude.json') : null;
   process.stdout.write(`Do you trust the files in ${process.cwd()}?\r\n  1. Yes, I trust this folder\r\n> 2. No, exit\r\n`);
