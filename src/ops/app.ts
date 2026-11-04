@@ -578,7 +578,7 @@ export class App {
           input: m.filter,
           items: items.map(i => ({label: i.label})),
           selected: m.sel,
-          hint: 'Type to filter · Enter select · Esc close',
+          hint: 'Type to filter · Enter start · Esc close',
           maxItems,
           width: cols,
         });

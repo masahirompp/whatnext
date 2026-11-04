@@ -34,7 +34,7 @@ describe('新しいセッションの起動', () => {
       '> app',
       '  ghq-repo',
       '  Other...',
-      'Type to filter · Enter select · Esc close',
+      'Type to filter · Enter start · Esc close',
     ]);
     // 絞り込み
     await h.type('gr');
