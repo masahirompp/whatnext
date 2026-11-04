@@ -77,7 +77,7 @@ describe('新しいセッションの起動', () => {
     await h.keys('Enter');
     const s = await h.waitFor(/Starting the session\.\.\. \d+s/);
     expect(s).toMatch(/Directory: .*app/);
-    expect(s).not.toMatch(/Model/);
+    expect(s).not.toMatch(/Model:/);
     await h.waitFor(/fake claude attached/, 10000);
   });
 

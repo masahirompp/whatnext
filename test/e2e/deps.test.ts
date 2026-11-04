@@ -23,6 +23,7 @@ describe('待ち先', () => {
     expect(first).toMatch(/^> app$/);
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to/);
+    expect(h.calls().find(c => c.args[0] === '--bg')?.args).not.toContain('--model');
     const newId = h.readAgents().find(r => r.cwd === app && r.name !== 'impl')?.id as string;
     expect(newId).toBeTruthy();
     h.update(newId, {state: 'working', status: 'busy', name: 'review'});

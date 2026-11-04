@@ -8,6 +8,7 @@ import {
   cleanEnv,
   mine,
   PERMISSION_PROMPT,
+  pinHaiku,
   RealHarness,
   removeMine,
   startBg,
@@ -21,6 +22,7 @@ import {
 let h: RealHarness;
 
 beforeAll(async () => {
+  pinHaiku();
   await removeMine();
 });
 afterEach(async () => {

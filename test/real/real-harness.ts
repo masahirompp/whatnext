@@ -1,4 +1,5 @@
 import {execFileSync} from 'node:child_process';
+import {mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {stripControl} from '../../lib/input/exec.js';
 import {Harness, sleep} from '../e2e/harness.js';
@@ -58,6 +59,15 @@ export function startBg(name: string, prompt?: string, extra: string[] = []): st
   return m[1];
 }
 
+/**
+ * whatnext の n はモデルを選ばないので、WORK のプロジェクトの設定でモデルを haiku にする。
+ * 環境変数(ANTHROPIC_MODEL)で渡すと、whatnext が起こしたデーモンを通して WORK の外のセッションにまで残りうる。
+ */
+export function pinHaiku(): void {
+  mkdirSync(join(WORK, '.claude'), {recursive: true});
+  writeFileSync(join(WORK, '.claude', 'settings.local.json'), `${JSON.stringify({model: 'haiku'}, null, 2)}\n`);
+}
+
 /** WORK のセッションを止めて消す。 */
 export async function removeMine(): Promise<void> {
   for (const a of mine()) {
@@ -87,8 +97,6 @@ export class RealHarness extends Harness {
       WHATNEXT_PORT: String(this.port),
       XDG_STATE_HOME: join(this.dir, 'state'),
       WHATNEXT_DEBUG_LOG: join(this.dir, 'debug.log'),
-      // n はモデルを選ばないので、whatnext が起動するセッションを環境変数で haiku にする
-      ANTHROPIC_MODEL: 'haiku',
       ...extra,
     };
     const assigns = Object.entries(vars).map(([k, v]) => `${k}='${v}'`);

@@ -264,7 +264,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 |---|---|---|
 | 単体 | `npm test` | 段と並び、画面の組み立て、入力の読み取り(会話記録、フック、OTel、Usage)、状態のファイル、候補の表示名と絞り込み、引数を、固定データで確かめる |
 | 画面の通し | `npm run test:e2e` | 専用の tmux、偽の claude、偽の `open` で whatnext を起動し、send-keys で操作して capture-pane で画面を読む |
-| 実機の通し | `npm run test:real` | 実機の claude（haiku）で起動したセッションを使う。Ghostty の分割は AppleScript で操作する。スクリプトにして何度でも流せるようにする |
+| 実機の通し | `npm run test:real` | 実機の claude（haiku）で起動したセッションを使う。`n` はモデルを選ばないので、作業場所のプロジェクトの設定（`.claude/settings.local.json` の `model`）で haiku にする。環境変数で渡すと、whatnext が起こしたデーモンを通して作業場所の外のセッションにまで残りうる。Ghostty の分割は AppleScript で操作する。スクリプトにして何度でも流せるようにする |
 | 手動 | 利用者 | マウスでの選択とコピーにもう一方の文字が混ざらないこと（25、25a）、ホイールで作業台の出力をさかのぼれること（25a）、サイクル8の whatnext より悪くなっていないことの判断 |
 
 - `npm test` はコミットごとに流す。`test:e2e` は、tmux、操作、作業台に触れたコミットで流す。`test:real` は、完了条件を判定する前と claude を更新したあとに流す。
