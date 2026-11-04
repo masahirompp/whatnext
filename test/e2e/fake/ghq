@@ -1,7 +1,10 @@
 #!/bin/sh
 # 偽の ghq。$FAKE_DIR/ghq.txt があれば、それを `ghq list -p` の結果として返す。なければ失敗する。
-# $FAKE_DIR/ghq-delay があれば、その秒数だけ待ってから返す。
-[ -f "$FAKE_DIR/ghq-delay" ] && sleep "$(cat "$FAKE_DIR/ghq-delay")"
+# $FAKE_DIR/ghq-hold があれば、$FAKE_DIR/ghq-go が置かれるまで(最大30秒)待ってから返す。
+if [ -f "$FAKE_DIR/ghq-hold" ]; then
+  i=0
+  while [ ! -f "$FAKE_DIR/ghq-go" ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+fi
 if [ -f "$FAKE_DIR/ghq.txt" ]; then
   cat "$FAKE_DIR/ghq.txt"
   exit 0

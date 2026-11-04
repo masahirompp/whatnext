@@ -39,6 +39,9 @@ let wrongModel: string | undefined;
  * launchInWork を使うシナリオはどれも呼ぶ(1つだけ流したときや、先のシナリオが途中で落ちたときも確かめるため)。
  */
 async function expectHaiku(id: string): Promise<void> {
+  // 確かめられずに落ちるときも以後を止めるよう、先に立てておき、haiku と確かめられたら下ろす
+  const prev = wrongModel;
+  wrongModel = `could not check ${id}`;
   const sid = mine().find(a => a.id === id)?.sessionId;
   expect(sid, `no row for ${id}`).toBeTruthy();
   // 会話記録の書き出しが遅れることがあるので、モデル名が出るまで読み直す
@@ -47,8 +50,9 @@ async function expectHaiku(id: string): Promise<void> {
     model = await modelOf(sid as string);
     if (!model) await sleep(1000);
   }
-  if (!/haiku/.test(model ?? '')) wrongModel = model ?? 'no model in the transcript';
+  if (model) wrongModel = model;
   expect(model).toMatch(/haiku/);
+  wrongModel = prev;
 }
 
 /** `n` で WORK にセッションを起動して attach する(モデルは WORK の設定で haiku になる)。 */

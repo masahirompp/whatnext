@@ -86,7 +86,7 @@ describe('新しいセッションの起動', () => {
     const app = h.repo('app');
     const zxq = h.repo('zxq');
     writeFileSync(join(h.dir, 'ghq.txt'), `${h.repo('zq')}\n`);
-    writeFileSync(join(h.dir, 'ghq-delay'), '2');
+    writeFileSync(join(h.dir, 'ghq-hold'), '');
     h.agents([bg('a', {cwd: zxq, name: 'alpha'})]);
     await h.start({cwd: app});
     await h.keys('n');
@@ -95,6 +95,7 @@ describe('新しいセッションの起動', () => {
     let s = await h.waitFor(/New session in: zq█/);
     expect(panel(s, /New session in:/).slice(1, 3)).toEqual(['> zxq', '  Other...']);
     // ghq の結果(よりよく当たる zq)が届くと、zq は上に入るが、カーソルは zxq に残る
+    writeFileSync(join(h.dir, 'ghq-go'), '');
     s = await h.waitFor(/^ {2}zq$/m, 10000);
     expect(panel(s, /New session in:/).slice(1, 4)).toEqual(['  zq', '> zxq', '  Other...']);
     await h.keys('Enter');
