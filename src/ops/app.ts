@@ -587,7 +587,7 @@ export class App {
         return [
           `Directory: ${m.text}█`,
           ...(m.error ? [color.red(m.error)] : []),
-          color.gray(`Enter confirm (empty: ${this.tilde(this.p.launchDir)}) · Esc back`),
+          color.gray(`Enter start (empty: ${this.tilde(this.p.launchDir)}) · Esc back`),
         ];
       case 'starting': {
         const secs = Math.floor((this.p.now() - m.since) / 1000);

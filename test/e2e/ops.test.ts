@@ -73,7 +73,7 @@ describe('新しいセッションの起動', () => {
     h.conf({bgDelay: 2500});
     await h.start({cwd: app});
     await h.keys('n', 'Down', 'Enter');
-    await h.waitFor(/Enter confirm \(empty: .*app\)/);
+    await h.waitFor(/Enter start \(empty: .*app\)/);
     await h.keys('Enter');
     const s = await h.waitFor(/Starting the session\.\.\. \d+s/);
     expect(s).toMatch(/Directory: .*app/);
