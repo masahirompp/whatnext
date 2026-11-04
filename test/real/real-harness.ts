@@ -1,8 +1,9 @@
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {stripControl} from '../../lib/input/exec.js';
+import {Transcripts} from '../../lib/input/transcript.js';
 import {Harness, sleep} from '../e2e/harness.js';
 
 // 実機の通しの口。本物の claude(haiku)を使い、ソケット、ポート、状態のファイルはテスト用に分ける。
@@ -72,22 +73,18 @@ export function writeWorkSettings(): void {
   writeFileSync(join(WORK, '.claude', 'settings.local.json'), `${JSON.stringify(settings, null, 2)}\n`);
 }
 
-/** 会話記録にある応答のモデル名(最後のもの)。見つからなければ undefined。 */
-export function modelOf(sessionId: string): string | undefined {
-  const root = join(homedir(), '.claude', 'projects');
-  for (const d of readdirSync(root)) {
-    const f = join(root, d, `${sessionId}.jsonl`);
-    if (!existsSync(f)) continue;
-    let model: string | undefined;
-    for (const line of readFileSync(f, 'utf8').split('\n')) {
-      try {
-        const m = (JSON.parse(line) as {message?: {model?: string}}).message?.model;
-        if (m && m !== '<synthetic>') model = m;
-      } catch {}
-    }
-    return model;
+/** 会話記録にある応答のモデル名(最後のもの)。会話記録もモデル名もなければ undefined。 */
+export async function modelOf(sessionId: string): Promise<string | undefined> {
+  const path = await new Transcripts(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')).locate(sessionId);
+  if (!path) return undefined;
+  let model: string | undefined;
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    try {
+      const m = (JSON.parse(line) as {message?: {model?: string}}).message?.model;
+      if (m && m !== '<synthetic>') model = m;
+    } catch {}
   }
-  return undefined;
+  return model;
 }
 
 /** WORK のセッションを止めて消す。 */

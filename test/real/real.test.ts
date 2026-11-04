@@ -31,8 +31,22 @@ afterEach(async () => {
   await removeMine();
 });
 
+/** n で起動したセッションが haiku で走らなかったときのモデル名。以後の launchInWork を止める。 */
+let wrongModel: string | undefined;
+
+/** n で起動したセッションが WORK の設定の haiku で走ったことを確かめる(#319)。応答が1つ以上あるときに呼ぶ。 */
+async function expectHaiku(id: string): Promise<void> {
+  const sid = mine().find(a => a.id === id)?.sessionId;
+  expect(sid, `no row for ${id}`).toBeTruthy();
+  const model = await modelOf(sid as string);
+  if (!/haiku/.test(model ?? '')) wrongModel = model ?? 'no model in the transcript';
+  expect(model).toMatch(/haiku/);
+}
+
 /** `n` で WORK にセッションを起動して attach する(モデルは WORK の設定で haiku になる)。 */
 async function launchInWork(): Promise<void> {
+  if (wrongModel)
+    throw new Error(`n で起動したセッションが haiku で走らなかった(${wrongModel})。WORK の設定を確かめる(#319)`);
   await h.keys('n');
   await h.waitFor(/New session in:/);
   await h.type('zzzqqqx');
@@ -77,6 +91,8 @@ describe('whatnext が起動したセッション', () => {
     await h.waitFor(/[0-9a-f]{8} · Use the Bash tool to run exactly/, 20000);
     await waitAgent(a => a.some(x => x.id && !before.has(x.id) && x.waitingFor === 'permission prompt'));
     const id = newId(before);
+    // 権限待ちなら応答(道具の呼び出し)がある。n はモデルを選ばないので、ここで haiku を確かめる
+    await expectHaiku(id);
     await h.waitFor(/Do you want|Yes/, 20000);
     await h.keys('C-q', 'C-l');
     await refreshUntil(() => /Permission/.test(h.row(nm(id)) ?? ''));
@@ -98,8 +114,6 @@ describe('whatnext が起動したセッション', () => {
     await refreshUntil(() => /Review/.test(h.row(nm(id)) ?? ''));
     expect(h.notes(nm(id)).join('\n')).toMatch(/finished/);
     expect(h.row(nm(id))).toMatch(/\d+k +(<1m|\dm)$/);
-    // n はモデルを選ばないので、WORK の設定の haiku で走ったことを確かめる
-    expect(modelOf(mine().find(a => a.id === id)?.sessionId as string)).toMatch(/haiku/);
   });
 
   it('34: whatnext を終了している間にターンを終えても、起動し直した最初の一覧に最後の応答の冒頭が出る', async () => {
