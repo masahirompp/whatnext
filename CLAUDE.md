@@ -14,33 +14,40 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 
 ## 開発の進め方
 
-cycle 9 までは、`src/` とテストをサイクルごとに捨てて書き直すサイクル型リライト方式で開発した。cycle 9 の終わり(2026-11-21)に通常の開発に移った(`docs/adr/0023-end-cycle-rewrite-and-move-to-normal-development.md`)。`src/` とテストは捨てず、すべてのコードを本番品質で維持する。docs に出てくる「サイクル N」は、それまでの経緯の記録である。
+`src/`、`lib/`、`mod/` とテストは、どれも本番品質のコードとして直しながら育てる。docs やスキルに出てくる「サイクル N」「cycle-end」「サイクルの完了条件」は、cycle 9(2026-11-21)まで使ったサイクル型リライト方式の経緯の記録で、今の手順ではない(`docs/adr/0023-end-cycle-rewrite-and-move-to-normal-development.md`)。
 
 ### コードと docs の置き場所
 
 - `src/`: 一覧の本体。`test/`: 単体(`test/unit/`)、画面の通し(`test/e2e/`)、実機の通し(`test/real/`)
 - `lib/`: 末端の部品(入力、tmux、段の判定、文字の幅と色)。契約を `docs/lib/` に置く。依存は `src/` → `lib/` の一方向だけ。振る舞いを変えるときは、先に契約の docs を直し、テストを足してからコードを直す
 - `mod/`: `--digest` のときにセッションに付けるダイジェストの mod(テストは `mod/tests/`)。npm の配布物に入り、Claude Code の中で動く(`docs/adr/0022-ship-a-digest-mod-for-launched-sessions.md`)
-- `docs/`(PRODUCT.md、DESIGN.md、adr/、lib/)、`README.md`、`CONTEXT.md`、`.claude/skills/`: コードと食い違わないように保つ。挙動を変えるときは、同じ変更の中で docs も直す
+- `docs/`(PRODUCT.md、DESIGN.md、adr/、lib/)、`README.md`、`CONTEXT.md`、`.claude/skills/`: コードと食い違わないように保つ(下の「挙動を変えるとき」)
 
 ### 要件と設計の2ファイル
 
 `docs/PRODUCT.md` は要件(何を実現するか。観測できる振る舞い、受け入れシナリオ、Out of Scope)、`docs/DESIGN.md` は設計(どう実現するか。技術と依存、入力の出どころ、フック・OTel・会話記録の受け方、確かめ方)を書く。境界は下の自律判断の層1と層2で引く。2ファイルの間は見出しの名前で参照する。
 
+### 挙動を変えるとき
+
+利用者から見える挙動を変える PR では、コードと一緒に次を直す。docs とコードの食い違いを書き直しで洗い出す機会はもうないので、この2つが食い違いを防ぐ手段になる(ADR-0023)。
+
+- `docs/PRODUCT.md` の該当の節と受け入れシナリオ。仕組みが変わるなら `docs/DESIGN.md` も
+- そのシナリオを確かめるテスト(単体か画面の通し)。足すか、書き換える
+
 ### AI の自律判断(3層)
 
-1. **内部設計の変更**(外から見える挙動が変わらない): 自律で進めてよい。ただし判断内容を `decision-log` ラベル付き issue に記録し、確認フェーズで一括報告する。
+1. **内部設計の変更**(外から見える挙動が変わらない): 自律で進めてよい。ただし判断内容を `decision-log` ラベル付き issue に記録し、その PR の本文に issue を並べて報告する。
 2. **観測可能な挙動・仕様の変更**: 人間へのエスカレーション必須。質問は「挙動 A と挙動 B のどちらが欲しいか」というドメイン語の二択で行う。コードの理解を要求する質問はしない。二択で表現できない変更は層1として扱う。
 3. **不可逆・外部影響**(課金、外部 API 契約、データ破壊等): 常に同期エスカレーション。例外なし。
 
 ### 学びの捕捉
 
-実装・確認中に得た学び(エッジケース、想定外挙動、暗黙の要件、ライブラリのハマり)は発見の都度 GitHub issue に起票する。ラベル(`bug` / `learning` / `spec-change` / `decision-log`)を付ける。issue は受信箱であり、長く効く学びは docs かスキルに書いてから閉じる。
+実装・確認中に得た学び(エッジケース、想定外挙動、暗黙の要件、ライブラリのハマり)は発見の都度 GitHub issue に起票する。ラベル(`bug` / `learning` / `spec-change` / `decision-log`)を付ける。issue は受信箱であり、長く効く学びは docs かスキルに書いてから閉じる。版を上げる前(releasing-whatnext スキル)に、open の `learning`・`decision-log`・`spec-change` を棚卸しし、docs かスキルに書くか閉じる。
 
 ### ブランチ・マージ方針
 
 - main への変更は、すべて PR を通す。main は GitHub のルールで守っていて、CI(`.github/workflows/ci.yml` の `check (22)` と `check (24)`。build、`npm run check`、`npm test`)が通らないとマージできず、main への直接の push もできない(管理者も例外にしない)
-- ブランチで作業し、PR を出す前にローカルチェック(build、`npm run check`(biome の書式と lint)、テストがあればテスト)を通す。CI は `test:e2e`、`test:mod`、`test:real` を流さないので、触れた範囲に応じて手元で流す(DESIGN.md「確かめ方」)。並列に進めるときは worktree を使う。review-loop でセルフレビューを回すときも、同じ PR を使う
+- ブランチで作業し、PR を出す前にローカルチェック(build、`npm run check`(biome の書式と lint)、`npm test`)を通す。CI は `test:e2e`、`test:mod`、`test:real` を流さないので、触れた範囲に応じて手元で流す(DESIGN.md「確かめ方」)。並列に進めるときは worktree を使う。review-loop でセルフレビューを回すときも、同じ PR を使う
 - 不変条件: main は常に起動する
 
 ### 見た目の決定
