@@ -32,7 +32,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 対話セッションも出る。通常の `claude` で起動したものも ACP 経由のものも `kind: "interactive"` で、`id` と `state` がなく、`status`、`waitingFor`、`pid` を持つ。
 - 通常の `claude` の権限待ちも出る。確認ダイアログの表示中は `status: "waiting"`、`waitingFor: "permission prompt"` になる。
 - 対話セッションがターンを終えたあとは `status: "idle"` で、開いているだけのセッションと区別できない。
-- `--name` の値は `name` に出る。`--name` なしのときは、最初はプロンプトの先頭で、最初のターンを終えると内容を要約した名前に付け直される。プロンプトなしで起動したときは、最初は `id` と同じ値になる（2.1.281）。名前は変わるので、行の特定には `id` を使う。要約の名前は、いつも付くわけではない。名前を付けずに依頼付きで起動したセッションの `name` が、日本語の依頼の英語の要約（`attach mode keyboard shortcuts`）になったことがある一方、whatnext から名前なしで起動し英語の短い依頼を送った haiku のセッション6つは、終わったあとも `name` が ID のままだった（2.1 系、サイクル6）。
+- `--name` の値は `name` に出る。`--name` なしのときは、最初はプロンプトの先頭で、最初のターンを終えると内容を要約した名前に付け直される。プロンプトなしで起動したときは、最初は `id` と同じ値になる（2.1.281）。名前は変わるので、行の特定には `id` を使う。要約の名前は、いつも付くわけではない。名前を付けずに依頼付きで起動したセッションの `name` が、日本語の依頼の英語の要約（`attach mode keyboard shortcuts`）になったことがある一方、whatnext から名前なしで起動し英語の短い依頼を送った haiku のセッション6つは、終わったあとも `name` が ID のままだった（2.1 系）。
 - PR の情報はない（公式ドキュメント agent-view のフィールド表による）。Agent View の PR ラベルは画面だけの表示で、Claude Code が `gh`（`gh pr view` など）で結び付けたもの。whatnext が PR を出すには自分で `gh` を呼ぶしかない。
 - 実行時間は約 135 ms（6〜8 行の時点）。
 - ターンを終えて `done` になったはずのセッションが、`blocked` + `idle` + `pid` ありになっていたことが2回ある。1つは sandbox で書き込みを拒まれて終わったターン（「モデルへの指示」の節の `!` を勧めさせる手順）。もう1つは、外で起動したセッションを、whatnext を閉じて（残していた `claude attach` と作業台を畳んで）から見たとき（会話記録の末尾はふつうのターンの終わりで、同じ条件の別のセッションは `done` のままだった）。条件と原因は確かめていない。whatnext では「どの規則にも当たらない行」として、質問待ちの段に `Question (blocked)` と出る（2.1.283）。
@@ -57,7 +57,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 存在しないモデル名でも、終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る。
 - `--model` の別名（`fable` / `opus` / `sonnet` など）は、そのファミリーの最新モデルを指す（`claude --help` の説明）。フルネームも受け付ける。モデルの一覧を取る公式の口はない。
 - 信頼されていないディレクトリでは、終了コード 1 で「Workspace not trusted. Run claude in &lt;dir&gt; once and accept the trust prompt, then retry.」と出して断る。一度起動できたディレクトリでも、`git worktree add` のあとに断られたことがある（理由は未確認）。
-- 信頼の確認を飛ばして `--bg` を起動するオプションはない。確認を飛ばすのは `-p` と、stdout が TTY でないときだけ（`claude --help` の `--print` の説明）。信頼は `~/.claude.json` の `projects["<絶対パス>"].hasTrustDialogAccepted` に記録される。対話モードの `claude` の信頼の確認は、既定の選択が `No, exit` である。`Yes, I trust this folder` を選ぶとすぐ `hasTrustDialogAccepted: true` が書かれ、同じディレクトリの `--bg` が通るようになる。`No, exit` を選ぶと `claude` が終わる（2.1.283）。`projects` のキーは実パスで、`/tmp/x` で開いたときは `/private/tmp/x` で記録される（2.1.287、cycle 8 の実機の通し）。信頼されたかを読む側は、渡されたパスと実パスの両方で引く。確認の画面は既定で `No, exit` を選んでいるので、キーで承認するときは `Down` のあと `Enter` を送る（`1` は効かない）。
+- 信頼の確認を飛ばして `--bg` を起動するオプションはない。確認を飛ばすのは `-p` と、stdout が TTY でないときだけ（`claude --help` の `--print` の説明）。信頼は `~/.claude.json` の `projects["<絶対パス>"].hasTrustDialogAccepted` に記録される。対話モードの `claude` の信頼の確認は、既定の選択が `No, exit` である。`Yes, I trust this folder` を選ぶとすぐ `hasTrustDialogAccepted: true` が書かれ、同じディレクトリの `--bg` が通るようになる。`No, exit` を選ぶと `claude` が終わる（2.1.283）。`projects` のキーは実パスで、`/tmp/x` で開いたときは `/private/tmp/x` で記録される（2.1.287、実機の通し）。信頼されたかを読む側は、渡されたパスと実パスの両方で引く。確認の画面は既定で `No, exit` を選んでいるので、キーで承認するときは `Down` のあと `Enter` を送る（`1` は効かない）。
 - `claude --bg --help` はヘルプを出さず、プロンプトなしの `--bg` セッションを起動する。`--bg` のオプションは `claude --help` で調べる（2.1.281）。
 - `claude -r <sessionId> --bg` は、`claude stop` のあとなら同じ `id` で続く。稼働中（`done` で待機中を含む）ならコピーが作られ、コピーには `--name` が引き継がれない。
 
