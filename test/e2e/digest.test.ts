@@ -211,9 +211,9 @@ describe('ダイジェスト', () => {
       h.agents([bg('a', {name: 'alpha'})]);
       await h.start({args: '--digest'});
       await h.keys('w');
-      await sleep(500);
+      await h.waitForSession('sh-a0000000');
       h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1007', 'Enter');
-      await sleep(500);
+      await h.waitForCommand('=sh-a0000000:', 'sleep');
       expect(live()).toBe(String(h.port));
       process.kill(Number(h.inner('show', '-gv', '@wn_pid').trim()), signal);
       await h.waitFor(/\[exit \d+\]/);
@@ -387,13 +387,13 @@ describe('81: 右の欄を出していても、一覧の下の確認の問い・
     await h.start({args: '--digest', size: WIDE});
     await h.select(WIDE_NAME);
     await h.keys('w');
-    await sleep(800);
+    await h.waitForSession('sh-a0000000');
     h.inner('split-window', '-t', '=sh-a0000000:');
-    await sleep(300);
     const panes = h.inner('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_id}').trim().split('\n');
     h.inner('send-keys', '-t', panes[0] as string, 'tail -f /dev/null', 'Enter');
     h.inner('send-keys', '-t', panes[1] as string, 'sleep 1004', 'Enter');
-    await sleep(800);
+    await h.waitForCommand(panes[0] as string, 'tail');
+    await h.waitForCommand(panes[1] as string, 'sleep');
     await h.keys('C-x');
     await h.waitFor(/Press Ctrl\+X again within 2s to delete\./);
     await h.keys('C-x');

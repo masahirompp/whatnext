@@ -59,14 +59,23 @@ describe('作業台の画面', () => {
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
     await h.keysTo('wb', 'C-q', '%');
-    await sleep(500);
-    expect(h.inner('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_id}').trim().split('\n').length).toBe(2);
+    const commands = () =>
+      h.inner('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_current_command}').trim().split('\n');
+    await h.until(
+      '2 panes in sh-a0000000',
+      () => commands().join(' '),
+      v => v.split(' ').length === 2,
+    );
     await h.type('sleep 1001', 'wb');
     await h.keysTo('wb', 'Enter');
     await h.keysTo('wb', 'C-q', 'Left');
     await h.type('sleep 1002', 'wb');
     await h.keysTo('wb', 'Enter');
-    await sleep(500);
+    await h.until(
+      'sleep in both panes of sh-a0000000',
+      () => commands().join(' '),
+      v => v === 'sleep sleep',
+    );
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to a0000000/);
     await h.keys('C-q', 'C-l');
@@ -151,7 +160,8 @@ describe('作業台の画面', () => {
     await h.keys('w');
     await h.waitFor(/Workbench created\. Run "whatnext workbench" in a split to see it\./);
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 2 | cat', 'Enter');
-    await sleep(500);
+    // 前面のプロセスグループのどれの名前が出るかは OS による
+    await h.waitForCommand('=sh-a0000000:', /^(sleep|cat)$/);
     await h.refresh();
     expect(h.screen()).toMatch(/^ {4}⚙ sleep 2 \| cat$/m);
     await sleep(2500);
@@ -227,7 +237,7 @@ describe('作業台の画面', () => {
     await h.startWorkbench();
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1004', 'Enter');
-    await sleep(500);
+    await h.waitForCommand('=sh-a0000000:', 'sleep');
     await h.keys('C-x');
     await h.waitFor(/Press Ctrl\+X again within 2s to delete\./);
     await h.keys('C-x');
@@ -300,10 +310,14 @@ describe('作業台の画面', () => {
     await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
     const guide = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
     await h.keysTo('wb', 'C-q', '%');
-    await sleep(500);
+    await h.until(
+      '2 panes in wbguide',
+      () => h.inner('list-panes', '-t', '=wbguide:', '-F', '#{pane_id}').trim(),
+      v => v.split('\n').length === 2,
+    );
     await h.type('sleep 1004', 'wb');
     await h.keysTo('wb', 'Enter');
-    await sleep(300);
+    await h.waitForCommand('=wbguide:', 'sleep');
     const mine = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
     h.inner('kill-pane', '-t', guide);
     await h.select('beta');
@@ -376,8 +390,9 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     h.agents([bg('a', {name: 'alpha', state: 'working', status: 'busy'})]);
     await h.start();
     await h.keys('w');
+    await h.waitForSession('sh-a0000000');
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1005', 'Enter');
-    await sleep(500);
+    await h.waitForCommand('=sh-a0000000:', 'sleep');
     await h.keys('q');
     await h.waitFor(/Quit and stop 1 running command\? alpha: sleep 1005 \[y\/N\]/);
     await h.keys('Enter');
@@ -415,7 +430,9 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.waitFor(/alpha +Waiting/);
     await h.select('beta');
     await h.keys('w');
+    await h.waitForSession('sh-b0000000');
     h.inner('send-keys', '-t', '=sh-b0000000:', 'sleep 1006', 'Enter');
+    await h.waitForCommand('=sh-b0000000:', 'sleep');
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to b0000000/);
     execFileSync('tmux', ['-L', h.outer, 'kill-session', '-t', '=main']);
@@ -446,10 +463,12 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.keys('w');
     await h.select('beta');
     await h.keys('w');
+    await h.waitForSession('sh-a0000000');
+    await h.waitForSession('sh-b0000000');
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1007', 'Enter');
     // 前の版で作った作業台のステータス行に見立てる
     h.inner('set', '-t', '=sh-a0000000:', 'status-format[0]', 'old');
-    await sleep(500);
+    await h.waitForCommand('=sh-a0000000:', 'sleep');
     const pid = Number(h.inner('show', '-gv', '@wn_pid').trim());
     process.kill(pid, 'SIGKILL');
     await h.waitFor(/\[exit 0\]/);

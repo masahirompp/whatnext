@@ -29,8 +29,11 @@ describe('起動時と全体', () => {
     await h.keys('w');
     await h.waitFor(/Workbench created/);
     h.inner('send-keys', '-t', '=sh-a0000000:', `node ${CLI}; echo "[exit $?]"`, 'Enter');
-    await sleep(1500);
-    const out = h.inner('capture-pane', '-p', '-J', '-t', '=sh-a0000000:');
+    const out = await h.until(
+      'whatnext in sh-a0000000 to exit',
+      () => h.inner('capture-pane', '-p', '-J', '-t', '=sh-a0000000:'),
+      v => /\[exit \d+\]/.test(v),
+    );
     expect(out).toMatch(
       /whatnext: this shell runs inside whatnext\. Run "whatnext" in another split or window of your terminal\./,
     );
