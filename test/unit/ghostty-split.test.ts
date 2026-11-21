@@ -26,7 +26,9 @@ describe.each([
     expect((await typed()).match(/\bexec\b/g)).toHaveLength(1);
   });
 
-  it.each(['bash', 'zsh', 'sh'])('%s でそのまま動く', async shell => {
+  // zsh(macOS での利用者のシェル)で動くことは、実機の通し test/real/ghostty.test.ts の 58a/58b が本物の Ghostty で確かめる。
+  // ここでは zsh のない環境でも回る bash と sh だけを動かす(#311 の `exec exec` は bash で落ちる)。
+  it.each(['bash', 'sh'])('%s でそのまま動く', async shell => {
     expect(execFileSync(shell, ['-c', await typed()], {encoding: 'utf8'})).toBe("/tmp/it's/cli.js workbench\n");
   });
 });
