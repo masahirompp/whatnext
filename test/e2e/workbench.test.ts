@@ -133,7 +133,17 @@ describe('作業台の画面', () => {
     await h.waitFor(/suspended|Stopped|停止/i, 5000, 'wb');
     await h.type('kill %1', 'wb');
     await h.keysTo('wb', 'Enter');
-    await sleep(500);
+    // 止めたジョブが片付く(シェルが子を回収する)まで待つ。残っているうちに exit すると、シェルが終了を断る
+    const pane = h.inner('display', '-p', '-t', '=sh-a0000000:', '#{pane_pid}').trim();
+    await h.until(
+      'sleep 1003 to be gone from the shell of sh-a0000000',
+      () =>
+        execFileSync('ps', ['-A', '-o', 'ppid=,args='], {encoding: 'utf8'})
+          .split('\n')
+          .filter(l => l.trim().split(/\s+/)[0] === pane && /sleep 1003/.test(l))
+          .join('\n'),
+      v => v === '',
+    );
     await h.type('exit', 'wb');
     await h.keysTo('wb', 'Enter');
     await h.waitFor(/Workbench closed\.\nNo workbench for alpha yet\./, 8000, 'wb');
