@@ -121,6 +121,8 @@ npm run test:e2e   # drives whatnext in a private tmux server with a fake claude
 npm run test:real  # uses the real claude (haiku) and Ghostty; creates and removes its own sessions
 ```
 
+CI (GitHub Actions) runs `build`, `check` and `test` on Node 22 and 24. Run the other suites locally.
+
 The tests use their own tmux socket, port and state file, so they never touch a whatnext you are running.
 
 ## License
