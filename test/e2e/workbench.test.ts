@@ -119,9 +119,11 @@ describe('作業台の画面', () => {
     await h.keys('Enter');
     await h.waitFor(/fake claude attached/);
     await h.keys('C-b', 'C-g');
-    await sleep(300);
-    expect(h.file('attach-input.log')).toMatch(/\\u0002/);
-    expect(h.file('attach-input.log')).toMatch(/\\u0007/);
+    await h.until(
+      'C-b and C-g in attach-input.log',
+      () => h.file('attach-input.log'),
+      v => /\\u0002/.test(v) && /\\u0007/.test(v),
+    );
     // 作業台がないとき、claude の画面のステータス行の左は空
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
@@ -235,8 +237,11 @@ describe('作業台の画面', () => {
     await h.waitFor(/Opened .*worktrees\/x in VS Code\./, 5000, 'wb');
     expect(h.file('open.log')).toContain(`vscode://file${wt}/?windowId=_blank`);
     await h.keysTo('wb', 'C-q', 'c');
-    await sleep(400);
-    expect(h.inner('list-windows', '-t', '=sh-a0000000', '-F', '#{window_index}').trim().split('\n').length).toBe(2);
+    await h.until(
+      '2 windows in sh-a0000000',
+      () => h.inner('list-windows', '-t', '=sh-a0000000', '-F', '#{window_index}').trim(),
+      v => v.split('\n').length === 2,
+    );
     await h.keysTo('wb', 'C-q', 'C-l');
     await h.waitFor(/^> alpha/m);
   });
