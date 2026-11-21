@@ -207,6 +207,19 @@ export class Harness {
     }
   }
 
+  /** `inner` と同じだが、tmux の標準エラーを出さない(待つ間に何度も問い合わせるとき)。 */
+  private innerQuiet(...args: string[]): string {
+    try {
+      return execFileSync('tmux', ['-L', this.socket, ...args], {
+        encoding: 'utf8',
+        env: {...process.env, TMUX: ''},
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    } catch {
+      return '';
+    }
+  }
+
   /** 外側の tmux のセッション `name` でコマンドを動かす(端末の代わり)。 */
   open(name: string, cmd: string, size = {cols: 120, rows: 32}, cwd = join(this.dir, 'home')): void {
     const full = `cd ${q(cwd)} && ${cmd}; echo "[exit $?]"; sleep 600`;
@@ -299,6 +312,45 @@ export class Harness {
       await sleep(150);
     }
     throw new Error(`timed out waiting for ${String(pred)}; screen was:\n${s}`);
+  }
+
+  /**
+   * `probe` の値が `ok` を満たすまで待つ。時間切れのときは、何を待っていたか(`what`)と最後の値を例外に出す。
+   * 作業台やペインに送ったあとは、固定の時間ではなく、これで観測できる状態を待つ(負荷が高いと遅れるため。#346)。
+   */
+  async until(what: string, probe: () => string, ok: (v: string) => boolean, timeout = 8000): Promise<string> {
+    const end = Date.now() + timeout;
+    let v = '';
+    while (Date.now() < end) {
+      v = probe();
+      if (ok(v)) return v;
+      await sleep(100);
+    }
+    throw new Error(`timed out after ${timeout}ms waiting for ${what}; last value was: ${JSON.stringify(v)}`);
+  }
+
+  /** 内側の tmux にセッション `name` ができるまで待つ。作業台は一覧が非同期に作るので、キーを押しただけではまだない。 */
+  async waitForSession(name: string, timeout = 8000): Promise<void> {
+    await this.until(
+      `inner tmux session ${name}`,
+      () => this.innerQuiet('list-sessions', '-F', '#{session_name}').trim().split('\n').join(' '),
+      v => v.split(' ').includes(name),
+      timeout,
+    );
+  }
+
+  /**
+   * 内側の tmux のペイン `target` の前面のコマンド(`#{pane_current_command}`)が `command` になるまで待つ。
+   * send-keys で送っても、シェルが起動して読むまではコマンドは動いていない。
+   */
+  async waitForCommand(target: string, command: string | RegExp, timeout = 8000): Promise<void> {
+    const ok = typeof command === 'string' ? (v: string) => v === command : (v: string) => command.test(v);
+    await this.until(
+      `pane ${target} to run ${String(command)}`,
+      () => this.innerQuiet('display', '-p', '-t', target, '#{pane_current_command}').trim(),
+      ok,
+      timeout,
+    );
   }
 
   /** 一覧で、名前の行にカーソルを合わせる。 */

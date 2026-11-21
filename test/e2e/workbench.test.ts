@@ -59,14 +59,23 @@ describe('作業台の画面', () => {
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
     await h.keysTo('wb', 'C-q', '%');
-    await sleep(500);
-    expect(h.inner('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_id}').trim().split('\n').length).toBe(2);
+    const commands = () =>
+      h.inner('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_current_command}').trim().split('\n');
+    await h.until(
+      '2 panes in sh-a0000000',
+      () => commands().join(' '),
+      v => v.split(' ').length === 2,
+    );
     await h.type('sleep 1001', 'wb');
     await h.keysTo('wb', 'Enter');
     await h.keysTo('wb', 'C-q', 'Left');
     await h.type('sleep 1002', 'wb');
     await h.keysTo('wb', 'Enter');
-    await sleep(500);
+    await h.until(
+      'sleep in both panes of sh-a0000000',
+      () => commands().join(' '),
+      v => v === 'sleep sleep',
+    );
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to a0000000/);
     await h.keys('C-q', 'C-l');
@@ -110,9 +119,11 @@ describe('作業台の画面', () => {
     await h.keys('Enter');
     await h.waitFor(/fake claude attached/);
     await h.keys('C-b', 'C-g');
-    await sleep(300);
-    expect(h.file('attach-input.log')).toMatch(/\\u0002/);
-    expect(h.file('attach-input.log')).toMatch(/\\u0007/);
+    await h.until(
+      'C-b and C-g in attach-input.log',
+      () => h.file('attach-input.log'),
+      v => /\\u0002/.test(v) && /\\u0007/.test(v),
+    );
     // 作業台がないとき、claude の画面のステータス行の左は空
     await h.keysTo('wb', 'Enter');
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
@@ -122,9 +133,28 @@ describe('作業台の画面', () => {
     await h.waitFor(/⚙ sleep 1003/, 10000);
     await h.keysTo('wb', 'C-z');
     await h.waitFor(/suspended|Stopped|停止/i, 5000, 'wb');
+    // 止めたジョブの pid を kill の前に控える。死んだあとシェルが回収するまではゾンビとして残り、
+    // その args は `<defunct>` などに変わるので、args では片付いたかを見分けられない
+    const pane = h.inner('display', '-p', '-t', '=sh-a0000000:', '#{pane_pid}').trim();
+    const stopped = execFileSync('ps', ['-A', '-o', 'pid=,ppid=,args='], {encoding: 'utf8'})
+      .split('\n')
+      .map(l => l.trim().split(/\s+/))
+      .filter(r => r[1] === pane && /sleep 1003/.test(r.slice(2).join(' ')))
+      .map(r => r[0]);
+    expect(stopped).toHaveLength(1);
     await h.type('kill %1', 'wb');
     await h.keysTo('wb', 'Enter');
-    await sleep(500);
+    // 止めたジョブが片付く(シェルが子を回収する)まで待つ。残っているうちに exit すると、シェルが終了を断る。
+    // ゾンビも ps に出るので、控えた pid が ps から消えたら回収が済んでいる
+    await h.until(
+      `the stopped sleep 1003 (pid ${stopped[0]}) to be reaped by the shell of sh-a0000000`,
+      () =>
+        execFileSync('ps', ['-A', '-o', 'pid=,stat=,args='], {encoding: 'utf8'})
+          .split('\n')
+          .filter(l => l.trim().split(/\s+/)[0] === stopped[0])
+          .join('\n'),
+      v => v === '',
+    );
     await h.type('exit', 'wb');
     await h.keysTo('wb', 'Enter');
     await h.waitFor(/Workbench closed\.\nNo workbench for alpha yet\./, 8000, 'wb');
@@ -150,11 +180,45 @@ describe('作業台の画面', () => {
     await h.start();
     await h.keys('w');
     await h.waitFor(/Workbench created\. Run "whatnext workbench" in a split to see it\./);
-    h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 2 | cat', 'Enter');
-    await sleep(500);
+    // 決まった時間で終わるコマンド(sleep 2 など)だと、exec の遅れで待ちが長引いたとき、確かめる前に終わってしまう。
+    // 終わらないものを動かし、確かめたあとでテストが終わらせる
+    h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1008 | cat', 'Enter');
+    const pane = h.inner('display', '-p', '-t', '=sh-a0000000:', '#{pane_pid}').trim();
+    const ps = () =>
+      execFileSync('ps', ['-A', '-o', 'pid=,ppid=,pgid=,tpgid=,args='], {encoding: 'utf8'})
+        .split('\n')
+        .map(l => l.trim().split(/\s+/))
+        .filter(r => r.length >= 5);
+    // シェルの前面のプロセスグループにいる子の pid と args
+    const foreground = () => {
+      const rows = ps();
+      const tpgid = rows.find(r => r[0] === pane)?.[3];
+      return rows.filter(r => r[1] === pane && r[2] === tpgid).map(r => ({pid: r[0], args: r.slice(4).join(' ')}));
+    };
+    // パイプの2つとも exec し終えるまで待つ。前面のコマンド(#{pane_current_command})は1つ目が exec した時点で変わるので足りない
+    await h.until(
+      'sleep 1008 and cat in the foreground of sh-a0000000',
+      () =>
+        foreground()
+          .map(p => p.args)
+          .sort()
+          .join(' | '),
+      v => v === 'cat | sleep 1008',
+    );
     await h.refresh();
-    expect(h.screen()).toMatch(/^ {4}⚙ sleep 2 \| cat$/m);
-    await sleep(2500);
+    expect(h.screen()).toMatch(/^ {4}⚙ sleep 1008 \| cat$/m);
+    // sleep を終わらせると cat も入力の終わりで終わる。シェルが2つとも回収して端末の前面に戻るまで待つ
+    const sleeper = foreground().find(p => p.args === 'sleep 1008');
+    expect(sleeper).toBeDefined();
+    process.kill(Number(sleeper?.pid), 'SIGTERM');
+    await h.until(
+      'the shell of sh-a0000000 to be back in the foreground',
+      () => {
+        const shell = ps().find(r => r[0] === pane);
+        return shell ? `pgid=${shell[2]} tpgid=${shell[3]}` : '';
+      },
+      v => /^pgid=(\d+) tpgid=\1$/.test(v),
+    );
     await h.refresh();
     expect(h.screen()).not.toMatch(/⚙/);
   });
@@ -199,8 +263,11 @@ describe('作業台の画面', () => {
     await h.waitFor(/Opened .*worktrees\/x in VS Code\./, 5000, 'wb');
     expect(h.file('open.log')).toContain(`vscode://file${wt}/?windowId=_blank`);
     await h.keysTo('wb', 'C-q', 'c');
-    await sleep(400);
-    expect(h.inner('list-windows', '-t', '=sh-a0000000', '-F', '#{window_index}').trim().split('\n').length).toBe(2);
+    await h.until(
+      '2 windows in sh-a0000000',
+      () => h.inner('list-windows', '-t', '=sh-a0000000', '-F', '#{window_index}').trim(),
+      v => v.split('\n').length === 2,
+    );
     await h.keysTo('wb', 'C-q', 'C-l');
     await h.waitFor(/^> alpha/m);
   });
@@ -227,7 +294,7 @@ describe('作業台の画面', () => {
     await h.startWorkbench();
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1004', 'Enter');
-    await sleep(500);
+    await h.waitForCommand('=sh-a0000000:', 'sleep');
     await h.keys('C-x');
     await h.waitFor(/Press Ctrl\+X again within 2s to delete\./);
     await h.keys('C-x');
@@ -300,10 +367,14 @@ describe('作業台の画面', () => {
     await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
     const guide = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
     await h.keysTo('wb', 'C-q', '%');
-    await sleep(500);
+    await h.until(
+      '2 panes in wbguide',
+      () => h.inner('list-panes', '-t', '=wbguide:', '-F', '#{pane_id}').trim(),
+      v => v.split('\n').length === 2,
+    );
     await h.type('sleep 1004', 'wb');
     await h.keysTo('wb', 'Enter');
-    await sleep(300);
+    await h.waitForCommand('=wbguide:', 'sleep');
     const mine = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
     h.inner('kill-pane', '-t', guide);
     await h.select('beta');
@@ -376,8 +447,9 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     h.agents([bg('a', {name: 'alpha', state: 'working', status: 'busy'})]);
     await h.start();
     await h.keys('w');
+    await h.waitForSession('sh-a0000000');
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1005', 'Enter');
-    await sleep(500);
+    await h.waitForCommand('=sh-a0000000:', 'sleep');
     await h.keys('q');
     await h.waitFor(/Quit and stop 1 running command\? alpha: sleep 1005 \[y\/N\]/);
     await h.keys('Enter');
@@ -415,7 +487,9 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.waitFor(/alpha +Waiting/);
     await h.select('beta');
     await h.keys('w');
+    await h.waitForSession('sh-b0000000');
     h.inner('send-keys', '-t', '=sh-b0000000:', 'sleep 1006', 'Enter');
+    await h.waitForCommand('=sh-b0000000:', 'sleep');
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to b0000000/);
     execFileSync('tmux', ['-L', h.outer, 'kill-session', '-t', '=main']);
@@ -446,10 +520,12 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.keys('w');
     await h.select('beta');
     await h.keys('w');
+    await h.waitForSession('sh-a0000000');
+    await h.waitForSession('sh-b0000000');
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1007', 'Enter');
     // 前の版で作った作業台のステータス行に見立てる
     h.inner('set', '-t', '=sh-a0000000:', 'status-format[0]', 'old');
-    await sleep(500);
+    await h.waitForCommand('=sh-a0000000:', 'sleep');
     const pid = Number(h.inner('show', '-gv', '@wn_pid').trim());
     process.kill(pid, 'SIGKILL');
     await h.waitFor(/\[exit 0\]/);
