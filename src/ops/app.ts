@@ -75,12 +75,20 @@ interface Notice {
 
 const tierOf = (t: Tier | null): Tier => t ?? 'review';
 
-/** claude --bg が開けなかったときの失敗の画面。出力に加えて、起動できなかった理由(error)を先に並べる(#320)。 */
-export function sessionFailureLines(out: string, error?: string): string[] {
+/** 起動できなかった理由(run の結果の error)の一言。`Command failed: ...` のように出力を含むことがあるので、最初の行だけ。 */
+const reasonOf = (error?: string): string => clean(firstLine(error ?? '') ?? '');
+
+/**
+ * claude --bg が開けなかったときの失敗の画面。出力に加えて、起動できなかった理由(error)を先に並べる(#320)。
+ * ENOENT は、claude が PATH にないときにも、起動する場所(cwd)が消えたときにも出るので、場所があるかで言い分ける。
+ * error が `Command failed: ...` のように出力を含むときは、出力と重ねないよう最初の行だけを出す。
+ */
+export function sessionFailureLines(out: string, error?: string, dirExists = true): string[] {
   const lines = ['claude --bg did not start a session:'];
-  if (error === 'ENOENT') lines.push('claude not found on PATH (ENOENT)');
-  else if (error) lines.push(...`${error}`.trim().split('\n').slice(0, 3).map(clean));
-  lines.push(...out.trim().split('\n').slice(0, 10).map(clean));
+  if (error === 'ENOENT')
+    lines.push(dirExists ? 'claude not found on PATH (ENOENT)' : 'the directory no longer exists (ENOENT)');
+  else if (error) lines.push(reasonOf(error));
+  if (out.trim()) lines.push(...out.trim().split('\n').slice(0, 10).map(clean));
   return lines;
 }
 
@@ -860,7 +868,7 @@ export class App {
     this.notify(
       r.code === 0
         ? `Opened ${clean(l.label)}.`
-        : `open failed: ${clean(stripControl(r.stderr || r.stdout || (r.error ?? '')).trim())}`,
+        : `open failed: ${clean(stripControl(r.stderr || r.stdout).trim()) || reasonOf(r.error)}`,
     );
   }
 
@@ -1007,7 +1015,7 @@ export class App {
       }
       const m = /backgrounded\s*·\s*([0-9a-f]{8})/.exec(out);
       if (!m) {
-        this.mode = {k: 'output', lines: sessionFailureLines(out, r.error)};
+        this.mode = {k: 'output', lines: sessionFailureLines(out, r.error, existsSync(dir))};
         return;
       }
       const id = m[1];
@@ -1301,7 +1309,7 @@ export class App {
       const armed = this.armed?.sid === sid;
       if (armed && this.armed) this.armed.until = this.p.now() + ms;
       if (r.code !== 0) {
-        const out = clean(stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '') || r.error;
+        const out = clean(stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '') || reasonOf(r.error);
         this.notify(armed ? `Stop failed: ${out} (Ctrl+X again to delete)` : `Stop failed: ${out}`, ms);
       } else if (!this.deleting.has(sid)) {
         this.notify(
@@ -1387,7 +1395,7 @@ export class App {
         await sleep(1000);
         continue;
       }
-      this.notify(out.split('\n').slice(0, 3).join(' ').replace(/\s+/g, ' '), 10000);
+      this.notify(out.split('\n').slice(0, 3).join(' ').replace(/\s+/g, ' ') || reasonOf(r.error), 10000);
       return fail();
     }
     await this.killSafely(`sh-${id}`);
@@ -1440,7 +1448,7 @@ export class App {
     const msg =
       r.code === 0
         ? `Opened ${clean(this.tilde(path))} in VS Code.`
-        : `open failed: ${clean(stripControl(r.stderr || r.stdout).trim())}`;
+        : `open failed: ${clean(stripControl(r.stderr || r.stdout).trim()) || reasonOf(r.error)}`;
     if (via.from === 'list') this.notify(msg);
     else await this.p.tmux.display(via.tty, msg, 3000);
   }
