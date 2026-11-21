@@ -948,21 +948,27 @@ export class App {
     add(prefRoot);
     add(this.p.launchDir);
     for (const r of this.rows.values()) add(this.p.locations.get(r.cwd)?.root ?? r.cwd);
-    const mode: Mode = {k: 'dir', filter: '', sel: 0, items: this.labelDirs(paths), waitFor};
-    this.mode = mode;
+    const first = this.labelDirs(paths);
+    this.mode = {k: 'dir', filter: '', sel: 0, items: first, waitFor};
     void this.p.run('ghq', ['list', '-p'], {timeout: 10000}).then(r => {
       if (r.code !== 0) return;
       for (const l of r.stdout.split('\n')) add(l.trim() || undefined);
-      if (this.mode === mode) {
-        // 候補が増えても、カーソルは利用者が見ていた候補に残す(Enter ですぐ起動するので、入れ替わると別の場所で起動する)
-        const before = this.dirItems(mode)[mode.sel];
-        mode.items = this.labelDirs(paths);
-        if (before) {
-          const i = this.dirItems(mode).findIndex(it => (before.other ? it.other : it.path === before.path));
-          if (i >= 0) mode.sel = i;
-        }
-        this.draw();
+      // Other... と、そこから Esc で戻った候補は、同じ候補の配列を引き継ぐ。配列で、この n で開いた候補かを見分ける(#321)
+      const m = this.mode;
+      if ((m.k !== 'dir' && m.k !== 'other') || m.items !== first) return;
+      const items = this.labelDirs(paths);
+      if (m.k === 'other') {
+        m.items = items;
+        return;
       }
+      // 候補が増えても、カーソルは利用者が見ていた候補に残す(Enter ですぐ起動するので、入れ替わると別の場所で起動する)
+      const before = this.dirItems(m)[m.sel];
+      m.items = items;
+      if (before) {
+        const i = this.dirItems(m).findIndex(it => (before.other ? it.other : it.path === before.path));
+        if (i >= 0) m.sel = i;
+      }
+      this.draw();
     });
   }
 
@@ -1532,7 +1538,6 @@ export class App {
         this.lastGuide = text;
         await t.setOption(GUIDE_OPTION, text);
         await t.setSessionName(GUIDE, row?.name ?? '');
-        await t.signalGuide();
       }
     }
     const clients = await t.clients();
