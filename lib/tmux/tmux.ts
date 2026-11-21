@@ -406,15 +406,6 @@ export class Tmux {
     return r.code === 0 ? name : undefined;
   }
 
-  async signalGuide(): Promise<void> {
-    const pid = Number(await this.option('@wn_guide_pid'));
-    if (pid > 0) {
-      try {
-        process.kill(pid, 'SIGUSR2');
-      } catch {}
-    }
-  }
-
   async setSessionName(session: string, name: string): Promise<void> {
     await this.t(['set', '-t', `=${session}:`, '@wn_name', escapeFormat(name)]);
   }

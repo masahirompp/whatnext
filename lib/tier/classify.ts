@@ -16,18 +16,6 @@ export interface AgentRow {
 
 export type Tier = 'permission' | 'question' | 'sandbox' | 'failed' | 'review' | 'working' | 'waiting' | 'stopped';
 
-/** サイクル8までの一覧の並びの順(今の一覧の並びには使わない)。 */
-export const TIERS: readonly Tier[] = [
-  'permission',
-  'question',
-  'sandbox',
-  'failed',
-  'review',
-  'working',
-  'waiting',
-  'stopped',
-];
-
 export const TIER_LABEL: Record<Tier, string> = {
   permission: 'Permission',
   question: 'Question',

@@ -3,7 +3,7 @@
 `claude agents --json` の1行から段を決める。規則の正は [PRODUCT.md](../PRODUCT.md)「段」と「`--json` の行から段を決める規則」で、この部品はそれをそのまま実装する。外部に触れない純粋な関数である。
 
 - `AgentRow`：`--json` の1行（`lib/input` の `JsonRow` と同じ形）。
-- `Tier`：`permission`、`question`、`sandbox`、`failed`、`review`、`working`、`waiting`、`stopped`。`TIERS` はこの順で（一覧の並びには使わない）、`TIER_LABEL` は STATUS の列の英語の表記。
+- `Tier`：`permission`、`question`、`sandbox`、`failed`、`review`、`working`、`waiting`、`stopped`。`TIER_LABEL` は STATUS の列の英語の表記。
 - `classify(row)`：`{tier, reason?}` を返す。`tier` が `null` なら対象外（`interactive` の `idle`）。`reason` は STATUS に括弧で添える待機の理由で、段から分からないときだけ付く。どの規則にも当たらない行は質問待ちにし、規則に当たらなかった原因の値を添える（`pid` のある `blocked` なら `blocked`。#265）。
   - 待ちの段（`waiting`）はこの関数では返さない。待ち先の関係から導くのは使う側である。
 - `dedupe(rows)`：同じ `sessionId` の行を1行にまとめる。`pid` を持つ行を採り、どちらも持たないとき、どちらも持つときは `background` の行を採る（#265）。順は最初に出た位置を保つ。

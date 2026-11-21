@@ -102,6 +102,25 @@ describe('新しいセッションの起動', () => {
     expect(h.calls().find(c => c.args[0] === '--bg')?.cwd).toBe(zxq);
   });
 
+  it('8: Other... に入っている間に ghq の候補が届いても、Esc で戻った候補に出る(#321)', async () => {
+    h = new Harness();
+    const app = h.repo('app');
+    writeFileSync(join(h.dir, 'ghq.txt'), `${h.repo('ghq-repo')}\n`);
+    writeFileSync(join(h.dir, 'ghq-hold'), '');
+    await h.start({cwd: app});
+    await h.keys('n');
+    let s = await h.waitFor(/New session in:/);
+    expect(panel(s, /New session in:/).slice(1, 3)).toEqual(['> app', '  Other...']);
+    await h.keys('Down', 'Enter');
+    await h.waitFor(/Directory: █/);
+    // 偽の ghq は 0.1 秒ごとに ghq-go を見る。届くまで待つ
+    writeFileSync(join(h.dir, 'ghq-go'), '');
+    await sleep(1500);
+    await h.keys('Escape');
+    s = await h.waitFor(/New session in: █/);
+    expect(panel(s, /New session in:/).slice(1, 4)).toEqual(['> app', '  ghq-repo', '  Other...']);
+  });
+
   it('8: 一覧の n では、候補の先頭がカーソルのあるセッションのリポジトリ', async () => {
     h = new Harness();
     const app = h.repo('app');
