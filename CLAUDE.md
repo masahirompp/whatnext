@@ -10,7 +10,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
 ## 開発の進め方
 
@@ -21,7 +21,7 @@ cycle 9 までは、`src/` とテストをサイクルごとに捨てて書き�
 - `src/`: 一覧の本体。`test/`: 単体(`test/unit/`)、画面の通し(`test/e2e/`)、実機の通し(`test/real/`)
 - `lib/`: 末端の部品(入力、tmux、段の判定、文字の幅と色)。契約を `docs/lib/` に置く。依存は `src/` → `lib/` の一方向だけ。振る舞いを変えるときは、先に契約の docs を直し、テストを足してからコードを直す
 - `mod/`: `--digest` のときにセッションに付けるダイジェストの mod(テストは `mod/tests/`)。npm の配布物に入り、Claude Code の中で動く(`docs/adr/0022-ship-a-digest-mod-for-launched-sessions.md`)
-- `docs/`(PRODUCT.md、DESIGN.md、adr/、lib/)、`README.md`、`CONTEXT.md`、`.claude/skills/`: コードと食い違わないように保つ。挙動を変えるときは、同じ変更の中で docs も直す
+- `docs/`(PRODUCT.md、DESIGN.md、adr/、lib/)、`README.md`、`GLOSSARY.md`、`.claude/skills/`: コードと食い違わないように保つ。挙動を変えるときは、同じ変更の中で docs も直す
 
 ### 要件と設計の2ファイル
 

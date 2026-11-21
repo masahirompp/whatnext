@@ -106,7 +106,7 @@ Design documents are written in Japanese.
 - [docs/DESIGN.md](docs/DESIGN.md) — how it works: dependencies, hooks, OpenTelemetry and transcripts
 - [docs/adr/](docs/adr/) — decisions that are hard to reverse
 - [docs/claude-code-behavior.md](docs/claude-code-behavior.md) — observed behavior of `claude` that whatnext relies on
-- [CONTEXT.md](CONTEXT.md) — glossary
+- [GLOSSARY.md](GLOSSARY.md) — glossary
 
 ## Development
 

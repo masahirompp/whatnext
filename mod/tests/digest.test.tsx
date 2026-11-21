@@ -215,7 +215,7 @@ test('the input names the language to write in, and the system prompt points to 
   );
 });
 
-// What is not an instruction (CONTEXT.md "指示"), in the shapes `$.session.messages()` gave on Claude Code 2.1.330:
+// What is not an instruction (GLOSSARY.md "指示"), in the shapes `$.session.messages()` gave on Claude Code 2.1.330:
 // a turn interrupted with Esc and one interrupted at a permission prompt, `/model haiku`, a plugin's slash command,
 // and `/compact`.
 const OBSERVED: SessionMessage[] = [
