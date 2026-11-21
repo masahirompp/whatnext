@@ -1,5 +1,25 @@
 {
   "worktree": {
     "baseRef": "head"
+  },
+  "extraKnownMarketplaces": {
+    "mattpocock": {
+      "source": {
+        "source": "github",
+        "repo": "mattpocock/skills"
+      },
+      "autoUpdate": true
+    },
+    "masahirompp": {
+      "source": {
+        "source": "github",
+        "repo": "masahirompp/skills"
+      },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "mattpocock-skills@mattpocock": true,
+    "dev-tools@masahirompp": true
   }
 }
