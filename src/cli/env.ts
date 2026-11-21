@@ -102,6 +102,23 @@ export function insideWhatnext(env: Env, pe: NodeJS.ProcessEnv = process.env): b
   return sockPath.endsWith(`/${env.socket}`);
 }
 
+/** 動くことを確かめた最も古い tmux の版(3.7c)。これより古い版は起動を断る。 */
+export const MIN_TMUX = '3.7';
+
+/**
+ * `tmux -V` の出力が MIN_TMUX より古い版か。版を読み取れない表記(`tmux master` など)は断らない。
+ * tmux 3.4 は、オプションに置いた sh の `$p` を `\$p` にして返すので、tmux から一覧への知らせが届かず、
+ * attach から戻るキーも作業台も黙って効かなくなる。どの版から動くかは確かめていないので、確かめた版に合わせる。
+ */
+export function tooOldTmux(versionOutput: string): boolean {
+  const m = /^tmux (?:next-)?(\d+)\.(\d+)/.exec(versionOutput.trim());
+  if (!m) return false;
+  const [minMajor = 0, minMinor = 0] = MIN_TMUX.split('.').map(Number);
+  const major = Number(m[1]);
+  const minor = Number(m[2]);
+  return major < minMajor || (major === minMajor && minor < minMinor);
+}
+
 /** 一覧と案内のペインのコマンド(`env` で環境を渡す。ペインのシェルの起動処理で PATH が組み直されても効くように)。 */
 export function paneCommand(env: Env, role: 'list' | 'guide', pe: NodeJS.ProcessEnv = process.env): string {
   const vars: Record<string, string | undefined> = {

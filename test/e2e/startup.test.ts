@@ -59,6 +59,24 @@ describe('起動時と全体', () => {
     await h.waitFor(/whatnext: tmux is not installed\.[\s\S]*\[exit 1\]/, 8000, 'a');
   });
 
+  it('tmux が古いと、版と要る版を英語で示して終了する', async () => {
+    h = new Harness();
+    h.port = 15996;
+    const bin = join(h.dir, 'oldtmux');
+    mkdirSync(bin);
+    symlinkSync(process.execPath, join(bin, 'node'));
+    writeFileSync(join(bin, 'tmux'), '#!/bin/sh\necho "tmux 3.4"\n', {mode: 0o755});
+    h.open(
+      'a',
+      `env -u TMUX -u CLAUDECODE WHATNEXT_ROLE= WHATNEXT_TMUX_SOCKET=${h.socket} WHATNEXT_PORT=15996 PATH=${bin}:/bin:/usr/bin node ${CLI}`,
+    );
+    await h.waitFor(
+      /whatnext: tmux 3\.4 is too old\. whatnext needs tmux 3\.7 or newer\. Update tmux and try again\.[\s\S]*\[exit 1\]/,
+      8000,
+      'a',
+    );
+  });
+
   it('50: 版の違う whatnext を起動すると、動いている一覧につながり、そのことが出る', async () => {
     h = new Harness();
     h.agents([bg('a', {name: 'alpha'})]);
