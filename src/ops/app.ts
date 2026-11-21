@@ -1301,7 +1301,7 @@ export class App {
       const armed = this.armed?.sid === sid;
       if (armed && this.armed) this.armed.until = this.p.now() + ms;
       if (r.code !== 0) {
-        const out = clean(stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '') || r.error;
+        const out = clean(stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '') || clean(r.error ?? '');
         this.notify(armed ? `Stop failed: ${out} (Ctrl+X again to delete)` : `Stop failed: ${out}`, ms);
       } else if (!this.deleting.has(sid)) {
         this.notify(
@@ -1440,7 +1440,7 @@ export class App {
     const msg =
       r.code === 0
         ? `Opened ${clean(this.tilde(path))} in VS Code.`
-        : `open failed: ${clean(stripControl(r.stderr || r.stdout).trim())}`;
+        : `open failed: ${clean(stripControl(r.stderr || r.stdout || (r.error ?? '')).trim())}`;
     if (via.from === 'list') this.notify(msg);
     else await this.p.tmux.display(via.tty, msg, 3000);
   }
