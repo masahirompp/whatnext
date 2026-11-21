@@ -110,7 +110,7 @@ Design documents are written in Japanese.
 
 ## Development
 
-Until cycle 9 this project was rebuilt from scratch in cycles; it is now developed normally ([ADR-0023](docs/adr/0023-end-cycle-rewrite-and-move-to-normal-development.md)). See [CLAUDE.md](CLAUDE.md) for how to work on it.
+See [CLAUDE.md](CLAUDE.md) for how to work on it.
 
 ```sh
 npm run build      # tsc (strict)

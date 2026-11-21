@@ -1,6 +1,6 @@
 # `lib/` の部品の契約
 
-`lib/` にある部品は、サイクル8の終わりに、仕様が収束した末端の部品として `src/` から分けた（[ADR-0021](../adr/0021-promote-leaf-modules-to-lib.md)）。サイクル型リライトを終えたあと（[ADR-0023](../adr/0023-end-cycle-rewrite-and-move-to-normal-development.md)）も、契約の docs とともに維持する。
+`lib/` にある部品は、仕様が収束した末端の部品として `src/` から分けたものである（[ADR-0021](../adr/0021-promote-leaf-modules-to-lib.md)）。契約の docs とともに維持する。
 
 - 使う側（`src/`）は、このディレクトリの契約に書いた振る舞いだけに頼る。
 - 依存は `src/` → `lib/` の一方向だけである。`lib/` から `src/` を import しない。`lib/` の中では、`lib/tmux` が `lib/input/exec` の `Run` を使うだけである。
