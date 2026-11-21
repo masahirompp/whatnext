@@ -75,6 +75,15 @@ interface Notice {
 
 const tierOf = (t: Tier | null): Tier => t ?? 'review';
 
+/** claude --bg が開けなかったときの失敗の画面。出力に加えて、起動できなかった理由(error)を先に並べる(#320)。 */
+export function sessionFailureLines(out: string, error?: string): string[] {
+  const lines = ['claude --bg did not start a session:'];
+  if (error === 'ENOENT') lines.push('claude not found on PATH (ENOENT)');
+  else if (error) lines.push(...`${error}`.trim().split('\n').slice(0, 3).map(clean));
+  lines.push(...out.trim().split('\n').slice(0, 10).map(clean));
+  return lines;
+}
+
 export class App {
   private persisted: PersistedState = emptyState();
   private rows = new Map<string, ObsRow>();
@@ -849,7 +858,9 @@ export class App {
   private async openLink(l: {label: string; href: string}): Promise<void> {
     const r = await this.p.run('open', [l.href], {timeout: 15000});
     this.notify(
-      r.code === 0 ? `Opened ${clean(l.label)}.` : `open failed: ${clean(stripControl(r.stderr || r.stdout).trim())}`,
+      r.code === 0
+        ? `Opened ${clean(l.label)}.`
+        : `open failed: ${clean(stripControl(r.stderr || r.stdout || (r.error ?? '')).trim())}`,
     );
   }
 
@@ -996,10 +1007,7 @@ export class App {
       }
       const m = /backgrounded\s*·\s*([0-9a-f]{8})/.exec(out);
       if (!m) {
-        this.mode = {
-          k: 'output',
-          lines: ['claude --bg did not start a session:', ...out.trim().split('\n').slice(0, 10).map(clean)],
-        };
+        this.mode = {k: 'output', lines: sessionFailureLines(out, r.error)};
         return;
       }
       const id = m[1];
@@ -1293,7 +1301,7 @@ export class App {
       const armed = this.armed?.sid === sid;
       if (armed && this.armed) this.armed.until = this.p.now() + ms;
       if (r.code !== 0) {
-        const out = clean(stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '');
+        const out = clean(stripControl(`${r.stdout}${r.stderr}`).trim().split('\n')[0] ?? '') || r.error;
         this.notify(armed ? `Stop failed: ${out} (Ctrl+X again to delete)` : `Stop failed: ${out}`, ms);
       } else if (!this.deleting.has(sid)) {
         this.notify(
