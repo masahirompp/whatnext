@@ -133,16 +133,25 @@ describe('作業台の画面', () => {
     await h.waitFor(/⚙ sleep 1003/, 10000);
     await h.keysTo('wb', 'C-z');
     await h.waitFor(/suspended|Stopped|停止/i, 5000, 'wb');
+    // 止めたジョブの pid を kill の前に控える。死んだあとシェルが回収するまではゾンビとして残り、
+    // その args は `<defunct>` などに変わるので、args では片付いたかを見分けられない
+    const pane = h.inner('display', '-p', '-t', '=sh-a0000000:', '#{pane_pid}').trim();
+    const stopped = execFileSync('ps', ['-A', '-o', 'pid=,ppid=,args='], {encoding: 'utf8'})
+      .split('\n')
+      .map(l => l.trim().split(/\s+/))
+      .filter(r => r[1] === pane && /sleep 1003/.test(r.slice(2).join(' ')))
+      .map(r => r[0]);
+    expect(stopped).toHaveLength(1);
     await h.type('kill %1', 'wb');
     await h.keysTo('wb', 'Enter');
-    // 止めたジョブが片付く(シェルが子を回収する)まで待つ。残っているうちに exit すると、シェルが終了を断る
-    const pane = h.inner('display', '-p', '-t', '=sh-a0000000:', '#{pane_pid}').trim();
+    // 止めたジョブが片付く(シェルが子を回収する)まで待つ。残っているうちに exit すると、シェルが終了を断る。
+    // ゾンビも ps に出るので、控えた pid が ps から消えたら回収が済んでいる
     await h.until(
-      'sleep 1003 to be gone from the shell of sh-a0000000',
+      `the stopped sleep 1003 (pid ${stopped[0]}) to be reaped by the shell of sh-a0000000`,
       () =>
-        execFileSync('ps', ['-A', '-o', 'ppid=,args='], {encoding: 'utf8'})
+        execFileSync('ps', ['-A', '-o', 'pid=,stat=,args='], {encoding: 'utf8'})
           .split('\n')
-          .filter(l => l.trim().split(/\s+/)[0] === pane && /sleep 1003/.test(l))
+          .filter(l => l.trim().split(/\s+/)[0] === stopped[0])
           .join('\n'),
       v => v === '',
     );
