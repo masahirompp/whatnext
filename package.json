@@ -3,6 +3,14 @@
   "version": "0.23.0",
   "description": "A terminal list of your parallel Claude Code sessions, grouped by repository, with dependent sessions nested together.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/masahirompp/whatnext.git"
+  },
+  "homepage": "https://github.com/masahirompp/whatnext#readme",
+  "bugs": {
+    "url": "https://github.com/masahirompp/whatnext/issues"
+  },
   "type": "module",
   "bin": {
     "whatnext": "dist/src/cli.js"
