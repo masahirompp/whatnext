@@ -160,8 +160,24 @@ describe('作業台の画面', () => {
     await h.keys('w');
     await h.waitFor(/Workbench created\. Run "whatnext workbench" in a split to see it\./);
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 2 | cat', 'Enter');
-    // 前面のプロセスグループのどれの名前が出るかは OS による
-    await h.waitForCommand('=sh-a0000000:', /^(sleep|cat)$/);
+    // パイプの2つとも exec し終えるまで待つ。前面のコマンド(#{pane_current_command})は1つ目が exec した時点で変わるので足りない
+    const pane = h.inner('display', '-p', '-t', '=sh-a0000000:', '#{pane_pid}').trim();
+    await h.until(
+      'sleep 2 and cat in the foreground of sh-a0000000',
+      () => {
+        const rows = execFileSync('ps', ['-A', '-o', 'pid=,ppid=,pgid=,tpgid=,args='], {encoding: 'utf8'})
+          .split('\n')
+          .map(l => l.trim().split(/\s+/))
+          .filter(r => r.length >= 5);
+        const tpgid = rows.find(r => r[0] === pane)?.[3];
+        return rows
+          .filter(r => r[1] === pane && r[2] === tpgid)
+          .map(r => r.slice(4).join(' '))
+          .sort()
+          .join(' | ');
+      },
+      v => v === 'cat | sleep 2',
+    );
     await h.refresh();
     expect(h.screen()).toMatch(/^ {4}⚙ sleep 2 \| cat$/m);
     await sleep(2500);
