@@ -45,7 +45,6 @@ describe('新しいセッションの起動', () => {
     await h.waitFor(/Directory: gr█/);
     await h.keys('Enter');
     await h.waitFor(/Not a directory: gr/);
-    await h.keys('C-u');
     for (let i = 0; i < 2; i++) await h.keys('BSpace');
     await h.type('/no/such/dir');
     await h.keys('Enter');

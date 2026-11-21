@@ -2,9 +2,9 @@
 import {run} from '../lib/input/exec.js';
 import {LIST} from '../lib/tmux/tmux.js';
 import {parseArgs, USAGE} from './cli/args.js';
-import {insideWhatnext, readEnv, tmuxEnv} from './cli/env.js';
+import {insideWhatnext, MIN_TMUX, readEnv, tmuxEnv, tooOldTmux} from './cli/env.js';
 import {guide} from './cli/guide.js';
-import {hasTmux, launch} from './cli/launch.js';
+import {launch, tmuxVersion} from './cli/launch.js';
 import {startList} from './cli/list.js';
 import {workbench} from './cli/workbench.js';
 
@@ -39,9 +39,16 @@ async function main(): Promise<number> {
     );
     return 1;
   }
-  if (!(await hasTmux())) {
+  const tv = await tmuxVersion();
+  if (tv === undefined) {
     process.stderr.write(
       'whatnext: tmux is not installed. whatnext runs the list, sessions and workbench shells in its own tmux server. Install tmux and try again.\n',
+    );
+    return 1;
+  }
+  if (tooOldTmux(tv)) {
+    process.stderr.write(
+      `whatnext: ${tv} is too old. whatnext needs tmux ${MIN_TMUX} or newer. Update tmux and try again.\n`,
     );
     return 1;
   }

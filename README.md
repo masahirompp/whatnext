@@ -95,7 +95,7 @@ whatnext nests a row under the session whose pid matches `MCP_CALLER_PID`, and o
 ## Requirements
 
 - Node.js 22 or later
-- [Claude Code](https://code.claude.com) (`claude`), `git`, and `tmux` (tested with 3.7c and 3.8) (whatnext runs the list, sessions and per-session workbench shells in its own tmux server; your tmux config is not touched. Closing the terminal window leaves whatnext running — run it again to come back to the same list. Quitting whatnext closes the workbench shells — it asks first if something is still running)
+- [Claude Code](https://code.claude.com) (`claude`), `git`, and `tmux` 3.7 or newer (tested with 3.7c and 3.8; older versions are refused at startup) (whatnext runs the list, sessions and per-session workbench shells in its own tmux server; your tmux config is not touched. Closing the terminal window leaves whatnext running — run it again to come back to the same list. Quitting whatnext closes the workbench shells — it asks first if something is still running)
 - Optional: `ghq` (more working-directory candidates), `gh` (PR numbers on rows). Without them, whatnext works the same with less shown.
 
 ## Documentation
@@ -104,13 +104,13 @@ Design documents are written in Japanese.
 
 - [docs/PRODUCT.md](docs/PRODUCT.md) — spec: status rules, dependencies, display, key operations
 - [docs/DESIGN.md](docs/DESIGN.md) — how it works: dependencies, hooks, OpenTelemetry and transcripts
-- [docs/adr/](docs/adr/) — decisions that hold across rewrites
+- [docs/adr/](docs/adr/) — decisions that are hard to reverse
 - [docs/claude-code-behavior.md](docs/claude-code-behavior.md) — observed behavior of `claude` that whatnext relies on
 - [CONTEXT.md](CONTEXT.md) — glossary
 
 ## Development
 
-This project is rebuilt from scratch in cycles; only the docs above, `lib/` and the digest mod (`mod/`) persist. See [CLAUDE.md](CLAUDE.md).
+Until cycle 9 this project was rebuilt from scratch in cycles; it is now developed normally ([ADR-0023](docs/adr/0023-end-cycle-rewrite-and-move-to-normal-development.md)). See [CLAUDE.md](CLAUDE.md) for how to work on it.
 
 ```sh
 npm run build      # tsc (strict)

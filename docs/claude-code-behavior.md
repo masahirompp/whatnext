@@ -46,6 +46,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - `--bg` のセッションが Bash ツールの `run_in_background` で `claude -p` を起動し、すぐにターンを終えた（応答 `STARTED` を返した）ときも、`--json` の行は、バックグラウンドのシェルが終わって知らせを受けたターンが終わるまで、`working` + `busy` のままだった（約80秒。その後 `done` + `idle`）。バックグラウンドのシェルが動いている間は、ターンの区切りが `--json` に出ない。
 - `claude -p` は可変長の値を取るオプション（`--allowedTools` など）の後ろにプロンプトを置くと、プロンプトもその値として取り込み、`Error: Input must be provided either through stdin or as a prompt argument when using --print` で終わる。プロンプトはオプションより前に置く。
 - review-loop のスキルが起動した `claude -p` の3行（`kind: interactive`、`status: busy`、同じ worktree）のうち1行だけ、一言がなく WAITING が `-` だった。ほかの2行には指示の一言と `<1m` が出た。会話記録がまだない、別の場所にある、指示の行の形が違う、などが考えられるが、確かめていない（#244）。
+- MCP の設定の `headersHelper` の `$PPID` は、対話セッションでも、そのセッションの `--json` の `pid` と一致した。`--bg` のセッションを `claude stop` してから `claude respawn` したとき、止めてから `claude attach` で起き直したときは、helper が走り直し、新しい `$PPID` が新しい `--json` の `pid` と一致した（helper は接続のたびに走る）。Claude Code の中のシェルから開いた対話セッションは、`CLAUDE_CODE_CHILD_SESSION` を引き継ぐと `--json` に出ない（#284）。
 
 ### 起動（`--bg`）
 
@@ -158,7 +159,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 | `claude --bg` を起動したシェルの環境変数 | 届かない（実測）。`--bg` はデーモンが事前に起こした `claude bg-spare` が引き受け、起動要求に載る環境変数は許可リスト（`CLAUDE_CONFIG_DIR`、モデル指定、プロバイダの設定、`PATH` など）だけ |
 | `--settings '{"env":{...}}'` | 届く（実測）。`claude respawn` のあとも引き継がれる |
 | プロジェクトの `.claude/settings.json` / `settings.local.json` の `env` | 届かない（実測。`--bg` でも `-p` でも）。プロジェクトの設定からは `OTEL_EXPORTER_OTLP_*` などを設定できない |
-| デーモンの環境変数 | 届く見込み（未確認）。デーモンは最初に起動した `claude` の環境を持つので、どのシェルがデーモンを起こしたかに左右される |
+| デーモンの環境変数 | 届く（実測、2.1.310）。`--bg` のセッションの環境は常駐のデーモン（`claude daemon run`）の環境である。デーモンは、claude の更新で自分を落としたあと、最初に呼ばれた `claude` の CLI から起き直す。whatnext の tmux の中のプロセスが起こしたデーモンでは、`--bg` のセッションの Bash に `WHATNEXT_ROLE=list`、`WHATNEXT_TMUX_SOCKET`、`WHATNEXT_PORT` が入っていた（#292） |
 | 利用者の `~/.claude/settings.json`、managed settings の `env` | 届く見込み（未確認） |
 
 - 外で起動した `--bg` のセッションに、あとから OTel を付ける手段はない。`claude respawn <id>` はフラグを取らず、保存済みの起動時の引数で起動し直す。止めてから `claude --bg --resume <sessionId> --settings '...'` とすると、別の ID のコピーが起動し、元のセッションも残る。

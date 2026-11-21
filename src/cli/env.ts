@@ -88,13 +88,35 @@ export function tmuxEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv
   return out;
 }
 
-/** whatnext の中のシェル(作業台、claude の画面)で動いているか。 */
+/**
+ * whatnext を起動してはいけないシェル(whatnext の中の作業台、claude の Bash)で動いているか。
+ * claude の Bash(`CLAUDECODE=1`)は、whatnext の中かどうかに関係なく断る。`--bg` のセッションの環境は常駐の daemon のもので、
+ * whatnext の中で動いているかを確実には見分けられない(#300)。
+ */
 export function insideWhatnext(env: Env, pe: NodeJS.ProcessEnv = process.env): boolean {
   if (pe.WHATNEXT_ROLE) return true;
+  if (pe.CLAUDECODE === '1') return true;
   const t = pe.TMUX;
   if (!t) return false;
   const sockPath = t.split(',')[0] ?? '';
   return sockPath.endsWith(`/${env.socket}`);
+}
+
+/** 動くことを確かめた最も古い tmux の版(3.7c)。これより古い版は起動を断る。 */
+export const MIN_TMUX = '3.7';
+
+/**
+ * `tmux -V` の出力が MIN_TMUX より古い版か。版を読み取れない表記(`tmux master` など)は断らない。
+ * tmux 3.4 は、オプションに置いた sh の `$p` を `\$p` にして返すので、tmux から一覧への知らせが届かず、
+ * attach から戻るキーも作業台も黙って効かなくなる。どの版から動くかは確かめていないので、確かめた版に合わせる。
+ */
+export function tooOldTmux(versionOutput: string): boolean {
+  const m = /^tmux (?:next-)?(\d+)\.(\d+)/.exec(versionOutput.trim());
+  if (!m) return false;
+  const [minMajor = 0, minMinor = 0] = MIN_TMUX.split('.').map(Number);
+  const major = Number(m[1]);
+  const minor = Number(m[2]);
+  return major < minMajor || (major === minMajor && minor < minMinor);
 }
 
 /** 一覧と案内のペインのコマンド(`env` で環境を渡す。ペインのシェルの起動処理で PATH が組み直されても効くように)。 */

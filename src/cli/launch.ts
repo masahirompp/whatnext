@@ -10,9 +10,10 @@ import {DIGEST_ON, DIGEST_WANTED, MAIN_TTY, NEWER, WB_TTY} from '../ops/names.js
 
 const tmuxRun: typeof run = (cmd, args, opts) => run(cmd, args, {...opts, env: tmuxEnv(opts?.env ?? process.env)});
 
-export async function hasTmux(): Promise<boolean> {
+/** `tmux -V` の出力(`tmux 3.7c` など)。tmux がなければ undefined。 */
+export async function tmuxVersion(): Promise<string | undefined> {
   const r = await run('tmux', ['-V'], {timeout: 5000});
-  return r.code === 0;
+  return r.code === 0 ? r.stdout.trim() : undefined;
 }
 
 export async function launch(env: Env): Promise<number> {

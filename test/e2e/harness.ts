@@ -192,7 +192,7 @@ export class Harness {
       ...extra,
     };
     const assigns = Object.entries(vars).map(([k, v]) => `${k}=${q(v)}`);
-    return `env -u TMUX -u TMUX_PANE ${assigns.join(' ')} PATH=${q(join(this.dir, 'bin'))}:${q(FAKE)}:"$PATH"`;
+    return `env -u TMUX -u TMUX_PANE -u CLAUDECODE ${assigns.join(' ')} PATH=${q(join(this.dir, 'bin'))}:${q(FAKE)}:"$PATH"`;
   }
 
   private tmux(...args: string[]): string {

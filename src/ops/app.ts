@@ -714,7 +714,6 @@ export class App {
       case 'note': {
         if (name === 'escape') this.mode = {k: 'list'};
         else if (name === 'return') this.commitNote(m.sid, m.text);
-        else if (key.ctrl && name === 'u') m.text = '';
         else if (name === 'backspace') m.text = dropLast(m.text);
         else if (printable) m.text += str;
         return;
@@ -759,9 +758,6 @@ export class App {
           const dir = this.resolveDir(m.text);
           if (typeof dir === 'string') void this.startSession(dir, m.waitFor);
           else m.error = dir.error;
-        } else if (key.ctrl && name === 'u') {
-          m.text = '';
-          m.error = undefined;
         } else if (name === 'backspace') {
           m.text = dropLast(m.text);
           m.error = undefined;

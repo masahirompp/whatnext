@@ -35,6 +35,7 @@ tmux kill-session -t wn                  # 片付け
 - 外側の tmux の中では、外側の tmux が端末の問い合わせに答えるので、端末の機能の差が出ない。端末の機能(`terminal-features` など)を確かめるときは、問い合わせに答えない pty(Python の `pty.fork`)からランチャーを動かし、端末に届いたバイト列(OSC 8 なら `ESC ]8;`)を見る。
 - Claude Code のセッションが worktree に隔離されている(EnterWorktree)と、Bash で `tmux -L ... new-session ... "env ... node dist/cli.js"` のような複合コマンドや、シェル関数を含むコマンドは「worktree の外に出ないか確かめられない」として拒否された。起動とキー送信(1キーずつ send-keys して capture-pane)は `$CLAUDE_JOB_DIR/tmp` のスクリプトファイルに書いて実行する。中で `cd <worktree>` して worktree の dist を動かす。ほかに拒否された形: heredoc や python に渡す文字列に `git` という語が入る、`claude --bg "<プロンプト>"`、heredoc のあとに `;` で別のコマンドをつなぐ、`for` の中で `zsh <スクリプト>` や `gh … --jq "…"` を呼ぶ、変数で渡したパスを `sed -i` の引数にする、git の出力をループに渡して続けて git を呼ぶ。どれも、スクリプトを Write で置いて単独で実行するか、コマンドを分けると通った(#241)。
 - worktree には `node_modules` がなく、パッケージは親の checkout の `node_modules` から解決される。`dist` と `node_modules` を一時ディレクトリに写して起動するテスト(版の違う whatnext)は、写した先でパッケージが見つからず `ERR_MODULE_NOT_FOUND` で落ちる。worktree で画面の通しを流すときは、最初に `npm ci` する(#240、#258)。
+- 作業ツリーの外に取り出した worktree(`git worktree add --detach <外のディレクトリ> main`)では、`node_modules` を元の作業ツリーから symlink で共有しない。共有して `npm run build` すると、tsc が `Entry point of type library 'node' specified in compilerOptions` で失敗した(原因は確かめていない)。その worktree で `npm ci` してからビルドする(#303)。
 - 縦の間隔(入力欄と知らせの間の空行など)を確かめるときは、capture をそのまま(`cat -A` など)見る。`grep` で絞ると空行が消える(#226)。
 - vitest は、テストが通ると `console.log` の出力を出さない。テストの中で取った画面を見るときは、ファイルに書き出すか `--reporter=verbose` を付ける(#226、#243)。
 - 入力欄と知らせが同時に出る画面は、実機の capture では作りにくい。描画の単体テストで確かめる(#226)。
@@ -52,3 +53,5 @@ tmux kill-session -t wn                  # 片付け
 - AppleScript の変数名に `left` などを使うと、分割の向きの予約語とぶつかり `Access not allowed` で失敗する。
 - 分割の数と名前は `terminals of selected tab of <window>` の `name` で読む。作業台の画面のタイトルは `whatnext workbench`。
 - タブの数は `count of tabs of <window>`、選ばれたタブは `index of selected tab of <window>` で読む。`focus <端末>` は、その端末のあるタブに切り替える。`new tab in <window> with configuration cfg` で足したタブは選ばれた状態になり、中のコマンドが `exec` で終わるとタブごと閉じる(Ghostty 1.4.0)。
+- `close window id "<id>"` は `syntax error: A "\"" can't go after this property. (-2740)` で失敗する。`close window (first window whose id is "<id>")` と書く。`try` で囲むと失敗に気づかず、テストのあとにウィンドウが残る(Ghostty 1.4.0。#324)。
+- `/tmp/whatnext-real` は OS の掃除で消える。消えると実機の通しは `spawnSync claude ENOENT`(cwd がない)で落ちる。作り直したら、対話モードの claude で信頼の確認をやり直す。Ghostty の操作だけを確かめるなら、`test/e2e/harness.ts` の偽の claude で起動コマンドを作って Ghostty の新しいウィンドウで動かせば、実機の claude は要らない(#324)。

@@ -12,30 +12,20 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
-## サイクル型リライト開発(cycle-rewrite)
+## 開発の進め方
 
-このプロジェクトはサイクル型リライト方式で開発する。サイクルの開始・終了・移行判断は cycle-rewrite スキルに従う。
+cycle 9 までは、`src/` とテストをサイクルごとに捨てて書き直すサイクル型リライト方式で開発した。cycle 9 の終わり(2026-11-21)に通常の開発に移った(`docs/adr/0023-end-cycle-rewrite-and-move-to-normal-development.md`)。`src/` とテストは捨てず、すべてのコードを本番品質で維持する。docs に出てくる「サイクル N」は、それまでの経緯の記録である。
 
-### 層の定義
+### コードと docs の置き場所
 
-- 永続層: `docs/`(PRODUCT.md、DESIGN.md、adr/)、`README.md`、`LICENSE`、`CONTEXT.md`、`.claude/skills/`、CLAUDE.md、昇格済みモジュール: `lib/`、ダイジェストの mod: `mod/`(テストの `mod/tests/` を含む。`docs/adr/0022-ship-a-digest-mod-for-launched-sessions.md`) — 厳格に維持する
-  - `mod/` は下の「昇格済みモジュール」の決まりの例外で、昇格を経ずに初めから永続層に置く(2026-11-21 に利用者が承認。npm の配布物に入り、`src/` とは別に Claude Code の中で動くので、cycle-end に `src/` と一緒に消すのは合わない)
-- 使い捨て層: `src/` とテストコード — サイクル末に全削除する。品質は「動けばOK」
-- ルートのビルド・パッケージ設定(`package.json`、`package-lock.json`、`tsconfig.json`、`.gitignore`)は削除対象外として残るが、次サイクルの足場であり自由に書き直してよい。ビルド出力 `dist/` は使い捨て層
-
-パスは init で確定した値。cycle-end の削除対象はこの定義を正とする。コードは雑に、ドキュメントは厳格に。
-
-**cycle 9 は本番品質**: cycle 9 で書き直すのは一覧の部分で、`lib/` の昇格済みモジュールは書き直さない(`docs/adr/0020-rewrite-the-list-in-cycle-9.md`)。品質の条件は「動けばOK」ではなく、`docs/PRODUCT.md` のサイクル9の完了条件に従う。cycle 9 を最後のサイクルにする(cycle-end で `src/` を消さずに通常開発へ移る)かは、cycle 9 の終わりに transition-check で決める(cycle-start で先送りした。2026-10-26)。cycle 8 を最後のサイクルとした判断(#207)は、cycle 8 の終わりに覆した。
-
-**使い捨て層の削除は cycle-end の儀式の中でのみ行う**: issue 棚卸しの完了 → `git tag cycle-N` の作成 → 人間の明示的な承認、を必ずこの順で経ること。タグ前・承認前の削除は、学びと復元手段を同時に失う。
+- `src/`: 一覧の本体。`test/`: 単体(`test/unit/`)、画面の通し(`test/e2e/`)、実機の通し(`test/real/`)
+- `lib/`: 末端の部品(入力、tmux、段の判定、文字の幅と色)。契約を `docs/lib/` に置く。依存は `src/` → `lib/` の一方向だけ。振る舞いを変えるときは、先に契約の docs を直し、テストを足してからコードを直す
+- `mod/`: `--digest` のときにセッションに付けるダイジェストの mod(テストは `mod/tests/`)。npm の配布物に入り、Claude Code の中で動く(`docs/adr/0022-ship-a-digest-mod-for-launched-sessions.md`)
+- `docs/`(PRODUCT.md、DESIGN.md、adr/、lib/)、`README.md`、`CONTEXT.md`、`.claude/skills/`: コードと食い違わないように保つ。挙動を変えるときは、同じ変更の中で docs も直す
 
 ### 要件と設計の2ファイル
 
-`docs/PRODUCT.md` は要件(何を実現するか。観測できる振る舞い、受け入れシナリオ、Out of Scope)、`docs/DESIGN.md` は設計(どう実現するか。技術と依存、入力の出どころ、フック・OTel・会話記録の受け方、確かめ方)を書く(cycle 4 の cycle-end で分けた。#127)。境界は下の自律判断の層1と層2で引く。cycle-rewrite スキルは PRODUCT.md の単一ファイルを前提にしているので、スキルが PRODUCT.md を読む場面(cycle-start、cycle-audit、実装セッションのインプット)では、DESIGN.md も合わせて読む。2ファイルの間は見出しの名前で参照する。
-
-### 昇格済みモジュール
-
-仕様が収束したモジュールは、cycle-end で人間の承認を経て `lib/` に昇格し、以後は永続層として厳格に維持する(テストを持ち越し、インターフェース契約を docs に置く)。依存方向は使い捨て層 → 昇格モジュールの一方向のみ。実装セッションは契約 docs 経由で使い、中身のコードは読まない。
+`docs/PRODUCT.md` は要件(何を実現するか。観測できる振る舞い、受け入れシナリオ、Out of Scope)、`docs/DESIGN.md` は設計(どう実現するか。技術と依存、入力の出どころ、フック・OTel・会話記録の受け方、確かめ方)を書く。境界は下の自律判断の層1と層2で引く。2ファイルの間は見出しの名前で参照する。
 
 ### AI の自律判断(3層)
 
@@ -45,7 +35,7 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 
 ### 学びの捕捉
 
-実装・確認中に得た学び(エッジケース、想定外挙動、暗黙の要件、ライブラリのハマり)は発見の都度 GitHub issue に起票する。ラベル(`bug` / `learning` / `spec-change` / `decision-log`)+ 現在サイクルのマイルストーンを付ける。issue は受信箱であり、次サイクルのインプットは蒸留済み docs のみ。
+実装・確認中に得た学び(エッジケース、想定外挙動、暗黙の要件、ライブラリのハマり)は発見の都度 GitHub issue に起票する。ラベル(`bug` / `learning` / `spec-change` / `decision-log`)を付ける。issue は受信箱であり、長く効く学びは docs かスキルに書いてから閉じる。
 
 ### ブランチ・マージ方針
 
@@ -65,12 +55,4 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 
 ### ADR の基準
 
-「覆すのが難しい判断のみ書く」は本プロジェクトでは「**サイクルを跨いでも覆らないか**」で解釈する。捨てる予定のコードに紐づく実装レベルの判断は ADR にしない(`decision-log` issue でよい)。
-
-### 旧サイクルコードの参照
-
-旧サイクルのコードを作業ツリーに置かない。参照が必要なら `git show cycle-N:src/...` か、作業ツリー外への `git worktree` を使う。
-
-書き直すサイクルでは、旧サイクルのコードを写さない。cycle 7 は書き直すと決めながら cycle 6 のコードの多くを写し、docs だけで実装できるかを確かめられなかった(D1 の `--help` の扱いは、書き直した cli で初めて表に出た)。旧コードを見るのは cycle-audit の突き合わせに限る。
-
-前サイクルの cycle-audit で持ち越した項目（docs と旧コードが食い違うもの）は、次サイクルの完了条件に番号付きで書き出す。旧コードを参照して書き直すと、docs の文言にだけ反映した先送りの項目は旧コードの字面のまま写る（cycle 6 で、cycle 5 の監査で持ち越した2件がそのまま残った）。
+覆すのが難しい判断だけを ADR に書く。実装の水準の判断は ADR にせず、`decision-log` の issue に残す。

@@ -327,7 +327,8 @@ describe('メモ', () => {
     await h.keys('Escape');
     await h.waitFor(s => !/Note for/.test(s) && /↳ 素材待ち/.test(s));
     // 直す
-    await h.keys('e', 'C-u');
+    await h.keys('e');
+    for (let i = 0; i < 4; i++) await h.keys('BSpace');
     await h.type('Bob の返事待ち');
     await h.keys('Enter');
     await h.waitFor(/↳ Bob の返事待ち/);
@@ -351,7 +352,9 @@ describe('メモ', () => {
     expect(h.screen()).toMatch(/↳ Bob の返事待ち/);
     // 消す
     await h.select('beta');
-    await h.keys('e', 'C-u', 'Enter');
+    await h.keys('e');
+    for (let i = 0; i < 9; i++) await h.keys('BSpace');
+    await h.keys('Enter');
     await h.waitFor(s => !/Bob の返事待ち/.test(s.split('\n').slice(0, 10).join('\n')));
     expect(h.state().notes[sid('b')]).toBeUndefined();
   });

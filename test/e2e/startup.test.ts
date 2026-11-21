@@ -37,6 +37,15 @@ describe('起動時と全体', () => {
     expect(out).toMatch(/\[exit 1\]/);
   });
 
+  it('claude の Bash(CLAUDECODE=1)で起動すると、whatnext の中でなくても断る(#300)', async () => {
+    h = new Harness();
+    h.port = 15997;
+    h.open('a', `${h.envLine()} CLAUDECODE=1 node ${CLI}`);
+    await h.waitFor(/whatnext: this shell runs inside whatnext\.[\s\S]*\[exit 1\]/, 8000, 'a');
+    h.open('b', `${h.envLine()} CLAUDECODE=1 node ${CLI} workbench`);
+    await h.waitFor(/whatnext: this shell runs inside whatnext\.[\s\S]*\[exit 1\]/, 8000, 'b');
+  });
+
   it('29: tmux がないと英語で示して終了する', async () => {
     h = new Harness();
     h.port = 15998;
@@ -45,9 +54,27 @@ describe('起動時と全体', () => {
     symlinkSync(process.execPath, join(bin, 'node'));
     h.open(
       'a',
-      `env -u TMUX WHATNEXT_ROLE= WHATNEXT_TMUX_SOCKET=${h.socket} WHATNEXT_PORT=15998 PATH=${bin} node ${CLI}`,
+      `env -u TMUX -u CLAUDECODE WHATNEXT_ROLE= WHATNEXT_TMUX_SOCKET=${h.socket} WHATNEXT_PORT=15998 PATH=${bin} node ${CLI}`,
     );
     await h.waitFor(/whatnext: tmux is not installed\.[\s\S]*\[exit 1\]/, 8000, 'a');
+  });
+
+  it('tmux が古いと、版と要る版を英語で示して終了する', async () => {
+    h = new Harness();
+    h.port = 15996;
+    const bin = join(h.dir, 'oldtmux');
+    mkdirSync(bin);
+    symlinkSync(process.execPath, join(bin, 'node'));
+    writeFileSync(join(bin, 'tmux'), '#!/bin/sh\necho "tmux 3.4"\n', {mode: 0o755});
+    h.open(
+      'a',
+      `env -u TMUX -u CLAUDECODE WHATNEXT_ROLE= WHATNEXT_TMUX_SOCKET=${h.socket} WHATNEXT_PORT=15996 PATH=${bin}:/bin:/usr/bin node ${CLI}`,
+    );
+    await h.waitFor(
+      /whatnext: tmux 3\.4 is too old\. whatnext needs tmux 3\.7 or newer\. Update tmux and try again\.[\s\S]*\[exit 1\]/,
+      8000,
+      'a',
+    );
   });
 
   it('50: 版の違う whatnext を起動すると、動いている一覧につながり、そのことが出る', async () => {

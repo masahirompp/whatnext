@@ -34,6 +34,8 @@ export const run: Run = (cmd, args, opts = {}) =>
         resolve({code: null, stdout: stdout ?? '', stderr: stderr ?? '', error: String(e.code ?? e.message)});
       },
     );
+    // 起動できなかった、または読まずに終わった相手に書くと EPIPE が出る。結果は execFile のコールバックで返すので、ここでは捨てる。
+    child.stdin?.on('error', () => {});
     child.stdin?.end(opts.input ?? '');
   });
 

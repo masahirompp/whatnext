@@ -64,7 +64,7 @@ async function launchInWork(): Promise<void> {
   await h.type('zzzqqqx');
   await h.keys('Enter');
   await h.waitFor(/Directory: zzzqqqx█/);
-  await h.keys('C-u');
+  for (let i = 0; i < 7; i++) await h.keys('BSpace');
   await h.type(WORK);
   await h.keys('Enter');
   await h.waitFor(/\^Q\^L back/, 60000);
