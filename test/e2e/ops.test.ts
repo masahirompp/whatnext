@@ -355,7 +355,10 @@ describe('attach している間のキー', () => {
     await h.waitFor(/Opened .*app in VS Code\./);
     expect(h.screen()).toMatch(/fake claude attached/);
     await h.keys('C-q', 'v');
-    await sleep(800);
-    expect(h.file('open.log').trim().split('\n').length).toBe(4);
+    await h.until(
+      '4 lines in open.log',
+      () => h.file('open.log').trim(),
+      v => v.split('\n').length === 4,
+    );
   });
 });
