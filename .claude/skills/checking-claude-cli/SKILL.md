@@ -1,6 +1,6 @@
 ---
 name: checking-claude-cli
-description: whatnext が頼る `claude` CLI の出力(特に `claude agents --json` の行の形)をコードに書く前、またはサイクルの開始時・`claude` の更新後に読む。実機を一から調べ直さず、記録済みの見本との差分だけを確かめる手順と、状態ごとの行を安く作る方法。
+description: whatnext が頼る `claude` CLI の出力(特に `claude agents --json` の行の形)をコードに書く前と、`claude` の更新後に読む。実機を一から調べ直さず、記録済みの見本との差分だけを確かめる手順と、状態ごとの行を安く作る方法。
 ---
 # `claude` の出力を確かめる
 
@@ -9,7 +9,7 @@ description: whatnext が頼る `claude` CLI の出力(特に `claude agents --j
 - 振る舞い(いつどの値になるか): 同じ docs の「振る舞い」節(話題ごとの箇条書き)。
 - 型はこの記録から書く。実機で形を調べ直さない。
 
-## 差分を確かめる(サイクルの開始時、`claude --version` が見本の `claudeVersion` と違うとき)
+## 差分を確かめる(`claude --version` が見本の `claudeVersion` と違うとき)
 ```sh
 node .claude/skills/checking-claude-cli/check-agents-json.mjs
 ```

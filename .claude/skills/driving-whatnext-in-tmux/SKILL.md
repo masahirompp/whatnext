@@ -4,7 +4,7 @@ description: whatnext の画面を実機で確かめるとき(キー操作、att
 ---
 # tmux で whatnext の画面を操作して確かめる
 
-ビルドしてから、入口(`package.json` の `bin`。サイクル2では `dist/cli.js`)を tmux の中で起動する。
+ビルドしてから、入口(`package.json` の `bin`)を tmux の中で起動する。
 
 ```sh
 tmux new-session -d -s wn -x 110 -y 20 'node dist/cli.js'
