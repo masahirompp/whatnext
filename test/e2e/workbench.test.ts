@@ -180,28 +180,45 @@ describe('作業台の画面', () => {
     await h.start();
     await h.keys('w');
     await h.waitFor(/Workbench created\. Run "whatnext workbench" in a split to see it\./);
-    h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 2 | cat', 'Enter');
-    // パイプの2つとも exec し終えるまで待つ。前面のコマンド(#{pane_current_command})は1つ目が exec した時点で変わるので足りない
+    // 決まった時間で終わるコマンド(sleep 2 など)だと、exec の遅れで待ちが長引いたとき、確かめる前に終わってしまう。
+    // 終わらないものを動かし、確かめたあとでテストが終わらせる
+    h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1008 | cat', 'Enter');
     const pane = h.inner('display', '-p', '-t', '=sh-a0000000:', '#{pane_pid}').trim();
+    const ps = () =>
+      execFileSync('ps', ['-A', '-o', 'pid=,ppid=,pgid=,tpgid=,args='], {encoding: 'utf8'})
+        .split('\n')
+        .map(l => l.trim().split(/\s+/))
+        .filter(r => r.length >= 5);
+    // シェルの前面のプロセスグループにいる子の pid と args
+    const foreground = () => {
+      const rows = ps();
+      const tpgid = rows.find(r => r[0] === pane)?.[3];
+      return rows.filter(r => r[1] === pane && r[2] === tpgid).map(r => ({pid: r[0], args: r.slice(4).join(' ')}));
+    };
+    // パイプの2つとも exec し終えるまで待つ。前面のコマンド(#{pane_current_command})は1つ目が exec した時点で変わるので足りない
     await h.until(
-      'sleep 2 and cat in the foreground of sh-a0000000',
-      () => {
-        const rows = execFileSync('ps', ['-A', '-o', 'pid=,ppid=,pgid=,tpgid=,args='], {encoding: 'utf8'})
-          .split('\n')
-          .map(l => l.trim().split(/\s+/))
-          .filter(r => r.length >= 5);
-        const tpgid = rows.find(r => r[0] === pane)?.[3];
-        return rows
-          .filter(r => r[1] === pane && r[2] === tpgid)
-          .map(r => r.slice(4).join(' '))
+      'sleep 1008 and cat in the foreground of sh-a0000000',
+      () =>
+        foreground()
+          .map(p => p.args)
           .sort()
-          .join(' | ');
-      },
-      v => v === 'cat | sleep 2',
+          .join(' | '),
+      v => v === 'cat | sleep 1008',
     );
     await h.refresh();
-    expect(h.screen()).toMatch(/^ {4}⚙ sleep 2 \| cat$/m);
-    await sleep(2500);
+    expect(h.screen()).toMatch(/^ {4}⚙ sleep 1008 \| cat$/m);
+    // sleep を終わらせると cat も入力の終わりで終わる。シェルが2つとも回収して端末の前面に戻るまで待つ
+    const sleeper = foreground().find(p => p.args === 'sleep 1008');
+    expect(sleeper).toBeDefined();
+    process.kill(Number(sleeper?.pid), 'SIGTERM');
+    await h.until(
+      'the shell of sh-a0000000 to be back in the foreground',
+      () => {
+        const shell = ps().find(r => r[0] === pane);
+        return shell ? `pgid=${shell[2]} tpgid=${shell[3]}` : '';
+      },
+      v => /^pgid=(\d+) tpgid=\1$/.test(v),
+    );
     await h.refresh();
     expect(h.screen()).not.toMatch(/⚙/);
   });
