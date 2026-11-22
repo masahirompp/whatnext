@@ -21,7 +21,7 @@ CI にも手元にも、公開に使うトークンは置かない。
    ```
 
    `git push origin main --follow-tags` は使わない(main への変更は PR を通す)。
-4. **CI: 判定のあと stage に置く。** タグのコミットが `origin/main` からたどれること、タグの版が `package.json` の `version` と一致することを確かめ、外れたら止まる。通れば `npm ci`、build、check、test のあと `npm stage publish --access public` する。
+4. **CI: 判定のあと stage に置く。** タグのコミットが main のマージのコミット(`origin/main` の first-parent の鎖の上)であること、タグの版が `package.json` の `version` と一致することを確かめ、外れたら止まる。通れば `npm ci`、build、check、test のあと `npm stage publish --access public` する。
 5. **AI: stage に置いた中身を示す。** `npm stage` の操作(`list`、`download`、`approve`、`reject`)はどれも npm 11.15.0 以上が要る。手元の npm が古ければ、`npx -y npm@11 stage list @masahirompp/whatnext` のように、npm を指定して流す。`npm stage list @masahirompp/whatnext` で stage の id を引き、`npm stage download <id>` の tarball と、同じタグから手元で作った tarball を比べて示す。
 
    ```sh
@@ -40,7 +40,7 @@ CI にも手元にも、公開に使うトークンは置かない。
 ## 上げすぎたとき、止めたいとき
 
 - **タグを push する前**: 版を上げる PR を閉じるか、PR の中で版を直すだけでよい。マージのあとなら、版を直す PR を出す。npm にも origin のタグにもその版はまだ無い。
-- **タグを push したが CI が stage に置く前に止まった**(判定、build、check、test のどれか): stage には何も置かれていない。原因(main にないコミットに付けた、版を間違えた、main が壊れていた)を直したら、origin と手元の両方のタグを消してから付け直す。
+- **タグを push したが CI が stage に置く前に止まった**(判定、build、check、test のどれか): stage には何も置かれていない。原因(main のマージのコミットでないコミットに付けた、版を間違えた、main が壊れていた)を直したら、origin と手元の両方のタグを消してから付け直す。
 
   ```sh
   git push origin :refs/tags/v<版>

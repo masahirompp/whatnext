@@ -944,7 +944,7 @@ whatnext を npm に公開し、`npx @masahirompp/whatnext` で呼び出せる�
 - GitHub のリポジトリは public にし、`package.json` の `repository`・`homepage`・`bugs` に書く。npm のページからリポジトリと issue に辿れ、README の相対リンクも GitHub のファイルを指す。
 - publish は取り消せない外部への公開である。公開したバージョン番号は使い直せず、72時間を過ぎると原則として unpublish できない。そのため、公開は保守者の承認を最後の一押しにする。
   - タグ `v<版>` を push すると、CI が npm の stage に置く。保守者が 2FA で承認するまで公開されない。承認の前に、stage に置いた tarball を取り出して中身を確かめられる。
-  - タグのコミットが main からたどれないとき、タグの版が `package.json` の `version` と違うときは、CI は stage に置かずに止まる。
+  - タグのコミットが main のマージのコミット(main の first-parent の鎖の上のコミット)でないとき、タグの版が `package.json` の `version` と違うときは、CI は stage に置かずに止まる。
   - CI は npm の trusted publisher(OIDC)で stage に置き、公開に使うトークンを持たない。公開した版には provenance(どのリポジトリのどのコミットから、どの workflow で作ったかの証明)が付く。
   - 実装セッションは、承認の前に、stage の tarball と同じタグから手元で作った tarball を比べて示し、公開のあとに `npx` で起動できることを確かめる。手順は releasing-whatnext スキルに置く。
 - whatnext は設定を持たず、データはメモと待ち先の関係を書く状態のファイルだけである（[ADR-0016](adr/0016-persist-holds-and-waits-in-a-state-file.md)）。このファイルは読めない版を空として扱い、移行を求めない。そのため、破壊的な変更で利用者に移行を求めるものがない。README に「0.x の間は予告なく変わる」と明記する。
