@@ -111,6 +111,11 @@ describe('更新と Usage', () => {
     h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta', state: 'working', status: 'busy'})]);
     await h.start();
     await h.waitFor(/session 42% \(resets 2:09pm\) · week \(all models\) 25% \(resets Sep 29 9:59am\)/);
+    // tmux 3.5a/3.6a では、起動の直後に下の2行が1行上に描かれ、少しして下にそろう(#337)。そろうまで待つ
+    await h.waitFor(s => {
+      const ls = s.replace(/\n$/, '').split('\n');
+      return /^session 42%/.test(ls.at(-2) ?? '') && (ls.at(-1) ?? '').trim() !== '';
+    });
     expect(h.lines().at(-2)).toMatch(/^session 42%/);
     expect(h.file('usage.count')).toBe('1');
     // 更新キー
