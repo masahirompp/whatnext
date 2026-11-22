@@ -4,7 +4,7 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {stripControl} from '../../lib/input/exec.js';
 import {Transcripts} from '../../lib/input/transcript.js';
-import {Harness, sleep} from '../e2e/harness.js';
+import {Harness, sleep, UNSET_DIGEST} from '../e2e/harness.js';
 
 // 実機の通しの口。本物の claude(haiku)を使い、ソケット、ポート、状態のファイルはテスト用に分ける。
 // セッションは信頼の確認を済ませた WORK で起動し、終わったら WORK のセッションだけを止めて消す。
@@ -123,7 +123,7 @@ export class RealHarness extends Harness {
       ...extra,
     };
     const assigns = Object.entries(vars).map(([k, v]) => `${k}='${v}'`);
-    return `env -u TMUX -u TMUX_PANE ${CLEAN} ${assigns.join(' ')}`;
+    return `env -u TMUX -u TMUX_PANE ${CLEAN} ${UNSET_DIGEST} ${assigns.join(' ')}`;
   }
 
   /** 一覧で、名前の行(組の中の行を含む)の文字列を返す。 */

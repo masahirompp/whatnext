@@ -10,6 +10,15 @@ import {until} from './until.js';
 export const REPO = resolve(import.meta.dirname, '..', '..');
 export const CLI = join(REPO, 'dist', 'src', 'cli.js');
 const FAKE = join(REPO, 'test', 'e2e', 'fake');
+/** `whatnext --digest` の一覧と、その `n` で起動したセッションが引き継ぐ変数(`Harness.envLine`)。 */
+export const UNSET_DIGEST = [
+  'WHATNEXT_DIGEST',
+  'WHATNEXT_DIGEST_PORT',
+  'WHATNEXT_DIGEST_TMUX',
+  'WHATNEXT_DIGEST_SOCKET',
+]
+  .map(k => `-u ${k}`)
+  .join(' ');
 
 export interface FakeRow {
   kind: 'background' | 'interactive';
@@ -181,6 +190,11 @@ export class Harness {
     return JSON.parse(readFileSync(this.statePath(), 'utf8'));
   }
 
+  /**
+   * whatnext を起動するコマンドの環境。`WHATNEXT_DIGEST*` は外す。`whatnext --digest` の `n` で起動したセッション
+   * (そこで動く AI)から流すと、シェルに `WHATNEXT_DIGEST=1` が入っていて、`--digest` なしのはずの一覧が `--digest`
+   * で動いた(18件が落ちた)。
+   */
   envLine(extra: Record<string, string> = {}): string {
     const vars: Record<string, string> = {
       WHATNEXT_ROLE: '',
@@ -193,7 +207,7 @@ export class Harness {
       ...extra,
     };
     const assigns = Object.entries(vars).map(([k, v]) => `${k}=${q(v)}`);
-    return `env -u TMUX -u TMUX_PANE -u CLAUDECODE ${assigns.join(' ')} PATH=${q(join(this.dir, 'bin'))}:${q(FAKE)}:"$PATH"`;
+    return `env -u TMUX -u TMUX_PANE -u CLAUDECODE ${UNSET_DIGEST} ${assigns.join(' ')} PATH=${q(join(this.dir, 'bin'))}:${q(FAKE)}:"$PATH"`;
   }
 
   private tmux(...args: string[]): string {
