@@ -2,6 +2,7 @@ import {execFileSync} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {join, resolve} from 'node:path';
+import {until} from './until.js';
 
 // 画面の通しの口。外側の tmux のセッションを端末の代わりにし、偽の claude を PATH の前に置いて whatnext を動かす
 // (driving-whatnext-in-tmux スキル)。テストごとに一時ディレクトリ、ソケット、ポートを分ける。
@@ -199,6 +200,10 @@ export class Harness {
     return execFileSync('tmux', ['-L', this.outer, ...args], {encoding: 'utf8', env: {...process.env, TMUX: ''}});
   }
 
+  /**
+   * 内側の tmux でコマンドを動かし、標準出力を返す。失敗したら '' を返し、tmux の標準エラーはそのまま出す。
+   * 1回だけ動かす操作や確かめに使い、失敗の理由がテストの出力に残るようにする。
+   */
   inner(...args: string[]): string {
     try {
       return execFileSync('tmux', ['-L', this.socket, ...args], {encoding: 'utf8', env: {...process.env, TMUX: ''}});
@@ -207,8 +212,8 @@ export class Harness {
     }
   }
 
-  /** `inner` と同じだが、tmux の標準エラーを出さない(待つ間に何度も問い合わせるとき)。 */
-  private innerQuiet(...args: string[]): string {
+  /** `inner` と同じだが、tmux の標準エラーを出さない。`until` の probe など、待つ間に何度も問い合わせるときに使う。 */
+  innerQuiet(...args: string[]): string {
     try {
       return execFileSync('tmux', ['-L', this.socket, ...args], {
         encoding: 'utf8',
@@ -260,6 +265,26 @@ export class Harness {
     if (!this.port) this.port = await freePort();
     this.open('main', `${this.envLine(opts.env)} node ${q(CLI)} ${opts.args ?? ''}`, opts.size, opts.cwd);
     if (opts.wait !== false) await this.waitFor(s => /SESSION|No sessions|Could not read/.test(s), 15000);
+  }
+
+  /**
+   * whatnext の画面(外側の tmux のセッション `main`)を閉じ、その画面のクライアントが内側の tmux から離れるまで待つ。
+   * 端末のウィンドウを閉じたときと同じで、一覧のプロセスは終わらない(DESIGN.md)ので、`@wn_pid` では待てない。
+   * 閉じる前にクライアントの tty を控え、`list-clients` からその tty が消えるのを待つ(#349)。
+   */
+  async closeMain(timeout = 8000): Promise<void> {
+    const tty = this.tmux('display', '-p', '-t', '=main:', '#{pane_tty}').trim();
+    const ttys = () => this.innerQuiet('list-clients', '-F', '#{client_tty}').trim();
+    if (!ttys().split('\n').includes(tty)) {
+      throw new Error(`the whatnext screen (${tty}) is not a client of the inner tmux`);
+    }
+    this.tmux('kill-session', '-t', '=main');
+    await this.until(
+      `the whatnext screen client (${tty}) to leave the inner tmux`,
+      ttys,
+      v => !v.split('\n').includes(tty),
+      timeout,
+    );
   }
 
   async startWorkbench(name = 'wb', size = {cols: 80, rows: 20}): Promise<void> {
@@ -315,21 +340,18 @@ export class Harness {
   }
 
   /**
-   * `probe` の値が `ok` を満たすまで待つ。時間切れのときは、何を待っていたか(`what`)と最後の値を例外に出す。
+   * `probe` の値が `ok` を満たすまで待つ(`./until.ts`。probe の例外は待ち続け、期限のあとにもう一度だけ確かめる)。
    * 作業台やペインに送ったあとは、固定の時間ではなく、これで観測できる状態を待つ(負荷が高いと遅れるため。#346)。
+   * 内側の tmux に問い合わせる probe は `innerQuiet` を使う。
    */
-  async until(what: string, probe: () => string, ok: (v: string) => boolean, timeout = 8000): Promise<string> {
-    const end = Date.now() + timeout;
-    let v = '';
-    while (Date.now() < end) {
-      v = probe();
-      if (ok(v)) return v;
-      await sleep(100);
-    }
-    throw new Error(`timed out after ${timeout}ms waiting for ${what}; last value was: ${JSON.stringify(v)}`);
+  until(what: string, probe: () => string, ok: (v: string) => boolean, timeout = 8000): Promise<string> {
+    return until(what, probe, ok, timeout);
   }
 
-  /** 内側の tmux にセッション `name` ができるまで待つ。作業台は一覧が非同期に作るので、キーを押しただけではまだない。 */
+  /**
+   * 内側の tmux にセッション `name` ができるまで待つ。作業台は一覧が非同期に作るので、キーを押しただけではまだない。
+   * 戻った時点では、セッションのオプション(prefix、status、`@wn_name` など)はまだ入っていないことがある。
+   */
   async waitForSession(name: string, timeout = 8000): Promise<void> {
     await this.until(
       `inner tmux session ${name}`,
