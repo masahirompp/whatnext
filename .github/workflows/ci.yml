@@ -44,6 +44,8 @@ jobs:
     timeout-minutes: 30
     env:
       TMUX_VERSION: ${{ inputs.tmux || '3.5a' }}
+      # tmux は UTF-8 のロケールでないと、全角や罫線を `_` にして描く(ロケールなしでは、list.test.ts の大半が落ちた)
+      LANG: C.UTF-8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
