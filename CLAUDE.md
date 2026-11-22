@@ -24,7 +24,7 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 ### ブランチ・マージ
 
 - main への変更はすべて PR を通す。CI(build、`npm run check`、`npm test`)が通らないとマージできない
-- PR を出す前に、build、`npm run check`、`npm test` を通す。CI は `test:e2e`、`test:mod`、`test:real` を流さないので、触れた範囲に応じて手元で流す(DESIGN.md「確かめ方」)
+- PR を出す前に、build、`npm run check`、`npm test` を通す。CI は `test:e2e` を下限の tmux(3.5a)で流す。最新の tmux での `test:e2e` と、`test:mod`、`test:real` は CI で流さないので、触れた範囲に応じて手元で流す(DESIGN.md「確かめ方」)
 
 ### 見た目の決定
 
