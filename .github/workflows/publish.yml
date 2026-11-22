@@ -1,0 +1,70 @@
+# タグ v<版> の push で、npm の stage に置く(公開は、保守者が 2FA で承認したとき)。
+# npmjs.com の trusted publisher に、このファイル名(publish.yml)を登録している。名前を変えたら登録も直す。
+# 手順は releasing-whatnext スキル、要件は PRODUCT.md「配布」
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  id-token: write
+  contents: read
+
+# 同じタグで二重に stage に置かない。走っているものは止めずに待たせる
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # タグのコミットを取る。main からたどれるかを見るので、履歴をすべて取る
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # check-tag: begin
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          commit=$(git rev-parse HEAD)
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::タグ $TAG のコミット $commit は origin/main からたどれない。main にマージしたコミットにタグを付ける"
+            exit 1
+          fi
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::タグ $TAG と package.json の version($version)が合わない。タグは v$version にする"
+            exit 1
+          fi
+          echo "タグ $TAG: コミット $commit は origin/main からたどれ、版は package.json と一致する"
+          # check-tag: end
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          # 公開する版の build にキャッシュを使わない(npm の trusted publishers の docs の例に合わせる)
+          package-manager-cache: false
+      # npm stage は npm 11.15.0 以上が要る。Node 24 に付いてくる npm では足りないことがある
+      - name: Install npm
+        run: |
+          npm install -g npm@11.21.3
+          npm_version=$(npm --version)
+          echo "npm $npm_version"
+          if [ "$(printf '%s\n' 11.15.0 "$npm_version" | sort -V | head -n1)" != 11.15.0 ]; then
+            echo "::error::npm $npm_version では npm stage が使えない(11.15.0 以上が要る)"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check
+      - run: npm test
+      # trusted publisher(OIDC)で stage に置く。provenance は自動で付くので --provenance は付けない
+      - run: npm stage publish --access public
