@@ -57,6 +57,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 テストから外部を差し替える口は、環境変数（`WHATNEXT_TMUX_SOCKET`、`WHATNEXT_PORT`（mod には `WHATNEXT_DIGEST_PORT` で渡る）、`XDG_STATE_HOME`、`CLAUDE_CONFIG_DIR`、偽のコマンドを前に置いた `PATH`）にする。
 `WHATNEXT_DEBUG_LOG` があるときだけ、一覧のプロセスは attach、異常終了などの出来事をそのファイルに書く。テストが失敗の原因を追うための口で、利用者の環境では何も書かない（[ADR-0016](adr/0016-persist-holds-and-waits-in-a-state-file.md) の状態のファイルのほかに書かない方針を保つ）。
 利用者の whatnext と同じマシンでテストを流しても、互いに触れないようにするため。
+一覧の自動の更新の間隔と、Usage を取り直す最短の間隔（どちらも既定は 60 秒）は、`WHATNEXT_REFRESH_MS` と `WHATNEXT_USAGE_MIN_MS`（ミリ秒）で短くできる。画面の通しが 60 秒を実時間で待たないための口で、起動引数や `--help` には出さない。数でない値と 0 以下の値は既定にする。起動の口が読み、一覧のペインに渡し、一覧が操作に `Ports` で渡す（#348）。
 
 境界は実装の中で見直してよい。見直したら、この節を直し、`decision-log` の issue に残す。
 

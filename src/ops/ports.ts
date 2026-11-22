@@ -20,6 +20,10 @@ export interface Ports {
   stateFile: StateFile;
   fetchUsage: () => Promise<UsageFrame[] | undefined>;
   now: () => number;
+  /** 一覧の自動の更新の間隔(ms)。 */
+  refreshMs: number;
+  /** Usage を取り直す最短の間隔(ms)。 */
+  usageMinMs: number;
   /** 一覧の端末に書く。 */
   write: (s: string) => void;
   size: () => {cols: number; rows: number};
