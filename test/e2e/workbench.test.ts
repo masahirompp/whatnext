@@ -356,7 +356,8 @@ describe('作業台の画面', () => {
     expect(h.sessions()).toContain('wbguide');
     expect(wbClient()?.session).toBe('wbguide');
     await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
-    expect(h.inner('show', '-gv', '@wn_guide_died')).toMatch(/signal=kill/);
+    // tmux はシグナルを、macOS では名前(kill)、Linux では番号(9)で出す(sys_signame があるかによる)
+    expect(h.inner('show', '-gv', '@wn_guide_died')).toMatch(/signal=(kill|9) /);
   });
 
   it('案内のセッションで分割して案内のペインだけを閉じても、カーソルを動かすと案内が戻り、分割で動かしていたものは止めない', async () => {
