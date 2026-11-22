@@ -6,7 +6,7 @@ import {parseAgents, parseUsage} from './claude.js';
 import {HookStore, supplement} from './hooks.js';
 import {parseParents} from './procs.js';
 import {launchSettings} from './receiver.js';
-import {instructionText, leadLine, toolTarget} from './text.js';
+import {instructionText, leadLine, promptLine, toolTarget} from './text.js';
 import {Transcripts} from './transcript.js';
 
 describe('最後の応答の冒頭 (シナリオ 39)', () => {
@@ -43,6 +43,44 @@ describe('指示と道具', () => {
     expect(instructionText('<local-command-stdout>x</local-command-stdout>')).toBeUndefined();
     expect(instructionText('<bash-input>ls</bash-input>')).toBeUndefined();
     expect(instructionText('\nfix the bug\nplease')).toBe('fix the bug');
+  });
+
+  describe('貼り付けで始めた指示 (#291)', () => {
+    // 観測した4つの形(claude-code-behavior.md「会話記録」の貼り付け。会話記録とフックの prompt は同じ文字列)
+    const pasteOnly =
+      '\n\n<pasted_content id="921c">\ncycle-rewrite の実装セッションとして、サイクル9を実装する。\n手順は次のとおり。\n</pasted_content id="921c">\n';
+    const textThenPaste =
+      'このログを見て \n\n<pasted_content id="5e0a">\nError: boom\n    at main\n</pasted_content id="5e0a">\n';
+    const shortPaste = '別のセッションの記録を読んで、指摘を直して:';
+    const pasteThenText =
+      '\n\n<pasted_content id="7b3f">\nError: boom\n    at main\n</pasted_content id="7b3f">\n\nこのエラーを直して。CI だけで落ちる\n2行目';
+    const cases: [string, string][] = [
+      [pasteOnly, 'cycle-rewrite の実装セッションとして、サイクル9を実装する。'],
+      [textThenPaste, 'このログを見て'],
+      [shortPaste, '別のセッションの記録を読んで、指摘を直して:'],
+      [pasteThenText, 'このエラーを直して。CI だけで落ちる'],
+    ];
+
+    it('タグの外の自分の文、なければ最初の貼り付けの中身の最初の行。タグがなければ今のまま', () => {
+      for (const [s, want] of cases) expect(promptLine(s)).toBe(want);
+    });
+
+    it('会話記録の指示とフックの prompt で同じになる', () => {
+      for (const [s, want] of cases) {
+        expect(instructionText(s)).toBe(want);
+        const store = new HookStore(() => 1);
+        store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: s});
+        expect(store.get('s')?.prompt?.text).toBe(want);
+      }
+    });
+
+    it('貼り付けが複数あっても、外に文がなければ最初の貼り付けの中身', () => {
+      expect(
+        promptLine(
+          '\n\n<pasted_content id="a">\nfirst\n</pasted_content id="a">\n\n<pasted_content id="b">\nsecond\n</pasted_content id="b">\n',
+        ),
+      ).toBe('first');
+    });
   });
 
   it('道具と対象', () => {
