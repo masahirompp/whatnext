@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      tmux:
+        description: 'e2e で使う tmux の版(例: 3.5a、3.6a、3.8)'
+        required: false
+        default: '3.5a'
 
 permissions:
   contents: read
@@ -30,3 +36,42 @@ jobs:
       - run: npm run build
       - run: npm run check
       - run: npm test
+
+  # 画面の通し(DESIGN.md「確かめ方」)。下限の tmux をソースから組んで流す(ランナーの Ubuntu の tmux は 3.4 で、断られる)。
+  # 手動で流すときは、tmux の版を指定して切り分けられる
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TMUX_VERSION: ${{ inputs.tmux || '3.5a' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # 組むのに要るものと、組んだ tmux が動くときに引くライブラリ(キャッシュから戻したときも要る)
+      - name: Install tmux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libevent-dev libncurses-dev libutf8proc-dev bison pkg-config
+      - id: cache-tmux
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/tmux
+          key: tmux-${{ runner.os }}-${{ env.TMUX_VERSION }}-utf8proc
+      - name: Build tmux
+        if: steps.cache-tmux.outputs.cache-hit != 'true'
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o tmux.tar.gz "https://github.com/tmux/tmux/releases/download/${TMUX_VERSION}/tmux-${TMUX_VERSION}.tar.gz"
+          tar xzf tmux.tar.gz
+          cd "tmux-${TMUX_VERSION}"
+          ./configure --prefix="$HOME/.local/tmux" --enable-utf8proc
+          make -j"$(nproc)"
+          make install
+      - run: echo "$HOME/.local/tmux/bin" >> "$GITHUB_PATH"
+      - run: tmux -V
+      - run: npm ci
+      # test:e2e は build してから流す
+      - run: npm run test:e2e

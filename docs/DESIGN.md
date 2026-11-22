@@ -301,7 +301,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 実機の通し | `npm run test:real` | 実機の claude（haiku）で起動したセッションを使う。Ghostty の分割とタブは AppleScript で操作する。スクリプトにして何度でも流せるようにする |
 | 手動 | 利用者 | マウスでの選択とコピーにもう一方の文字が混ざらないこと（25、25a）、ホイールで作業台の出力をさかのぼれること（25a） |
 
-- GitHub Actions(`.github/workflows/ci.yml`)が、main への push と pull request ごとに、Node 22 と 24 で build、`npm run check`、`npm test` を流す。`test:e2e` は tmux 3.7 以上が要り、ランナーの Ubuntu の tmux(3.4)では動かないので CI に入れていない。`test:mod` と `test:real` は claude が要るので手元で流す。
+- GitHub Actions(`.github/workflows/ci.yml`)が、main への push と pull request ごとに、Node 22 と 24 で build、`npm run check`、`npm test` を流す。`test:e2e` は別のジョブ(`e2e`)で、Node 24 で流す。tmux 3.5 以上が要り、ランナーの Ubuntu の tmux(3.4)では断られるので、下限の版(3.5a)をソースから組み、版をキーにキャッシュして使う。tmux の版を指定して手動でも流せる(`workflow_dispatch` の入力 `tmux`。3.5a で落ちたときに、3.8 などと比べて版の差か Linux と macOS の差かを切り分ける)。最新の版の tmux での `test:e2e` は CI では流さず、手元(macOS、Homebrew の tmux)で流す。CI に最新の版を書くと、上げ忘れで古くなるため(#337)。`test:mod` と `test:real` は claude が要るので手元で流す。
 - `npm test` はコミットごとに流す。`test:e2e` は、tmux、操作、作業台に触れたコミットで流す。`test:real` は、実機の claude との接点に触れた変更を PR に出す前と、claude を更新したあとに流す。
 - `test:real` は、テスト用の一時ディレクトリ（信頼の確認を済ませたもの）、tmux のソケット、受け口のポート、状態のファイルを使い、利用者が使っている whatnext とそのセッションには触れない。起動したセッションは、終わったら `claude rm` で消す。Ghostty のシナリオは、前面に新しいウィンドウを開いて操作し、終わったら閉じる。
 - 実機の応答の揺れで安定しないシナリオは、issue に起票して確かめ方を決め直す。
