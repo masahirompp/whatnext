@@ -9,6 +9,8 @@ description: whatnext の版を上げて npm に公開するとき(版を上げ�
 CI(`.github/workflows/publish.yml`)は、タグ `v<版>` の push で起動し、trusted publisher(OIDC)で `npm stage publish` する。
 CI にも手元にも、公開に使うトークンは置かない。
 
+auto mode では、AI が流す公開にかかわる操作(タグの push、`npm stage` のコマンド)が、安全判定で拒否されることがある(`npx -y npm@11.21.3 stage --help` が拒否された例がある)。拒否されたら、回り道を探さずに止まり、同じコマンドを利用者に `!` を付けて流してもらう(例: `! git push origin v<版>`)。
+
 ## 流れと分担
 
 1. **AI: 版を上げる PR を作る。** `npm version <minor|patch> --no-git-tag-version` で `package.json` と `package-lock.json` の版を上げ、コミット「<版>」にして PR を出す。タグはまだ作らない。
