@@ -1,0 +1,72 @@
+# タグ v<版> の push で、npm の stage に置く(公開は、保守者が 2FA で承認したとき)。
+# npmjs.com の trusted publisher に、このファイル名(publish.yml)を登録している。名前を変えたら登録も直す。
+# 手順は releasing-whatnext スキル、要件は PRODUCT.md「配布」
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  id-token: write
+  contents: read
+
+# 同じタグの run を並べて走らせない(止めずに待たせる)。待っていた run も判定を通れば stage に置くので、二重に置くこと自体は防がない
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # タグのコミットを取る。main の first-parent の鎖に載るかを見るので、履歴をすべて取る
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # check-tag: begin
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          commit=$(git rev-parse HEAD)
+          # main の first-parent の鎖に載るコミットだけを通す。祖先かどうかだけを見ると、マージで取り込んだ PR のブランチの途中のコミットも通る
+          # grep に -q を付けない(先に終えると、pipefail のときに rev-list の SIGPIPE で落ちる)
+          if ! git rev-list --first-parent origin/main | grep -xF "$commit" >/dev/null; then
+            echo "::error::タグ $TAG のコミット $commit は main のマージのコミット(origin/main の first-parent の鎖の上)でない。main にマージしたコミットにタグを付ける"
+            exit 1
+          fi
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::タグ $TAG と package.json の version($version)が合わない。タグは v$version にする"
+            exit 1
+          fi
+          echo "タグ $TAG: コミット $commit は main のマージのコミットで、版は package.json と一致する"
+          # check-tag: end
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          # 公開する版の build にキャッシュを使わない(npm の trusted publishers の docs の例に合わせる)
+          package-manager-cache: false
+      # npm stage は npm 11.15.0 以上が要る。Node 24 に付いてくる npm では足りないことがある
+      - name: Install npm
+        run: |
+          npm install -g npm@11.21.3
+          npm_version=$(npm --version)
+          echo "npm $npm_version"
+          if [ "$(printf '%s\n' 11.15.0 "$npm_version" | sort -V | head -n1)" != 11.15.0 ]; then
+            echo "::error::npm $npm_version では npm stage が使えない(11.15.0 以上が要る)"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check
+      - run: npm test
+      # trusted publisher(OIDC)で stage に置く。provenance は自動で付くので --provenance は付けない
+      - run: npm stage publish --access public
