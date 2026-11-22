@@ -22,15 +22,15 @@ CI にも手元にも、公開に使うトークンは置かない。
 
    `git push origin main --follow-tags` は使わない(main への変更は PR を通す)。
 4. **CI: 判定のあと stage に置く。** タグのコミットが `origin/main` からたどれること、タグの版が `package.json` の `version` と一致することを確かめ、外れたら止まる。通れば `npm ci`、build、check、test のあと `npm stage publish --access public` する。
-5. **AI: stage に置いた中身を示す。** `npm stage list @masahirompp/whatnext` で stage の id を引き、`npm stage download <id>` の tarball と、同じタグから手元で作った tarball を比べて示す。
+5. **AI: stage に置いた中身を示す。** `npm stage` の操作(`list`、`download`、`approve`、`reject`)はどれも npm 11.15.0 以上が要る。手元の npm が古ければ、`npx -y npm@11 stage list @masahirompp/whatnext` のように、npm を指定して流す。`npm stage list @masahirompp/whatnext` で stage の id を引き、`npm stage download <id>` の tarball と、同じタグから手元で作った tarball を比べて示す。
 
    ```sh
    git worktree add --detach /tmp/whatnext-v<版> v<版>
-   cd /tmp/whatnext-v<版> && npm ci && npm pack   # prepack が build する
+   mkdir -p /tmp/whatnext-pack-v<版>
+   cd /tmp/whatnext-v<版> && npm ci && npm pack --pack-destination /tmp/whatnext-pack-v<版>   # prepack が build する
    # 2つの tarball を別々のディレクトリに展開して diff -r で比べる。済んだら git worktree remove で消す
+   # (tarball を worktree の外に置くので、worktree に追跡していないファイルが残らず、remove が断られない)
    ```
-
-   `npm stage` は npm 11.15.0 以上が要る。手元の npm が古ければ、`npx -y npm@11 stage download <id>` のように npm を指定して流す。
 6. **利用者: 中身を確かめて承認する。** `npm stage approve <id>` か、npmjs.com のパッケージの Staged Packages で承認する。どちらも 2FA を求められる(npm の docs)。承認すると公開される。
 
 ## 版の付け方
@@ -40,7 +40,12 @@ CI にも手元にも、公開に使うトークンは置かない。
 ## 上げすぎたとき、止めたいとき
 
 - **タグを push する前**: 版を上げる PR を閉じるか、PR の中で版を直すだけでよい。マージのあとなら、版を直す PR を出す。npm にも origin のタグにもその版はまだ無い。
-- **タグを push したが CI の判定で止まった**: stage には何も置かれていない。原因(main にないコミットに付けた、版を間違えた)を直したら、`git push origin :refs/tags/v<版>` でタグを消して付け直す。
+- **タグを push したが CI が stage に置く前に止まった**(判定、build、check、test のどれか): stage には何も置かれていない。原因(main にないコミットに付けた、版を間違えた、main が壊れていた)を直したら、origin と手元の両方のタグを消してから付け直す。
+
+  ```sh
+  git push origin :refs/tags/v<版>
+  git tag -d v<版>
+  ```
 - **stage に置いたあとで出したくなくなった**: `npm stage reject <id>`(2FA)で消し、patch を上げ直した版で出し直す。npm の docs では、stage を reject した版は同じ版の番号で置き直せる(タグの付け替えのために「reject してから置き直す」と書かれている)。ただ、同じ版の番号で出し直すには git のタグ `v<版>` を別のコミットへ付け替えることになり、タグと公開物の対応がたどりにくくなるので、版を上げ直す。
 
 ## 公開後の確かめ

@@ -11,7 +11,7 @@ permissions:
   id-token: write
   contents: read
 
-# 同じタグで二重に stage に置かない。走っているものは止めずに待たせる
+# 同じタグの run を並べて走らせない(止めずに待たせる)。待っていた run も判定を通れば stage に置くので、二重に置くこと自体は防がない
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
