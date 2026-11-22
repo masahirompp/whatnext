@@ -267,10 +267,14 @@ describe('ダイジェスト', () => {
     }
 
     /**
-     * 自動の更新を1回、まるごと待つ。今から数えて2回目の `claude agents` が呼ばれたら、1回目の更新(今より後に始まった)は
+     * 自動の更新を1回、まるごと待つ。先に、途中の更新(直前の r など)が終わるのを待つ(`refreshing...` が消える)。
+     * 途中の更新の `claude agents` は、控えたあとに記録されうる(偽の claude は起動してから記録する。h.refresh() は
+     * 前の更新の Refreshed. で戻ることもある)ので、数えると自動の更新が反映される前に戻ってしまう。
+     * 途中の更新が無くなってから数えて2回目の `claude agents` が呼ばれたら、1回目の更新(控えたあとに始まった)は
      * 終わっている(次の更新は、前の更新が終わってから間隔を置いて始まる)。
      */
     async function autoRefresh(): Promise<void> {
+      await h.waitFor(s => !/refreshing\.\.\./.test(s), REFRESH_MS + 8000);
       const agentsCalls = () => h.calls().filter(c => c.args[0] === 'agents').length;
       const before = agentsCalls();
       await h.until(
