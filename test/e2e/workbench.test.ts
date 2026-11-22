@@ -96,8 +96,8 @@ describe('作業台の画面', () => {
     await h.waitFor(() => h.clients().some(c => c.session === 'sh-a0000000'), 5000);
     expect(h.clients().length).toBe(2);
     // whatnext の画面だけを閉じても、作業台の画面は最後の作業台を映したまま
-    execFileSync('tmux', ['-L', h.outer, 'kill-session', '-t', '=main']);
-    await sleep(800);
+    await h.closeMain();
+    await sleep(500);
     expect(h.clients().map(c => c.session)).toEqual(['sh-a0000000']);
     await h.start();
     await h.select('beta');
@@ -279,8 +279,7 @@ describe('作業台の画面', () => {
     await h.keys('w');
     await h.startWorkbench();
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
-    execFileSync('tmux', ['-L', h.outer, 'kill-session', '-t', '=main']);
-    await sleep(500);
+    await h.closeMain();
     await h.keysTo('wb', 'C-q', 'C-l');
     await h.waitFor(/The list is not open\. Run "whatnext" to open it\./, 5000, 'wb');
   });
@@ -493,8 +492,9 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.waitForCommand('=sh-b0000000:', 'sleep');
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to b0000000/);
-    execFileSync('tmux', ['-L', h.outer, 'kill-session', '-t', '=main']);
-    await sleep(800);
+    await h.closeMain();
+    // 閉じても一覧は終わらない
+    await sleep(500);
     expect(h.sessions()).toContain('list');
     await h.start();
     const s = await h.waitFor(/^> └ beta/m);

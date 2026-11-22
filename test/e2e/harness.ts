@@ -267,6 +267,26 @@ export class Harness {
     if (opts.wait !== false) await this.waitFor(s => /SESSION|No sessions|Could not read/.test(s), 15000);
   }
 
+  /**
+   * whatnext の画面(外側の tmux のセッション `main`)を閉じ、その画面のクライアントが内側の tmux から離れるまで待つ。
+   * 端末のウィンドウを閉じたときと同じで、一覧のプロセスは終わらない(DESIGN.md)ので、`@wn_pid` では待てない。
+   * 閉じる前にクライアントの tty を控え、`list-clients` からその tty が消えるのを待つ(#349)。
+   */
+  async closeMain(timeout = 8000): Promise<void> {
+    const tty = this.tmux('display', '-p', '-t', '=main:', '#{pane_tty}').trim();
+    const ttys = () => this.innerQuiet('list-clients', '-F', '#{client_tty}').trim();
+    if (!ttys().split('\n').includes(tty)) {
+      throw new Error(`the whatnext screen (${tty}) is not a client of the inner tmux`);
+    }
+    this.tmux('kill-session', '-t', '=main');
+    await this.until(
+      `the whatnext screen client (${tty}) to leave the inner tmux`,
+      ttys,
+      v => !v.split('\n').includes(tty),
+      timeout,
+    );
+  }
+
   async startWorkbench(name = 'wb', size = {cols: 80, rows: 20}): Promise<void> {
     this.open(name, `${this.envLine()} node ${q(CLI)} workbench`, size);
     await sleep(800);
