@@ -523,6 +523,13 @@ describe('終了と、端末のウィンドウを閉じたとき', () => {
     await h.keys('w');
     await h.waitForSession('sh-a0000000');
     await h.waitForSession('sh-b0000000');
+    // 一覧が作業台の用意を済ませる(status-format[0] などを書き、最後に同じ呼び出しで @wn_name を書く)まで待つ。
+    // 済む前に書き換えると、あとから届いた用意に上書きされ、入れ直しが壊れていても最後の確かめが通ってしまう(#350)
+    await h.until(
+      '@wn_name on sh-a0000000',
+      () => h.innerQuiet('show', '-qv', '-t', '=sh-a0000000:', '@wn_name').trim(),
+      v => v !== '',
+    );
     h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1007', 'Enter');
     // 前の版で作った作業台のステータス行に見立てる
     h.inner('set', '-t', '=sh-a0000000:', 'status-format[0]', 'old');
