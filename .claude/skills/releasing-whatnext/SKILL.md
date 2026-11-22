@@ -9,7 +9,7 @@ description: whatnext の版を上げて npm に公開するとき(版を上げ�
 CI(`.github/workflows/publish.yml`)は、タグ `v<版>` の push で起動し、trusted publisher(OIDC)で `npm stage publish` する。
 CI にも手元にも、公開に使うトークンは置かない。
 
-auto mode では、AI が流す公開にかかわる操作(タグの push、`npm stage` のコマンド)が、安全判定で拒否されることがある(`npx -y npm@11.21.3 stage --help` が拒否された例がある)。拒否されたら、回り道を探さずに止まり、同じコマンドを利用者に `!` を付けて流してもらう(例: `! git push origin v<版>`)。
+auto mode では、AI が流す公開にかかわる操作(タグの push、`npm stage` のコマンド)が、安全判定で拒否されることがある(`npx -y npm@11.21.3 stage --help` が拒否された例がある)。拒否されたら、回り道を探さずに止まり、利用者に流してもらう。入力の要らないもの(`git push origin v<版>`、`npm stage list`)は `!` を付けて流せる。2FA やログインを求めるもの(`approve`、`reject`、ログインが切れているときの `download`)は、利用者の端末か npmjs.com で行う。`download` は tarball を今のディレクトリに書くので、worktree の外(`/tmp/whatnext-pack-v<版>` など)で流す。
 
 ## 流れと分担
 
@@ -24,7 +24,7 @@ auto mode では、AI が流す公開にかかわる操作(タグの push、`npm
 
    `git push origin main --follow-tags` は使わない(main への変更は PR を通す)。
 4. **CI: 判定のあと stage に置く。** タグのコミットが main のマージのコミット(`origin/main` の first-parent の鎖の上)であること、タグの版が `package.json` の `version` と一致することを確かめ、外れたら止まる。通れば `npm ci`、build、check、test のあと `npm stage publish --access public` する。
-5. **AI: stage に置いた中身を示す。** `npm stage` の操作(`list`、`download`、`approve`、`reject`)はどれも npm 11.15.0 以上が要る。手元の npm が古ければ、`npx -y npm@11 stage list @masahirompp/whatnext` のように、npm を指定して流す。`npm stage list @masahirompp/whatnext` で stage の id を引き、`npm stage download <id>` の tarball と、同じタグから手元で作った tarball を比べて示す。
+5. **AI: stage に置いた中身を示す。** `npm stage` の操作(`list`、`download`、`approve`、`reject`)はどれも npm 11.15.0 以上が要る。手元の npm が古ければ、`npx -y npm@11.21.3 stage list @masahirompp/whatnext` のように、npm を指定して流す。`npm stage list @masahirompp/whatnext` で stage の id を引き、`npm stage download <id>` の tarball と、同じタグから手元で作った tarball を比べて示す。
 
    ```sh
    git worktree add --detach /tmp/whatnext-v<版> v<版>

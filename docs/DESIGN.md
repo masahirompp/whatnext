@@ -402,7 +402,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 
 - シナリオ 1、4（段の判定と行の判定）は、`--json` の出力を模した固定データで確かめる。待ちのほかの段は `--json` の行だけで決まる判定なので、固定データでも実機と同じ保証が得られる。`pid` のない `blocked` は実機で意図して作るのが難しい。`"sandbox request"` は checking-claude-cli スキルの手順で作れる。`failed` は、存在しないモデル名で `--bg` を起動すれば作れる。
 - attach は端末の制御そのものなので、画面の通しか実機の通しで確かめる。
-- シナリオ 12 は、保守者が stage を承認して公開したあとに、実機で `npx @masahirompp/whatnext` を実行して確かめる。承認の前には、stage の tarball(`npm stage download`)か、同じタグから `npm pack` で作った tarball から起動できることを確かめてよい。`npx` は whatnext のリポジトリの外で実行する。中で実行すると、npm は `name` の一致する手元のプロジェクトを優先してダウンロードせず、`whatnext: command not found` になる。公開の直後は、約2分レジストリが 404 を返した。公開の直後は npm のキャッシュが古く、版を指定した `npx -y @masahirompp/whatnext@<版>` が ETARGET で断られた（`--prefer-online` で解消した）。
+- シナリオ 12 は、保守者が stage を承認して公開したあとに、実機で `npx @masahirompp/whatnext` を実行して確かめる。承認の前には、PRODUCT.md「配布」の tarball の比べ合わせに加えて、stage の tarball（`npm stage download`）から起動できることを確かめてよい。`npx` は whatnext のリポジトリの外で実行する。中で実行すると、npm は `name` の一致する手元のプロジェクトを優先してダウンロードせず、`whatnext: command not found` になる。公開の直後は、約2分レジストリが 404 を返した。公開の直後は npm のキャッシュが古く、版を指定した `npx -y @masahirompp/whatnext@<版>` が ETARGET で断られた（`--prefer-online` で解消した）。
 - 画面の操作と表示の確認は、tmux の中で起動して send-keys と capture-pane で行える（`driving-whatnext-in-tmux` スキル）。シナリオ 16 と 23 は実機の `claude` で確かめる。
 - シナリオ 25〜32 と 46 は実機の `claude` と tmux で確かめる。外側の端末の代わりに別の tmux サーバを立てて send-keys でキーを送る手順が使える（`working-with-tmux` スキル）。32 の「端末のウィンドウを閉じる」は、外側の tmux のセッションを閉じて専用サーバのクライアントに SIGHUP を届けることで再現できる。46 の異常終了は、`list` の中の whatnext のプロセスを `kill -9` で止めて再現する。16 の2つ目の起動は、外側の tmux のセッションを2つ立てて確かめる。
 - シナリオ 25〜28 と 57〜60 の作業台の画面は、外側の tmux のセッションを2つ立て、片方で `whatnext`、もう片方で `whatnext workbench` を動かせば、端末の分割の代わりになる。マウスでのコピーとホイール（25、25a）は手動の層で利用者が確かめる。
