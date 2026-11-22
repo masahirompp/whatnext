@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tmux:
-        description: 'e2e で使う tmux の版(例: 3.5a、3.6a、3.8)'
+        description: "e2e で使う tmux の版(例: 3.5a、3.6a、3.8)"
         required: false
-        default: '3.5a'
+        default: "3.5a"
 
 permissions:
   contents: read
