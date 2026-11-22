@@ -74,7 +74,7 @@ describe('起動時と全体', () => {
       `env -u TMUX -u CLAUDECODE WHATNEXT_ROLE= WHATNEXT_TMUX_SOCKET=${h.socket} WHATNEXT_PORT=15996 PATH=${bin}:/bin:/usr/bin node ${CLI}`,
     );
     await h.waitFor(
-      /whatnext: tmux 3\.4 is too old\. whatnext needs tmux 3\.7 or newer\. Update tmux and try again\.[\s\S]*\[exit 1\]/,
+      /whatnext: tmux 3\.4 is too old\. whatnext needs tmux 3\.5 or newer\. Update tmux and try again\.[\s\S]*\[exit 1\]/,
       8000,
       'a',
     );

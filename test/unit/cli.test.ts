@@ -2,13 +2,16 @@ import {describe, expect, it} from 'vitest';
 import {tooOldTmux} from '../../src/cli/env.js';
 
 describe('tmux の版の確かめ', () => {
-  it('3.7 より古い版は断る', () => {
+  it('3.5 より古い版は断る', () => {
     expect(tooOldTmux('tmux 3.4')).toBe(true);
-    expect(tooOldTmux('tmux 3.6a')).toBe(true);
+    expect(tooOldTmux('tmux 3.3a')).toBe(true);
     expect(tooOldTmux('tmux 2.9')).toBe(true);
   });
 
-  it('3.7 以降は断らない', () => {
+  it('3.5 以降は断らない', () => {
+    expect(tooOldTmux('tmux 3.5')).toBe(false);
+    expect(tooOldTmux('tmux 3.5a')).toBe(false);
+    expect(tooOldTmux('tmux 3.6a')).toBe(false);
     expect(tooOldTmux('tmux 3.7')).toBe(false);
     expect(tooOldTmux('tmux 3.7c')).toBe(false);
     expect(tooOldTmux('tmux 3.8')).toBe(false);
