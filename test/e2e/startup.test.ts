@@ -31,7 +31,7 @@ describe('起動時と全体', () => {
     h.inner('send-keys', '-t', '=sh-a0000000:', `node ${CLI}; echo "[exit $?]"`, 'Enter');
     const out = await h.until(
       'whatnext in sh-a0000000 to exit',
-      () => h.inner('capture-pane', '-p', '-J', '-t', '=sh-a0000000:'),
+      () => h.innerQuiet('capture-pane', '-p', '-J', '-t', '=sh-a0000000:'),
       v => /\[exit \d+\]/.test(v),
     );
     expect(out).toMatch(

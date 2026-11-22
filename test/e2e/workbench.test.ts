@@ -60,7 +60,7 @@ describe('作業台の画面', () => {
     await h.waitFor(() => wbClient()?.session === 'sh-a0000000', 5000);
     await h.keysTo('wb', 'C-q', '%');
     const commands = () =>
-      h.inner('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_current_command}').trim().split('\n');
+      h.innerQuiet('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_current_command}').trim().split('\n');
     await h.until(
       '2 panes in sh-a0000000',
       () => commands().join(' '),
@@ -265,7 +265,7 @@ describe('作業台の画面', () => {
     await h.keysTo('wb', 'C-q', 'c');
     await h.until(
       '2 windows in sh-a0000000',
-      () => h.inner('list-windows', '-t', '=sh-a0000000', '-F', '#{window_index}').trim(),
+      () => h.innerQuiet('list-windows', '-t', '=sh-a0000000', '-F', '#{window_index}').trim(),
       v => v.split('\n').length === 2,
     );
     await h.keysTo('wb', 'C-q', 'C-l');
@@ -334,7 +334,7 @@ describe('作業台の画面', () => {
     const before = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim();
     h.inner('kill-session', '-t', '=wbguide');
     await h.waitFor(() => {
-      const now = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim();
+      const now = h.innerQuiet('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim();
       return now !== '' && now !== before;
     }, 5000);
     await h.type('exit', 'wb');
@@ -349,7 +349,7 @@ describe('作業台の画面', () => {
     await h.start();
     await h.startWorkbench();
     await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
-    const pid = () => Number(h.inner('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim());
+    const pid = () => Number(h.innerQuiet('display', '-p', '-t', '=wbguide:', '#{pane_pid}').trim());
     const before = pid();
     process.kill(before, 'SIGKILL');
     await h.waitFor(() => pid() > 0 && pid() !== before, 8000);
@@ -370,7 +370,7 @@ describe('作業台の画面', () => {
     await h.keysTo('wb', 'C-q', '%');
     await h.until(
       '2 panes in wbguide',
-      () => h.inner('list-panes', '-t', '=wbguide:', '-F', '#{pane_id}').trim(),
+      () => h.innerQuiet('list-panes', '-t', '=wbguide:', '-F', '#{pane_id}').trim(),
       v => v.split('\n').length === 2,
     );
     await h.type('sleep 1004', 'wb');
@@ -392,7 +392,7 @@ describe('作業台の画面', () => {
     await h.start();
     await h.startWorkbench();
     await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
-    const pane = (f: string) => h.inner('display', '-p', '-t', '=wbguide:0.0', f).trim();
+    const pane = (f: string) => h.innerQuiet('display', '-p', '-t', '=wbguide:0.0', f).trim();
     for (let i = 0; i < 6; i++) {
       const pid = Number(pane('#{pane_pid}'));
       process.kill(pid, 'SIGKILL');
