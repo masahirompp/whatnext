@@ -63,8 +63,8 @@ describe('作業台の画面', () => {
       h.innerQuiet('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_current_command}').trim().split('\n');
     await h.until(
       '2 panes in sh-a0000000',
-      () => commands().join(' '),
-      v => v.split(' ').length === 2,
+      () => h.innerQuiet('list-panes', '-t', '=sh-a0000000:', '-F', '#{pane_id}').trim(),
+      v => v.split('\n').length === 2,
     );
     await h.type('sleep 1001', 'wb');
     await h.keysTo('wb', 'Enter');
@@ -263,11 +263,11 @@ describe('作業台の画面', () => {
     await h.waitFor(/Opened .*worktrees\/x in VS Code\./, 5000, 'wb');
     expect(h.file('open.log')).toContain(`vscode://file${wt}/?windowId=_blank`);
     await h.keysTo('wb', 'C-q', 'c');
-    await h.until(
-      '2 windows in sh-a0000000',
-      () => h.innerQuiet('list-windows', '-t', '=sh-a0000000', '-F', '#{window_index}').trim(),
-      v => v.split('\n').length === 2,
-    );
+    const windows = () => h.innerQuiet('list-windows', '-t', '=sh-a0000000', '-F', '#{window_index}').trim();
+    await h.until('2 windows in sh-a0000000', windows, v => v.split('\n').length === 2);
+    // 2つ目のあとに余計に作っていないこと(#351)
+    await sleep(500);
+    expect(windows().split('\n').length).toBe(2);
     await h.keysTo('wb', 'C-q', 'C-l');
     await h.waitFor(/^> alpha/m);
   });
@@ -368,11 +368,11 @@ describe('作業台の画面', () => {
     await h.waitFor(/No workbench for alpha yet/, 5000, 'wb');
     const guide = h.inner('display', '-p', '-t', '=wbguide:', '#{pane_id}').trim();
     await h.keysTo('wb', 'C-q', '%');
-    await h.until(
-      '2 panes in wbguide',
-      () => h.innerQuiet('list-panes', '-t', '=wbguide:', '-F', '#{pane_id}').trim(),
-      v => v.split('\n').length === 2,
-    );
+    const guidePanes = () => h.innerQuiet('list-panes', '-t', '=wbguide:', '-F', '#{pane_id}').trim();
+    await h.until('2 panes in wbguide', guidePanes, v => v.split('\n').length === 2);
+    // 2つ目のあとに余計に分けていないこと(#351)
+    await sleep(500);
+    expect(guidePanes().split('\n').length).toBe(2);
     await h.type('sleep 1004', 'wb');
     await h.keysTo('wb', 'Enter');
     await h.waitForCommand('=wbguide:', 'sleep');

@@ -360,5 +360,8 @@ describe('attach している間のキー', () => {
       () => h.file('open.log').trim(),
       v => v.split('\n').length === 4,
     );
+    // 4つ目のあとに余計に開いていないこと(#351)
+    await sleep(800);
+    expect(h.file('open.log').trim().split('\n').length).toBe(4);
   });
 });
