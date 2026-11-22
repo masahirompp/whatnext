@@ -82,6 +82,12 @@ describe('指示と道具', () => {
       ).toBe('first');
     });
 
+    it('中身が空の行だけでも指示に数え、空の一言にする', () => {
+      const blank = '\n\n<pasted_content id="aa">\n\n\n</pasted_content id="aa">\n';
+      expect(promptLine(blank)).toBe('');
+      expect(instructionText(blank)).toBe('');
+    });
+
     it('中身に別の id の閉じるタグがあっても、貼り付けは同じ id の閉じるタグまで続く', () => {
       // Claude Code は中身をそのままタグの間に入れるとみなす(タグを含む中身は確かめていない)
       const s =

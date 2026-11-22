@@ -61,12 +61,13 @@ const PASTED = /<pasted_content\b([^>]*)>([\s\S]*?)<\/pasted_content\1>/g;
 /**
  * 指示の冒頭(PRODUCT.md「一覧の表示」の稼働中の規則、#291)。
  * 貼り付けのタグ(開くタグから、同じ id の閉じるタグまで)の外の空でない最初の行。外に何もなければ、最初の貼り付けの中身の空でない最初の行。
- * タグを含まなければ firstLine と同じ。
+ * 中身も空の行だけなら空の文字列。タグを含まなければ firstLine と同じ。
  */
 export function promptLine(text: string): string | undefined {
   const pastes = [...text.matchAll(PASTED)].map(m => m[2] ?? '');
   if (pastes.length === 0) return firstLine(text);
-  return firstLine(text.replace(PASTED, '\n')) ?? firstLine(pastes.join('\n'));
+  // 中身が空の行だけでも指示に数える(空の一言。数えないと前の指示の一言が残る)
+  return firstLine(text.replace(PASTED, '\n')) ?? firstLine(pastes.join('\n')) ?? '';
 }
 
 /** 道具と対象(`Bash: <コマンド>`、`Edit: <ファイル>`)。決めた項目がなければ入力の最初の文字列、それもなければ道具の名前だけ。 */

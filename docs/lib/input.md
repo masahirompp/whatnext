@@ -43,7 +43,7 @@
 ## 文の切り出し（`text.ts`）
 
 - `leadLine(text)`：最後の応答の冒頭（PRODUCT.md「一覧の表示」の規則）。`firstLine(text)`：空でない最初の行。
-- `promptLine(text)`：指示の冒頭（PRODUCT.md「一覧の表示」の稼働中の規則）。貼り付けのタグ（`<pasted_content id="X">` から、同じ id の `</pasted_content id="X">` まで。Claude Code は中身をそのままタグの間に入れるとみなし、中身に別の id の閉じるタグがあってもそこで切らない。タグを含む中身の貼り付けは確かめていない）の外の、空でない最初の行。外に何もなければ、最初の貼り付けの中身の、空でない最初の行。タグを含まなければ `firstLine` と同じ（#291）。フックの `prompt` と `instructionText` の両方がこれを使う。
+- `promptLine(text)`：指示の冒頭（PRODUCT.md「一覧の表示」の稼働中の規則）。貼り付けのタグ（`<pasted_content id="X">` から、同じ id の `</pasted_content id="X">` まで。Claude Code は中身をそのままタグの間に入れるとみなし、中身に別の id の閉じるタグがあってもそこで切らない。タグを含む中身の貼り付けは確かめていない）の外の、空でない最初の行。外に何もなければ、最初の貼り付けの中身の、空でない最初の行。中身も空の行だけなら空の文字列（指示に数え、前の指示の一言を残さない）。タグを含まなければ `firstLine` と同じ（#291）。フックの `prompt` と `instructionText` の両方がこれを使う。
 - `toolTarget(name, input)`：`<道具>: <対象>`。対象の項目の順と、項目がないときに入力の最初の文字列に落ちることは DESIGN.md「機能ごとの入力の出どころ」のとおり（#266）。対象がなければ道具の名前だけ。
 - `instructionText(content)`：会話記録の利用者の行を指示の文字列（`promptLine` で取った1行）にする。ターンを始めないコマンドなど、指示でなければ `undefined`。
 
