@@ -250,39 +250,61 @@ describe('ダイジェスト', () => {
     const L60: [string, string] = ['PR #60', 'https://github.com/acme/app/pull/60'];
     const links = (ls: [string, string][]) => digest('fixlogin', {goal: 'g', progress: 'n', next: 'x'}, ls);
 
+    // 60 秒ごとの更新を、環境変数で短くする(#348)
+    const REFRESH_MS = 5000;
+
     async function openMenuOn412(): Promise<void> {
       const app = h.repo('app');
       h.agents([bg('fixlogin', {name: 'fix-login', cwd: app}), bg('other', {name: 'other', cwd: app})]);
-      await h.start({args: '--digest', size: {cols: 150, rows: 30}});
+      await h.start({args: '--digest', size: {cols: 150, rows: 30}, env: {WHATNEXT_REFRESH_MS: String(REFRESH_MS)}});
       await post(h.port, links([L58, L412]));
       await h.refresh();
       await h.select('fix-login');
-      // 更新の直後に開く(次の更新は 60 秒後)
+      // 更新の直後に開く(次の更新は REFRESH_MS 後)
       await h.refresh();
       await h.keys('o', 'Down');
       await h.waitFor(/^> acme\/app#412/m);
+    }
+
+    /**
+     * 自動の更新を1回、まるごと待つ。先に、途中の更新(直前の r など)が終わるのを待つ(`refreshing...` が消える)。
+     * 途中の更新の `claude agents` は、控えたあとに記録されうる(偽の claude は起動してから記録する。h.refresh() は
+     * 前の更新の Refreshed. で戻ることもある)ので、数えると自動の更新が反映される前に戻ってしまう。
+     * 途中の更新が無くなってから数えて2回目の `claude agents` が呼ばれたら、1回目の更新(控えたあとに始まった)は
+     * 終わっている(次の更新は、前の更新が終わってから間隔を置いて始まる)。
+     */
+    async function autoRefresh(): Promise<void> {
+      await h.waitFor(s => !/refreshing\.\.\./.test(s), REFRESH_MS + 8000);
+      const agentsCalls = () => h.calls().filter(c => c.args[0] === 'agents').length;
+      const before = agentsCalls();
+      await h.until(
+        'two more claude agents calls',
+        () => String(agentsCalls()),
+        v => Number(v) >= before + 2,
+        REFRESH_MS * 2 + 8000,
+      );
     }
 
     it('新しいダイジェストが届いたとき', async () => {
       h = new Harness();
       await openMenuOn412();
       await post(h.port, links([L60, L58, L412]));
-      await sleep(65000); // 60 秒ごとの更新を待つ
+      await autoRefresh();
       expect(h.screen()).toMatch(/^> acme\/app#412/m);
       await h.keys('Enter');
       await h.waitFor(/Opened acme\/app#412\./);
       expect(h.file('open.log').trim()).toBe(L412[1]);
-    }, 120000);
+    }, 60000);
 
     it('セッションが消えたとき', async () => {
       h = new Harness();
       await openMenuOn412();
       h.remove(sid('fixlogin').slice(0, 8));
-      await sleep(65000);
+      await autoRefresh();
       await h.keys('Enter');
       await h.waitFor(/Opened acme\/app#412\./);
       expect(h.file('open.log').trim()).toBe(L412[1]);
-    }, 120000);
+    }, 60000);
   });
 
   it('85: 消えたセッションのダイジェストは捨てる。制御文字は落とす', async () => {

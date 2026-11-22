@@ -102,6 +102,8 @@ export async function startList(env: Env): Promise<number> {
     stateFile: new StateFile(statePath(process.env)),
     fetchUsage: () => fetchUsage(runT),
     now: Date.now,
+    refreshMs: env.refreshMs,
+    usageMinMs: env.usageMinMs,
     write: s => process.stdout.write(s),
     size: () => ({cols: process.stdout.columns || 80, rows: process.stdout.rows || 24}),
     settings,

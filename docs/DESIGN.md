@@ -57,6 +57,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 テストから外部を差し替える口は、環境変数（`WHATNEXT_TMUX_SOCKET`、`WHATNEXT_PORT`（mod には `WHATNEXT_DIGEST_PORT` で渡る）、`XDG_STATE_HOME`、`CLAUDE_CONFIG_DIR`、偽のコマンドを前に置いた `PATH`）にする。
 `WHATNEXT_DEBUG_LOG` があるときだけ、一覧のプロセスは attach、異常終了などの出来事をそのファイルに書く。テストが失敗の原因を追うための口で、利用者の環境では何も書かない（[ADR-0016](adr/0016-persist-holds-and-waits-in-a-state-file.md) の状態のファイルのほかに書かない方針を保つ）。
 利用者の whatnext と同じマシンでテストを流しても、互いに触れないようにするため。
+一覧の自動の更新の間隔と、Usage を取り直す最短の間隔（どちらも既定は 60 秒）は、`WHATNEXT_REFRESH_MS` と `WHATNEXT_USAGE_MIN_MS`（ミリ秒）で短くできる。画面の通しが 60 秒を実時間で待たないための口で、起動引数や `--help` には出さない。数でない値と 0 以下の値は既定にする。起動の口が読み、一覧のペインに渡し、一覧が操作に `Ports` で渡す（#348）。
 
 境界は実装の中で見直してよい。見直したら、この節を直し、`decision-log` の issue に残す。
 
@@ -239,7 +240,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 - 専用サーバは `set-clipboard on` にする。作業台の画面のドラッグのコピーと、claude の `/copy` を外側の端末のクリップボードに届けるため（`/copy` が tmux の中から届くことは確かめていない）。
 - `n` の信頼の確認は、クライアントをセッション `trust-<乱数>`（中で対話モードの `claude` が動く）に切り替えて出す。一覧は `~/.claude.json`（`CLAUDE_CONFIG_DIR` があればその下）を 0.5 秒ごとに読む。そのディレクトリの `hasTrustDialogAccepted` が `true` になったら、クライアントを `list` に戻してから `trust-<乱数>` を畳み、`claude --bg` をやり直す。断って `claude` が終わったときは、ペインのコマンドがクライアントを `list` に戻す。`detach-on-destroy on` なので、クライアントが見ているセッションを先に畳むと、端末ごと離れてしまう。
 - 一覧の役として動くのは、`WHATNEXT_ROLE=list` があり、かつ自分のペイン（`TMUX_PANE`）が専用サーバのセッション `list` にあるときだけにする。whatnext の中で動くシェル（作業台、attach したセッションの Bash）はこの環境変数を引き継ぐ。変数だけで判断すると、そこから起動した whatnext が一覧として動き、利用者のサーバの設定を入れ直して、残した attach を畳んでしまう（実際に起きた）。
-- tmux から一覧への知らせ（キーと、`client-session-changed`、`client-attached`、`client-detached`、`session-closed`、← の `pane-title-changed` のフック）は、小さな sh を `run-shell -b` で呼び、一覧のプロセスに SIGUSR2 を送るだけにする。一覧は知らせを受けたら `list-clients` を問い合わせて、戻った・入った・端末が閉じた、を自分で判断する。頼みごと（`ctrl+q ctrl+f` など、一覧に戻ってから処理するキー）は tmux のオプションに書いてから知らせる。受け口のポート（HTTP）を使わないのは、ポートを別のプログラムが使っているとき（シナリオ 41）にもキーが効くようにするため。SIGUSR1 は Node の inspector が使うので避ける。 この sh は tmux のオプションに置き、`show -gv` で読んで動かす。tmux 3.4 は、値の中の `$p` や `${s#sh-}` を `\$p`、`\${s#sh-}` にして返すので、sh が壊れて知らせが届かない（`extended-keys-format` のオプションもない）。そのため、起動の口は `tmux -V` を読み、3.7 より古ければ断る（[PRODUCT.md](PRODUCT.md)「作業台」、シナリオ 87）。
+- tmux から一覧への知らせ（キーと、`client-session-changed`、`client-attached`、`client-detached`、`session-closed`、← の `pane-title-changed` のフック）は、小さな sh を `run-shell -b` で呼び、一覧のプロセスに SIGUSR2 を送るだけにする。一覧は知らせを受けたら `list-clients` を問い合わせて、戻った・入った・端末が閉じた、を自分で判断する。頼みごと（`ctrl+q ctrl+f` など、一覧に戻ってから処理するキー）は tmux のオプションに書いてから知らせる。受け口のポート（HTTP）を使わないのは、ポートを別のプログラムが使っているとき（シナリオ 41）にもキーが効くようにするため。SIGUSR1 は Node の inspector が使うので避ける。 この sh は tmux のオプションに置き、`show -gv` で読んで動かす。tmux 3.4 は、値の中の `$p` や `${s#sh-}` を `\$p`、`\${s#sh-}` にして返すので、sh が壊れて知らせが届かない（`extended-keys-format` のオプションもない）。そのため、起動の口は `tmux -V` を読み、3.5 より古ければ断る（[PRODUCT.md](PRODUCT.md)「作業台」、シナリオ 87）。3.5a と 3.6a はどちらの壊れもなく、値をそのまま返す（2026-11-22、macOS で観測。#337）。
 - 残した `claude attach` は、1本あたり約 140MB のメモリを使う。本数に上限は設けず、そのセッションを止めたとき、削除したとき、whatnext を終了したときに畳む。
 - attach している間のキーは、1か所の表から、tmux の割り当て、一覧に戻ってから処理する頼みごとの列挙、キーの説明（claude の画面のステータス行）を作る。表がなかったときは、キーを1つ足すのに6か所を手で触り、頼みごとの列挙の足し忘れで、キーが一覧に戻るだけで効かなかった。
 
@@ -300,7 +301,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 実機の通し | `npm run test:real` | 実機の claude（haiku）で起動したセッションを使う。Ghostty の分割とタブは AppleScript で操作する。スクリプトにして何度でも流せるようにする |
 | 手動 | 利用者 | マウスでの選択とコピーにもう一方の文字が混ざらないこと（25、25a）、ホイールで作業台の出力をさかのぼれること（25a） |
 
-- GitHub Actions(`.github/workflows/ci.yml`)が、main への push と pull request ごとに、Node 22 と 24 で build、`npm run check`、`npm test` を流す。`test:e2e` は tmux 3.7 以上が要り、ランナーの Ubuntu の tmux(3.4)では動かないので CI に入れていない。`test:mod` と `test:real` は claude が要るので手元で流す。
+- GitHub Actions(`.github/workflows/ci.yml`)が、main への push と pull request ごとに、Node 22 と 24 で build、`npm run check`、`npm test` を流す。`test:e2e` は別のジョブ(`e2e`)で、Node 24 で流す。tmux 3.5 以上が要り、ランナーの Ubuntu の tmux(3.4)では断られるので、下限の版(3.5a)をソースから組み、版をキーにキャッシュして使う。tmux の版を指定して手動でも流せる(`workflow_dispatch` の入力 `tmux`。3.5a で落ちたときに、3.8 などと比べて版の差か Linux と macOS の差かを切り分ける)。最新の版の tmux での `test:e2e` は CI では流さず、手元(macOS、Homebrew の tmux)で流す。CI に最新の版を書くと、上げ忘れで古くなるため(#337)。`test:mod` と `test:real` は claude が要るので手元で流す。
 - `npm test` はコミットごとに流す。`test:e2e` は、tmux、操作、作業台に触れたコミットで流す。`test:real` は、実機の claude との接点に触れた変更を PR に出す前と、claude を更新したあとに流す。
 - `test:real` は、テスト用の一時ディレクトリ（信頼の確認を済ませたもの）、tmux のソケット、受け口のポート、状態のファイルを使い、利用者が使っている whatnext とそのセッションには触れない。起動したセッションは、終わったら `claude rm` で消す。Ghostty のシナリオは、前面に新しいウィンドウを開いて操作し、終わったら閉じる。
 - 実機の応答の揺れで安定しないシナリオは、issue に起票して確かめ方を決め直す。

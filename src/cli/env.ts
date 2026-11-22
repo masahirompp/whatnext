@@ -8,6 +8,9 @@ import {shq} from '../../lib/tmux/tmux.js';
 
 export const DEFAULT_SOCKET = 'whatnext';
 export const DEFAULT_PORT = 14318;
+/** 一覧の自動の更新の間隔と、Usage を取り直す最短の間隔の既定(PRODUCT.md「更新」「Usage の表示」)。 */
+export const DEFAULT_REFRESH_MS = 60_000;
+export const DEFAULT_USAGE_MIN_MS = 60_000;
 
 export interface Env {
   socket: string;
@@ -19,6 +22,10 @@ export interface Env {
   cli: string;
   /** `--digest` で起動したか(一覧の役は、起動の口が渡す `WHATNEXT_DIGEST` で知る)。 */
   digest: boolean;
+  /** 一覧の自動の更新の間隔(ms)。テストが `WHATNEXT_REFRESH_MS` で短くする。 */
+  refreshMs: number;
+  /** Usage を取り直す最短の間隔(ms)。テストが `WHATNEXT_USAGE_MIN_MS` で短くする。 */
+  usageMinMs: number;
 }
 
 export function readEnv(env: NodeJS.ProcessEnv = process.env): Env {
@@ -29,7 +36,15 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env): Env {
     node: process.execPath,
     cli: cliPath(),
     digest: env.WHATNEXT_DIGEST === '1',
+    refreshMs: positiveMs(env.WHATNEXT_REFRESH_MS, DEFAULT_REFRESH_MS),
+    usageMinMs: positiveMs(env.WHATNEXT_USAGE_MIN_MS, DEFAULT_USAGE_MIN_MS),
   };
+}
+
+/** テストのつまみの間隔(ms)。数でない、0 以下の値は既定にする。 */
+function positiveMs(v: string | undefined, fallback: number): number {
+  const n = Number(v);
+  return v !== undefined && v.trim() !== '' && Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 /** ダイジェストの mod の置き場所(パッケージの根の `mod/`。`dist/src/cli/` から3つ上)。 */
@@ -102,13 +117,13 @@ export function insideWhatnext(env: Env, pe: NodeJS.ProcessEnv = process.env): b
   return sockPath.endsWith(`/${env.socket}`);
 }
 
-/** 動くことを確かめた最も古い tmux の版(3.7c)。これより古い版は起動を断る。 */
-export const MIN_TMUX = '3.7';
+/** 動くことを確かめた最も古い tmux の版(3.5a)。これより古い版は起動を断る。 */
+export const MIN_TMUX = '3.5';
 
 /**
  * `tmux -V` の出力が MIN_TMUX より古い版か。版を読み取れない表記(`tmux master` など)は断らない。
  * tmux 3.4 は、オプションに置いた sh の `$p` を `\$p` にして返すので、tmux から一覧への知らせが届かず、
- * attach から戻るキーも作業台も黙って効かなくなる。どの版から動くかは確かめていないので、確かめた版に合わせる。
+ * attach から戻るキーも作業台も黙って効かなくなる。3.5a と 3.6a ではこれが起きず、画面の通しも通ったので、3.5 を下限にする。
  */
 export function tooOldTmux(versionOutput: string): boolean {
   const m = /^tmux (?:next-)?(\d+)\.(\d+)/.exec(versionOutput.trim());
@@ -131,6 +146,10 @@ export function paneCommand(env: Env, role: 'list' | 'guide', pe: NodeJS.Process
     XDG_STATE_HOME: pe.XDG_STATE_HOME,
     CLAUDE_CONFIG_DIR: pe.CLAUDE_CONFIG_DIR,
     WHATNEXT_DEBUG_LOG: pe.WHATNEXT_DEBUG_LOG,
+    // テストのつまみ。既定のときは渡さない
+    WHATNEXT_REFRESH_MS: role === 'list' && env.refreshMs !== DEFAULT_REFRESH_MS ? String(env.refreshMs) : undefined,
+    WHATNEXT_USAGE_MIN_MS:
+      role === 'list' && env.usageMinMs !== DEFAULT_USAGE_MIN_MS ? String(env.usageMinMs) : undefined,
     LANG: pe.LANG,
     LC_ALL: pe.LC_ALL,
   };

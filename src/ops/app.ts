@@ -35,8 +35,6 @@ import type {Ports} from './ports.js';
 
 // 一覧の状態の遷移と、外部に頼む作業(PRODUCT.md「操作」「作業台」「依存（待ち先と起動された行）」)。
 
-const REFRESH_MS = 60_000;
-const USAGE_MIN_MS = 60_000;
 const ARM_MS = 2000;
 // 止める操作が失敗したときの知らせと、そのあいだの削除の待ち受け(文言を読む時間を取る)
 const STOP_FAILED_MS = 8000;
@@ -249,7 +247,7 @@ export class App {
 
   private scheduleRefresh(): void {
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
-    this.refreshTimer = setTimeout(() => void this.refresh(), REFRESH_MS);
+    this.refreshTimer = setTimeout(() => void this.refresh(), this.p.refreshMs);
   }
 
   private async apply(obs: Observation, initial: boolean): Promise<void> {
@@ -386,7 +384,7 @@ export class App {
   private fetchUsage(force = false): void {
     const now = this.p.now();
     if (this.usageInflight) return;
-    if (!force && now - this.usageStarted < USAGE_MIN_MS) return;
+    if (!force && now - this.usageStarted < this.p.usageMinMs) return;
     this.usageInflight = true;
     this.usageStarted = now;
     void this.p

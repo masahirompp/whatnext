@@ -74,7 +74,7 @@ describe('起動時と全体', () => {
       `env -u TMUX -u CLAUDECODE WHATNEXT_ROLE= WHATNEXT_TMUX_SOCKET=${h.socket} WHATNEXT_PORT=15996 PATH=${bin}:/bin:/usr/bin node ${CLI}`,
     );
     await h.waitFor(
-      /whatnext: tmux 3\.4 is too old\. whatnext needs tmux 3\.7 or newer\. Update tmux and try again\.[\s\S]*\[exit 1\]/,
+      /whatnext: tmux 3\.4 is too old\. whatnext needs tmux 3\.5 or newer\. Update tmux and try again\.[\s\S]*\[exit 1\]/,
       8000,
       'a',
     );
@@ -107,10 +107,23 @@ describe('起動時と全体', () => {
 
 describe('更新と Usage', () => {
   it('2・13・38: 更新中は refreshing...、更新キーで Refreshed.。Usage は戻ったときに取り直すが 60 秒以内なら取り直さない。60 秒で自動で更新する', async () => {
+    // 60 秒の間隔を、環境変数で短くする(#348)。起動のあとに Usage を取ってから attach から戻る(取り直さない)
+    // までは、手元で約2秒だが、CPU に負荷がかかると大きく延びる(コアあたり3つの busy loop を優先して回すと
+    // 13.5 秒を見た)。10 秒では負荷で取り直しが先に来て落ちたので、どちらの間隔もそれより十分に長くし、更新の
+    // 間隔は取り直しの最短の間隔以上にする(大小は既定と同じ。最後に戻ったときに取り直すのは、そのため)
+    const USAGE_MIN_MS = 20_000;
+    const REFRESH_MS = 20_000;
     h = new Harness();
     h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta', state: 'working', status: 'busy'})]);
-    await h.start();
+    await h.start({
+      env: {WHATNEXT_REFRESH_MS: String(REFRESH_MS), WHATNEXT_USAGE_MIN_MS: String(USAGE_MIN_MS)},
+    });
     await h.waitFor(/session 42% \(resets 2:09pm\) · week \(all models\) 25% \(resets Sep 29 9:59am\)/);
+    // tmux 3.5a/3.6a では、起動の直後に下の2行が1行上に描かれ、少しして下にそろう(#337)。そろうまで待つ
+    await h.waitFor(s => {
+      const ls = s.replace(/\n$/, '').split('\n');
+      return /^session 42%/.test(ls.at(-2) ?? '') && (ls.at(-1) ?? '').trim() !== '';
+    });
     expect(h.lines().at(-2)).toMatch(/^session 42%/);
     expect(h.file('usage.count')).toBe('1');
     // 更新キー
@@ -118,25 +131,25 @@ describe('更新と Usage', () => {
     await h.keys('r');
     await h.waitFor(/refreshing\.\.\./);
     await h.waitFor(/Refreshed\./);
-    // 60 秒以内に attach から戻っても取り直さない
+    // 取り直しの最短の間隔(既定は 60 秒)以内に attach から戻っても取り直さない
     await h.keys('Enter');
     await h.waitFor(/fake claude attached/);
     await h.keys('C-q', 'C-l');
     await h.waitFor(/^> alpha/m);
     await sleep(2500);
     expect(h.file('usage.count')).toBe('1');
-    // 60 秒たつと自動で更新し、戻ると取り直す
+    // 更新の間隔(既定は 60 秒)たつと自動で更新し、戻ると取り直す
     h.conf({});
     h.update('beta', {state: 'done', status: 'idle'});
     // 更新と更新の間は並びも段も変わらない
     await sleep(3000);
     expect(h.screen()).toMatch(/beta +Working/);
-    await h.waitFor(/beta +Review/, 75000);
+    await h.waitFor(/beta +Review/, REFRESH_MS + 8000);
     await h.keys('Enter');
     await h.waitFor(/fake claude attached/);
     await h.keys('C-q', 'C-l');
     await h.waitFor(() => h.file('usage.count') === '2', 5000);
-  }, 120000);
+  }, 60000);
 
   it('13: Usage を一度も取れていないときは出さず、一覧はふだんどおり', async () => {
     h = new Harness();
