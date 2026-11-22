@@ -55,15 +55,16 @@ export function firstLine(text: string): string | undefined {
   return undefined;
 }
 
-const PASTED = /<pasted_content\b[^>]*>([\s\S]*?)<\/pasted_content\b[^>]*>/g;
+// 閉じるタグは開くタグと同じ id を持つ(claude-code-behavior.md「会話記録」)。中身に別の id の閉じるタグがあっても、そこで切らない。
+const PASTED = /<pasted_content\b([^>]*)>([\s\S]*?)<\/pasted_content\1>/g;
 
 /**
  * 指示の冒頭(PRODUCT.md「一覧の表示」の稼働中の規則、#291)。
- * 貼り付けのタグの外の空でない最初の行。外に何もなければ、最初の貼り付けの中身の空でない最初の行。
+ * 貼り付けのタグ(開くタグから、同じ id の閉じるタグまで)の外の空でない最初の行。外に何もなければ、最初の貼り付けの中身の空でない最初の行。
  * タグを含まなければ firstLine と同じ。
  */
 export function promptLine(text: string): string | undefined {
-  const pastes = [...text.matchAll(PASTED)].map(m => m[1] ?? '');
+  const pastes = [...text.matchAll(PASTED)].map(m => m[2] ?? '');
   if (pastes.length === 0) return firstLine(text);
   return firstLine(text.replace(PASTED, '\n')) ?? firstLine(pastes.join('\n'));
 }

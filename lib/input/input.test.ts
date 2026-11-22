@@ -81,6 +81,14 @@ describe('指示と道具', () => {
         ),
       ).toBe('first');
     });
+
+    it('中身に別の id の閉じるタグがあっても、貼り付けは同じ id の閉じるタグまで続く', () => {
+      // Claude Code は中身をそのままタグの間に入れるとみなす(タグを含む中身は確かめていない)
+      const s =
+        '\n\n<pasted_content id="921c">\nテストの見本を直す。\nconst s = \'</pasted_content id="zz">\';\n内側の残りの行\n</pasted_content id="921c">\n';
+      expect(promptLine(s)).toBe('テストの見本を直す。');
+      expect(instructionText(s)).toBe('テストの見本を直す。');
+    });
   });
 
   it('道具と対象', () => {
