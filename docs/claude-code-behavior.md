@@ -56,7 +56,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 起動の出力（`backgrounded · <id> …`）には `id`（`sessionId` の先頭 8 文字）だけがあり、`sessionId` はない。起動したセッションを `sessionId` で扱うには、次に `--json` を読んで `id` から引く。
 - 存在しないモデル名でも、終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る。
 - 作業場所の `.claude/settings.local.json` の `model` は、`--bg` のセッションに効く。優先順位は `--model` > 環境の `ANTHROPIC_MODEL` > `settings.local.json` である（2026-11-23、2.1.330、#368）。`/private/tmp/whatnext-real` で `--bg` のセッションを3つ起動し、会話記録のモデル名を見た。
-  - 環境に `ANTHROPIC_MODEL` がなく、`--model` もない: haiku（`settings.local.json` の値）。利用者の `settings.json` の既定は opus で、デーモンの環境にも `ANTHROPIC_MODEL` がないことを `ps -E -ww` で確かめた。
+  - 環境に `ANTHROPIC_MODEL` がなく、`--model` もない: haiku（`settings.local.json` の値）。利用者の `settings.json` の既定は opus で、デーモンの環境にも `ANTHROPIC_MODEL` がないことを `ps -E -ww` で確かめた。利用者の `settings.json` と managed settings の `env` に `ANTHROPIC_MODEL` がないかは確かめておらず、その経路で haiku になった可能性は除けていない（その `env` が `--bg` に届くかも未確認。「`--bg` のセッションに OTel の設定を渡す経路」）。
   - 環境の `ANTHROPIC_MODEL=sonnet`、`--model` なし: sonnet。
   - 環境の `ANTHROPIC_MODEL=sonnet`、`--model haiku`: haiku。
   - 環境の `ANTHROPIC_MODEL` は、本物のデーモンの環境ではなく、`--settings` の `env` で入れた近い条件で見た。デーモンの環境に入れたときの振る舞いは、デーモンを起こし直す必要があるので確かめていない。デーモンは、それを起こしたプロセスの環境を持ち続け、すべての `--bg` のセッションに渡す（「`--bg` のセッションに OTel の設定を渡す経路」）ので、デーモンが `ANTHROPIC_MODEL` を持っていれば、同じく `settings.local.json` より優先されると見込む。同じ設定ファイルの `env` は届かない（同じ節）。
