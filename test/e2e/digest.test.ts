@@ -1,5 +1,6 @@
-import {type ChildProcess, spawn} from 'node:child_process';
 import {mkdirSync, writeFileSync} from 'node:fs';
+import {createServer, type Server} from 'node:http';
+import type {AddressInfo} from 'node:net';
 import {join} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
 import {bg, CLI, escapeRe, Harness, REPO, sid, sleep, tty} from './harness.js';
@@ -346,20 +347,23 @@ describe('ダイジェスト', () => {
   });
 
   describe('41 の例外: 受け口のポートをほかのプログラムが使っているとき', () => {
-    let py: ChildProcess | undefined;
+    // ポートをふさぐ役。受け口でない HTTP のサーバとして、どの問い合わせにも 404 を返す
+    let occupant: Server | undefined;
     afterEach(() => {
-      py?.kill();
-      py = undefined;
+      occupant?.close();
+      occupant = undefined;
     });
 
     it('--digest では mod を付けず、右の欄に、ダイジェストが届かない理由を出す', async () => {
       h = new Harness();
-      h.port = 15000 + Math.floor(Math.random() * 900);
-      py = spawn('python3', ['-m', 'http.server', String(h.port), '--bind', '127.0.0.1'], {
-        stdio: 'ignore',
-        cwd: h.dir,
+      const srv = createServer((_req, res) => {
+        res.writeHead(404);
+        res.end('not found');
       });
-      await sleep(1500);
+      occupant = srv;
+      // 空いたポートを OS に選ばせ、listen が済んでから(ふさいでから)一覧を起動する
+      await new Promise<void>(r => srv.listen(0, '127.0.0.1', r));
+      h.port = (srv.address() as AddressInfo).port;
       const app = h.repo('app');
       h.agents([bg('alpha', {name: 'alpha', cwd: app})]);
       await h.start({cwd: app, args: '--digest', size: {cols: 150, rows: 30}});
@@ -385,10 +389,9 @@ describe('ダイジェスト', () => {
     h.agents([bg('a', {name: 'alpha'})]);
     await h.start();
     h.open('second', `${h.envLine()} node ${CLI} --digest`);
-    await sleep(1500);
     const s = await h.waitFor(
       /whatnext is running without --digest\. Quit it, then run "whatnext --digest" to see digests\./,
-      8000,
+      10000,
       'second',
     );
     expect(s).toMatch(/alpha/);

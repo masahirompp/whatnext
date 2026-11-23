@@ -301,9 +301,15 @@ export class Harness {
     );
   }
 
+  /** 外側の tmux のセッション `name` で `whatnext workbench` を動かし、その画面が内側の tmux のクライアントになるまで待つ。 */
   async startWorkbench(name = 'wb', size = {cols: 80, rows: 20}): Promise<void> {
     this.open(name, `${this.envLine()} node ${q(CLI)} workbench`, size);
-    await sleep(800);
+    const tty = this.tmux('display', '-p', '-t', `=${name}:`, '#{pane_tty}').trim();
+    await this.until(
+      `the workbench screen client (${tty}) to join the inner tmux`,
+      () => this.innerQuiet('list-clients', '-F', '#{client_tty}').trim(),
+      v => v.split('\n').includes(tty),
+    );
   }
 
   /** 1キーずつ送る(人の操作を再現する)。 */
@@ -389,9 +395,30 @@ export class Harness {
     );
   }
 
-  /** 一覧で、名前の行にカーソルを合わせる。 */
+  /**
+   * 一覧で、名前の行にカーソルを合わせる。画面からカーソルの行(`> `)と、名前で始まる行の位置を読んで向きを決め、
+   * 1キーごとに画面で確かめる(見出しや起動された行は飛ばされるので、押す回数は決めない)。目当ての行が見えない、
+   * 上下の両方にある、押しても画面が変わらない、向きが逆になる、のどれかのときは、上へ走査してから下へ走査する。
+   */
   async select(name: string): Promise<void> {
     const re = new RegExp(`^> .*?${escapeRe(name)}`, 'm');
+    const row = new RegExp(`^ {2}[ │├└]*${escapeRe(name)}`);
+    let prev: string | undefined;
+    let dir: 'Up' | 'Down' | undefined;
+    for (let i = 0; i < 60; i++) {
+      const s = this.screen();
+      if (re.test(s)) return;
+      if (s === prev) break;
+      const lines = s.split('\n');
+      const cur = lines.findIndex(l => l.startsWith('> '));
+      const at = lines.flatMap((l, j) => (row.test(l) ? [j] : []));
+      if (cur < 0 || at.length === 0) break;
+      const next = at.every(j => j < cur) ? 'Up' : at.every(j => j > cur) ? 'Down' : undefined;
+      if (!next || (dir && next !== dir)) break;
+      dir = next;
+      prev = s;
+      await this.keys(next);
+    }
     for (let i = 0; i < 30; i++) {
       if (re.test(this.screen())) return;
       await this.keys('Up');
@@ -401,6 +428,22 @@ export class Harness {
       await this.keys('Down');
     }
     throw new Error(`could not select ${name}:\n${this.screen()}`);
+  }
+
+  /**
+   * 消したセッション `name` が画面から消えるまで待ち、`Deleted <name>.` の知らせが出たことを確かめる。
+   * 知らせの文言だけは名前が残っていてよいとする。知らせは 5 秒出るので、画面全体から名前が消えるのを待つと、
+   * 行が消えたあとも知らせが消えるまで待ってしまう。
+   */
+  async waitDeleted(name: string, timeout = 8000): Promise<string> {
+    const notice = `Deleted ${name}.`;
+    let noticed = false;
+    const s = await this.waitFor(v => {
+      if (v.includes(notice)) noticed = true;
+      return !v.replaceAll(notice, '').includes(name);
+    }, timeout);
+    if (!noticed) throw new Error(`"${notice}" was not shown; screen was:\n${s}`);
+    return s;
   }
 
   /** 更新を押して終わるまで待つ。 */

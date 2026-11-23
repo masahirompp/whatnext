@@ -306,7 +306,7 @@ describe('作業台の画面', () => {
     await h.keys('C-x');
     await h.waitFor(/Delete alpha and stop/);
     await h.keys('y');
-    await h.waitFor(s => !/alpha/.test(s), 8000);
+    await h.waitDeleted('alpha');
     expect(h.sessions()).not.toContain('sh-a0000000');
     await h.waitFor(/No workbench for beta/, 5000, 'wb');
   });
