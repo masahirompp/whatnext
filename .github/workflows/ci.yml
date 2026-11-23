@@ -57,11 +57,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libevent-dev libncurses-dev libutf8proc-dev bison pkg-config
+      # 組んだ tmux はライブラリを動的に引くので、Ubuntu の版(ImageOS)が上がったらキャッシュを外して組み直す(#354)。
+      # ImageOS はランナーの環境変数で、式の env からは読めないので、段の出力にしてからキーに使う(空なら止める)
+      - id: image
+        run: |
+          test -n "$ImageOS"
+          echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
       - id: cache-tmux
         uses: actions/cache@v4
         with:
           path: ~/.local/tmux
-          key: tmux-${{ runner.os }}-${{ env.TMUX_VERSION }}-utf8proc
+          key: tmux-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ env.TMUX_VERSION }}-utf8proc
       - name: Build tmux
         if: steps.cache-tmux.outputs.cache-hit != 'true'
         run: |
