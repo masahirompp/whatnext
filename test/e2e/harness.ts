@@ -36,9 +36,18 @@ export interface FakeRow {
 
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// 受け口のポートは 14500〜15899 を PORT_SLOTS 個の区画に分け、ワーカー(VITEST_POOL_ID、1 始まり)ごとに自分の
+// 区画から選ぶ。空きを確かめてから一覧が bind するまでに隙があり、ファイルを並行に流すと、別のワーカーが同じ番号を
+// 選びうるため。ワーカーの番号がないときは 1 とし、PORT_SLOTS を超えたら区画を共有する(範囲の外には出ない)。
+const PORT_BASE = 14500;
+const PORT_SLOTS = 8;
+const PORT_SLOT_SIZE = 1400 / PORT_SLOTS;
+
 async function freePort(): Promise<number> {
+  const worker = Math.max(1, Math.floor(Number(process.env.VITEST_POOL_ID) || 1));
+  const from = PORT_BASE + ((worker - 1) % PORT_SLOTS) * PORT_SLOT_SIZE;
   for (let i = 0; i < 50; i++) {
-    const port = 14500 + Math.floor(Math.random() * 1400);
+    const port = from + Math.floor(Math.random() * PORT_SLOT_SIZE);
     const ok = await new Promise<boolean>(res => {
       const s = createServer();
       s.once('error', () => res(false));
