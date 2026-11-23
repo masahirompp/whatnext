@@ -51,7 +51,11 @@ async function expectHaiku(id: string): Promise<void> {
     if (!model) await sleep(1000);
   }
   if (model) wrongModel = model;
-  expect(model).toMatch(/haiku/);
+  // デーモンの環境の ANTHROPIC_MODEL は settings.local.json より優先されると見込まれ、ハーネスの UNSET では外せない(#368)
+  expect(
+    model,
+    `model ${model}: check ANTHROPIC_MODEL in the claude daemon env: ps -E -ww -p <pid of "claude daemon run">`,
+  ).toMatch(/haiku/);
   wrongModel = prev;
 }
 
