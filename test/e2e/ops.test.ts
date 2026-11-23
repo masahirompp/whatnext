@@ -199,12 +199,18 @@ describe('停止と削除', () => {
     h = new Harness();
     h.agents([
       bg('a', {name: 'alpha', state: 'working', status: 'busy', _fake: {rm: 'lock'}}),
-      bg('b', {name: 'beta'}),
+      bg('b', {name: 'beta', state: 'working', status: 'busy'}),
     ]);
     await h.start();
+    // 止めると行が Stopped になる。行は、止めたあとの更新(claude agents --json の読み直し)が終わってから変わる
+    await h.select('beta');
     await h.keys('C-x');
-    // 知らせが先に描かれ、行の段がまだ前のことがあるので、行まで待つ
-    await h.waitFor(s => /Press Ctrl\+X again within 2s to delete\./.test(s) && /alpha +Stopped/.test(s));
+    await h.waitFor(/beta +Stopped/);
+    // 2回目を待ち受ける2秒は、止め終わって知らせを出した時点から数える。行が変わるのを待ってから押すと、更新が遅いときに
+    // 2秒を使い切るので、知らせを見たらすぐに押す(行の確かめは上の beta で済ませた)
+    await h.select('alpha');
+    await h.keys('C-x');
+    await h.waitFor(/Stopped alpha\. Press Ctrl\+X again within 2s to delete\./);
     await h.keys('C-x');
     // ロックで断られている間も Deleting... のまま待つ
     await h.waitFor(/alpha +Deleting\.\.\./);
