@@ -180,28 +180,60 @@ describe('フックと補う値', () => {
     expect(supplement(store.get('s'), undefined, undefined).lastText).toBeUndefined();
   });
 
-  it('指示でない prompt(タスクの通知)は丸ごと無視し、前の指示と値を残す(#361)', () => {
+  const notification =
+    '<task-notification>\n<task-id>bq1x2y3z4</task-id>\n<tool-use-id>toolu_01AbCdEf</tool-use-id>\n<status>completed</status>\n</task-notification>';
+
+  it('指示でない prompt(タスクの通知)は前の指示を残し、前のターンの終わりの値は消す(#361)', () => {
     let t = 1000;
     const store = new HookStore(() => t);
     store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'run the tests in background'});
     t = 2000;
     store.receiveHook({session_id: 's', hook_event_name: 'Stop', last_assistant_message: 'Started.'});
-    const before = structuredClone(store.get('s'));
-    const seen: string[] = [];
-    store.onEvent((_sid, event) => seen.push(event));
     t = 3000;
+    store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: notification});
+    expect(store.get('s')).toEqual({prompt: {text: 'run the tests in background', at: 1000}, turnAt: 3000});
+    const s = supplement(store.get('s'), undefined, undefined);
+    expect(s.prompt).toEqual({text: 'run the tests in background', at: 1000});
+    expect(s.lastText).toBeUndefined();
+    expect(s.haltAt).toBeUndefined();
+  });
+
+  it('通知で始まったターンで権限を断ったら、前のターンの質問ではなく断った道具を出す(#361)', () => {
+    let t = 1000;
+    const store = new HookStore(() => t);
+    store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'ask me which db to use'});
+    t = 2000;
     store.receiveHook({
       session_id: 's',
-      hook_event_name: 'UserPromptSubmit',
-      prompt:
-        '<task-notification>\n<task-id>bq1x2y3z4</task-id>\n<tool-use-id>toolu_01AbCdEf</tool-use-id>\n<status>completed</status>\n</task-notification>',
+      hook_event_name: 'PreToolUse',
+      tool_name: 'AskUserQuestion',
+      tool_use_id: 'toolu_q',
+      tool_input: {questions: [{question: 'Which database?'}]},
     });
-    expect(store.get('s')).toEqual(before);
-    expect(seen).toEqual([]);
-    expect(supplement(store.get('s'), undefined, undefined).prompt).toEqual({
-      text: 'run the tests in background',
-      at: 1000,
+    t = 5000;
+    store.receiveHook({session_id: 's', hook_event_name: 'Stop', last_assistant_message: 'Using Postgres.'});
+    t = 60000;
+    store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: notification});
+    t = 61000;
+    store.receiveHook({
+      session_id: 's',
+      hook_event_name: 'PermissionRequest',
+      tool_name: 'Bash',
+      tool_input: {command: 'rm -rf build', description: 'Remove build'},
     });
+    // 断ると Stop は来ない。会話記録の最後の指示は通知より前なので、その値も使わない
+    const tr = {
+      prompt: {text: 'ask me which db to use', at: 1000},
+      question: 'Which database?',
+      lastText: 'Using Postgres.',
+    };
+    for (const s of [supplement(store.get('s'), undefined, undefined), supplement(store.get('s'), tr, undefined)]) {
+      expect(s.prompt).toEqual({text: 'ask me which db to use', at: 1000});
+      expect(s.question).toBeUndefined();
+      expect(s.lastText).toBeUndefined();
+      expect(s.declined).toBe('Bash: rm -rf build');
+      expect(s.haltAt).toBe(61000);
+    }
   });
 
   it('失敗は文言を、なければ符号を出す', () => {
