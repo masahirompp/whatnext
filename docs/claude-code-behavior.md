@@ -175,10 +175,13 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
   - 共通：`session_id`（`--json` の `sessionId` と一致）、`transcript_path`、`cwd`、`permission_mode`、`hook_event_name`。
   - `Stop`：`last_assistant_message`（最後の応答の全文。記録ファイルを読まずに済むように用意された項目）、`stop_hook_active`。
   - `StopFailure`：`error`、`error_details`、`last_assistant_message`。
-  - `UserPromptSubmit`：`prompt`（全文）、`source`（`user` / `sdk` / `system` / `loop_wakeup` など）。`--name` を付けたときは `session_title` も付く。
+  - `UserPromptSubmit`：`prompt`（全文）。`--name` を付けたときは `session_title` も付く。以前は `source`（`user` / `sdk` / `system` / `loop_wakeup` など）が付くと書いていたが、2.1.330 の `--bg` では、利用者の指示にも通知にも `source` が無かった。指示かどうかは `prompt` の本文で見分ける（#361）。
   - `PermissionRequest`：`tool_name`、`tool_input`（`Bash` なら `command` と `description`）、`permission_suggestions`。
   - `PreToolUse`：`tool_name`、`tool_input`、`tool_use_id`。
   - `Notification`：`message`、`title`、`notification_type`。
+- **タスクの通知**（2.1.330、2026-11-23、haiku の `--bg` に `--settings` でフックを付けて確認）：バックグラウンドのタスクの通知は `UserPromptSubmit` として届き、`prompt` は `<task-notification>\n<task-id>…</task-id>\n<tool-use-id>…` で始まる。Bash の `run_in_background` でも、バックグラウンドのサブエージェントでも同じ形だった。通知のターンの終わりには `Stop` が届く。whatnext は、この `prompt` を指示に数えない（#361）。Monitor の通知の形は確かめていない。
+- `/compact` では `UserPromptSubmit` が届かない。compact のあとの指示は、前に何も付かずに届く（2.1.330）。
+- 会話記録の `<system-reminder>` で始まる行（`isMeta`）は、待たされていた知らせでターンが始まる直前に、会話記録にだけ書かれていた。フックの `prompt` には付いていなかった（2.1.330）。`<system-reminder>` がフックで届く場面は見つかっていない。
 - `PermissionRequest` の `command` フックが何も出力せず終了コード 0 で終わると、権限の確認はふだんどおりセッションに出る。
 - フックの `command` はシェルで実行される。`… 2>/dev/null; exit 0` と書けば、コマンドが失敗しても何も出ない。コマンドが 0 以外で終わると、セッションの画面に `Stop hook error: Failed with non-blocking status code: <stderr>` と出る。
 - 権限の確認で `No` を選ぶとターンが中断され（`Interrupted · What should Claude do instead?`）、`Stop` は発火しない。そのあと `--json` の行は `state: "working"`、`status: "idle"` のまま、次の指示でターンを終えるまで変わらない（90秒観測）。
@@ -220,7 +223,7 @@ whatnext が依存してよい項目は [ADR-0011](adr/0011-fill-in-from-transcr
   - 自分の文のあとに貼り付け：`<自分の文> \n\n<pasted_content id="…">\n<中身>\n</pasted_content id="…">\n`
   - 貼り付けのあとに自分の文：`\n\n<pasted_content id="…">\n<中身>\n</pasted_content id="…">\n\n<自分の文>`
 - **mod の `$.session.messages()` と見比べた行**（2.1.330、haiku の `--bg` に attach して確認。ダイジェストの mod が指示を選ぶのに使う。DESIGN.md「ダイジェストの mod」）：会話記録で `isMeta: true` の行（`<local-command-caveat>`、スラッシュコマンドが展開した本文）は `messages()` に出ず、`<command-name>`（`/model`、`/compact`）と `<local-command-stdout>` の `user` の行は、`text` にそのまま出る。中断の印（`[Request interrupted by user]`、`[Request interrupted by user for tool use]`）は、`toolResults` を持たない `user` の行の `text` に出る。compact の要約は、会話記録では `isCompactSummary: true` の `user` の行（本文が `This session is being continued from a previous conversation that ran out of context.` で始まる）で、`messages()` にもそのまま出る（compact の前の行も残る）。mod が登録したコマンドは、会話記録では `system` の `local_command` で、`messages()` に出ない。応答が出る前に Esc で止めたターンは、指示が入力欄に戻り、`messages()` にも中断の印にも残らないが、会話記録には指示の文字列の `user` の行が残る。
-  - バックグラウンドのタスクの通知（2.1.330、2026-11-22、会話記録で確認）：通知が届いて始まったターンは、会話記録の `user` の行（`isMeta` なし、`origin` が `{"kind": "task-notification", "producer": "session-task"}`、本文が `<task-notification>\n<task-id>…` で始まる文字列）になる。`messages()` に出ることは直接見ていないが、0.24.0 の mod が日本語の指示1件のセッションで英語のダイジェストを作ったことと合う（`SessionMessage` に `origin` はないので、mod は本文の冒頭で見分ける）。一覧の一言にも `→ <task-notification>` が出た（フックの `prompt` から。#361）。
+  - バックグラウンドのタスクの通知（2.1.330、2026-11-22、会話記録で確認）：通知が届いて始まったターンは、会話記録の `user` の行（`isMeta` なし、`origin` が `{"kind": "task-notification", "producer": "session-task"}`、本文が `<task-notification>\n<task-id>…` で始まる文字列）になる。`messages()` に出ることは直接見ていないが、0.24.0 の mod が日本語の指示1件のセッションで英語のダイジェストを作ったことと合う（`SessionMessage` に `origin` はないので、mod は本文の冒頭で見分ける）。一覧の一言にも `→ <task-notification>` が出た（フックの `prompt` から。#361 で、フックの側でも指示に数えないようにした）。
 - **質問**：`AskUserQuestion` の `tool_use` の `input.questions[0].question` に質問がある。
 - **中断したターン**：権限待ちの `tool_use` のあとで権限の確認に `No` を選ぶと、末尾に次の3行が付く。(1) `user` の行で、`message.content` が配列の `tool_result`（`The user doesn't want to proceed with this tool use. …`）。(2) `user` の行で、`message.content` が配列の `{type: "text", text: "[Request interrupted by user for tool use]"}`。(3) `system` の `turn_duration`。(2) は配列なので、「`message.content` が文字列の `user` の行を指示とみなす」規則では指示に数えられない（手元の 190 本の `[Request interrupted by user]` 12件は、すべて配列だった）。`--json` は、このあとも `working` + `idle` のまま（haiku の `--bg`、フックなしで確認）。
 - **失敗**：`isApiErrorMessage: true`、`message.model: "<synthetic>"` の `assistant` の行がある（手元で8件）。本文（`message.content` の text）は人向けの文言で、`StopFailure` の `last_assistant_message` と同じ。`StopFailure` の `error` は `model_not_found` のような符号で、同じ行の `error` の項目にも符号がある（`server_error`、`invalid_request` など。whatnext は依存しない）（存在しないモデル名の `--bg` で確認）。

@@ -21,7 +21,8 @@
 - `launchSettings(port)`：`n` で起動するセッションの `--settings` に渡す JSON（フック5種と OTel の `env`）。
 - `HookStore`：受けた値をセッションごとにメモリに持つ。時刻は受け取った時刻（コンストラクタに時計を渡せる）。
   - `receiveHook(body)`、`receiveLogs(body)`：受けた値を足す。
-  - `get(sid)` は `HookFacts`（`prompt`、`stop`、`failure`、`permission`、`question`。それぞれ時刻 `at` 付き）、`ctxOf(sid)` は CTX（本体のターンの最新の要求の token 数）。
+  - `UserPromptSubmit` の `prompt` は、会話記録の利用者の行と同じく `instructionText` で指示の文字列にする。指示でない（`undefined`。タスクの通知の `<task-notification>` で始まる本文など）ときは、`prompt` を前の指示のまま残す（#361）。指示でなくても新しいターンは始まるので、どちらのときも `turnAt` をその時刻にし（`prompt` が文字列でなければ、`prompt` とともに消す）、`stop`、`failure`、`permission`、`question` を消す。消さないと、前のターンの終わりの値が今のターンの値として一覧に出る。
+  - `get(sid)` は `HookFacts`（`prompt`、`stop`、`failure`、`permission`、`question`。それぞれ時刻 `at` 付き。と、今のターンが始まった時刻 `turnAt`）、`ctxOf(sid)` は CTX（本体のターンの最新の要求の token 数）。
   - `onEvent(listener)`：受けるたびに `(sid, event)` で呼ぶ。`forget(keep)`：`keep` にないセッションを忘れる。
 
 ## 会話記録（`transcript.ts`）
@@ -38,14 +39,14 @@
 ## 補う値（`hooks.ts` の `supplement`）
 
 - `supplement(hook, transcript, ctx)`：フックの値を主にし、今のターンの値がないときに会話記録で補った `Supplied`（`prompt`、`haltAt`、`permission`、`question`、`declined`、`error`、`lastText`、`ctx`）を返す。
-- 今のターンの境は DESIGN.md「機能ごとの入力の出どころ」のとおり。フックの値はフックの指示の時刻以降だけ、会話記録の値はその指示がフックの指示の2秒前以降のときだけ使う（#267）。
+- 今のターンの境は DESIGN.md「機能ごとの入力の出どころ」のとおり。フックの値は `turnAt`（なければフックの指示の時刻）以降だけ、会話記録の値はその指示が `turnAt` の2秒前以降のときだけ使う（#267）。指示は `prompt` で選ぶので、タスクの通知で始まったターンでも一言は前の指示のまま、前のターンの値は使わない（#361）。
 
 ## 文の切り出し（`text.ts`）
 
 - `leadLine(text)`：最後の応答の冒頭（PRODUCT.md「一覧の表示」の規則）。`firstLine(text)`：空でない最初の行。
-- `promptLine(text)`：指示の冒頭（PRODUCT.md「一覧の表示」の稼働中の規則）。貼り付けのタグ（`<pasted_content id="X">` から、同じ id の `</pasted_content id="X">` まで。Claude Code は中身をそのままタグの間に入れるとみなし、中身に別の id の閉じるタグがあってもそこで切らない。タグを含む中身の貼り付けは確かめていない）の外の、空でない最初の行。外に何もなければ、最初の貼り付けの中身の、空でない最初の行。中身も空の行だけなら空の文字列（指示に数え、前の指示の一言を残さない）。タグを含まなければ `firstLine` と同じ（#291）。フックの `prompt` と `instructionText` の両方がこれを使う。
+- `promptLine(text)`：指示の冒頭（PRODUCT.md「一覧の表示」の稼働中の規則）。貼り付けのタグ（`<pasted_content id="X">` から、同じ id の `</pasted_content id="X">` まで。Claude Code は中身をそのままタグの間に入れるとみなし、中身に別の id の閉じるタグがあってもそこで切らない。タグを含む中身の貼り付けは確かめていない）の外の、空でない最初の行。外に何もなければ、最初の貼り付けの中身の、空でない最初の行。中身も空の行だけなら空の文字列（指示に数え、前の指示の一言を残さない）。タグを含まなければ `firstLine` と同じ（#291）。`instructionText` がこれを使う（フックの `prompt` も `instructionText` を通す）。
 - `toolTarget(name, input)`：`<道具>: <対象>`。対象の項目の順と、項目がないときに入力の最初の文字列に落ちることは DESIGN.md「機能ごとの入力の出どころ」のとおり（#266）。対象がなければ道具の名前だけ。
-- `instructionText(content)`：会話記録の利用者の行を指示の文字列（`promptLine` で取った1行）にする。ターンを始めないコマンドなど、指示でなければ `undefined`。
+- `instructionText(content)`：会話記録の利用者の行とフックの `prompt` を指示の文字列（`promptLine` で取った1行）にする。ターンを始めないコマンドなど、指示でなければ `undefined`。
 
 ## プロセス表（`procs.ts`）
 

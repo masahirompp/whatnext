@@ -1,6 +1,6 @@
 // 入力: whatnext が起動したセッションから受けるフックと OTel の値(メモリにだけ持つ)。
 
-import {leadLine, promptLine, toolTarget} from './text.js';
+import {instructionText, leadLine, toolTarget} from './text.js';
 import type {TranscriptFacts} from './transcript.js';
 
 export interface HookFacts {
@@ -9,6 +9,8 @@ export interface HookFacts {
   failure?: {at: number; error?: string};
   permission?: {at: number; target: string};
   question?: {at: number; text: string};
+  /** 今のターンが始まった時刻。指示でない prompt(タスクの通知)でも進む。 */
+  turnAt?: number;
 }
 
 export type HookListener = (sid: string, event: string) => void;
@@ -43,8 +45,12 @@ export class HookStore {
     const f = this.bySid.get(sid) ?? {};
     switch (event) {
       case 'UserPromptSubmit': {
-        const text = typeof b.prompt === 'string' ? promptLine(b.prompt) : undefined;
-        f.prompt = text !== undefined ? {text, at} : undefined;
+        // タスクの通知(`<task-notification>` で始まる本文)なども UserPromptSubmit で届く。
+        // 会話記録の側と同じく指示に数えず、前の指示の値を残す。ただし新しいターンは始まるので、
+        // 境を進めて前のターンの終わりの値を消す(#361)。
+        const text = typeof b.prompt === 'string' ? instructionText(b.prompt) : undefined;
+        if (typeof b.prompt !== 'string' || text !== undefined) f.prompt = text !== undefined ? {text, at} : undefined;
+        f.turnAt = typeof b.prompt === 'string' ? at : undefined;
         f.stop = undefined;
         f.failure = undefined;
         f.permission = undefined;
@@ -138,12 +144,14 @@ export function supplement(
 ): Supplied {
   const hp = hook?.prompt?.at;
   const tp = tr?.prompt?.at;
-  // フックの値は今のターンの指示より後のものだけ。今のターンの始まりはフックの指示で、
-  // 会話記録にそれより新しい指示があれば(フックを受けていない指示)、そちらで引く。
-  const floor = Math.max(hp ?? -Infinity, tp === undefined ? -Infinity : tp - SLACK);
+  // 今のターンの始まりはフックの UserPromptSubmit(指示でない通知も含む。#361)。
+  const ht = hook?.turnAt ?? hp;
+  // フックの値は今のターンの始まりより後のものだけ。会話記録にそれより新しい指示があれば
+  // (フックを受けていない指示)、そちらで引く。
+  const floor = Math.max(ht ?? -Infinity, tp === undefined ? -Infinity : tp - SLACK);
   const fresh = (at: number | undefined) => at !== undefined && at >= floor;
-  // 会話記録の値は、その指示がフックの指示の2秒前以降のときだけ使う。
-  const trCurrent = tr !== undefined && (hp === undefined ? true : tp !== undefined && tp >= hp - SLACK);
+  // 会話記録の値は、その指示がフックのターンの始まりの2秒前以降のときだけ使う。
+  const trCurrent = tr !== undefined && (ht === undefined ? true : tp !== undefined && tp >= ht - SLACK);
   const out: Supplied = {};
   if (ctx !== undefined) out.ctx = ctx;
 
