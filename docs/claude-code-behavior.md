@@ -55,7 +55,11 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 - 起動の出力は、端末でない出力先（`execFile` のパイプ）でも ANSI の色のエスケープを含む。`id` を読むときは、エスケープを除いてから照合する（2.1.283）。
 - 起動の出力（`backgrounded · <id> …`）には `id`（`sessionId` の先頭 8 文字）だけがあり、`sessionId` はない。起動したセッションを `sessionId` で扱うには、次に `--json` を読んで `id` から引く。
 - 存在しないモデル名でも、終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る。
-- 作業場所の `.claude/settings.local.json` の `model` は、`--model` を付けずに起動した `--bg` のセッションに効くと見られる。whatnext の実機の通しの `n` のシナリオ（23、34、41）で、会話記録のモデル名が haiku であることの確かめが通った（2.1.330、#319）。`n` は `--model` を渡さず、利用者の `settings.json` の `model` は haiku でなかった。会話記録は目で見ておらず、確かめが通ったことから言っている。デーモンの環境や利用者の設定の `env` から `ANTHROPIC_MODEL` が届いた可能性も除けていない（デーモンの環境が届くことは「`--bg` のセッションに OTel の設定を渡す経路」。除けていない経路の詳細は DESIGN.md「確かめ方」）。同じ設定の `env` は届かない（「`--bg` のセッションに OTel の設定を渡す経路」）。
+- 作業場所の `.claude/settings.local.json` の `model` は、`--bg` のセッションに効く。優先順位は `--model` > 環境の `ANTHROPIC_MODEL` > `settings.local.json` である（2026-11-23、2.1.330、#368）。`/private/tmp/whatnext-real` で `--bg` のセッションを3つ起動し、会話記録のモデル名を見た。
+  - 環境に `ANTHROPIC_MODEL` がなく、`--model` もない: haiku（`settings.local.json` の値）。利用者の `settings.json` の既定は opus で、デーモンの環境にも `ANTHROPIC_MODEL` がないことを `ps -E -ww` で確かめた。
+  - 環境の `ANTHROPIC_MODEL=sonnet`、`--model` なし: sonnet。
+  - 環境の `ANTHROPIC_MODEL=sonnet`、`--model haiku`: haiku。
+  - 環境の `ANTHROPIC_MODEL` は、本物のデーモンの環境ではなく、`--settings` の `env` で入れた近い条件で見た。デーモンの環境に入れたときの振る舞いは、デーモンを起こし直す必要があるので確かめていない。デーモンは、それを起こしたプロセスの環境を持ち続け、すべての `--bg` のセッションに渡す（「`--bg` のセッションに OTel の設定を渡す経路」）ので、デーモンが `ANTHROPIC_MODEL` を持っていれば、同じく `settings.local.json` より優先されると見込む。同じ設定ファイルの `env` は届かない（同じ節）。
 - `--model` の別名（`fable` / `opus` / `sonnet` など）は、そのファミリーの最新モデルを指す（`claude --help` の説明）。フルネームも受け付ける。モデルの一覧を取る公式の口はない。
 - 信頼されていないディレクトリでは、終了コード 1 で「Workspace not trusted. Run claude in &lt;dir&gt; once and accept the trust prompt, then retry.」と出して断る。一度起動できたディレクトリでも、`git worktree add` のあとに断られたことがある（理由は未確認）。
 - 信頼の確認を飛ばして `--bg` を起動するオプションはない。確認を飛ばすのは `-p` と、stdout が TTY でないときだけ（`claude --help` の `--print` の説明）。信頼は `~/.claude.json` の `projects["<絶対パス>"].hasTrustDialogAccepted` に記録される。対話モードの `claude` の信頼の確認は、既定の選択が `No, exit` である。`Yes, I trust this folder` を選ぶとすぐ `hasTrustDialogAccepted: true` が書かれ、同じディレクトリの `--bg` が通るようになる。`No, exit` を選ぶと `claude` が終わる（2.1.283）。`projects` のキーは実パスで、`/tmp/x` で開いたときは `/private/tmp/x` で記録される（2.1.287、実機の通し）。信頼されたかを読む側は、渡されたパスと実パスの両方で引く。確認の画面は既定で `No, exit` を選んでいるので、キーで承認するときは `Down` のあと `Enter` を送る（`1` は効かない）。
@@ -160,7 +164,7 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 | `claude --bg` を起動したシェルの環境変数 | 届かない（実測）。`--bg` はデーモンが事前に起こした `claude bg-spare` が引き受け、起動要求に載る環境変数は許可リスト（`CLAUDE_CONFIG_DIR`、モデル指定、プロバイダの設定、`PATH` など）だけ |
 | `--settings '{"env":{...}}'` | 届く（実測）。`claude respawn` のあとも引き継がれる |
 | プロジェクトの `.claude/settings.json` / `settings.local.json` の `env` | 届かない（実測。`--bg` でも `-p` でも）。プロジェクトの設定からは `OTEL_EXPORTER_OTLP_*` などを設定できない |
-| デーモンの環境変数 | 届く（実測、2.1.310）。`--bg` のセッションの環境は常駐のデーモン（`claude daemon run`）の環境である。デーモンは、claude の更新で自分を落としたあと、最初に呼ばれた `claude` の CLI から起き直す。whatnext の tmux の中のプロセスが起こしたデーモンでは、`--bg` のセッションの Bash に `WHATNEXT_ROLE=list`、`WHATNEXT_TMUX_SOCKET`、`WHATNEXT_PORT` が入っていた（#292） |
+| デーモンの環境変数 | 届く（実測、2.1.310）。`--bg` のセッションの環境は常駐のデーモン（`claude daemon run`）の環境である。デーモンは、claude の更新で自分を落としたあと、最初に呼ばれた `claude` の CLI から起き直す。whatnext の tmux の中のプロセスが起こしたデーモンでは、`--bg` のセッションの Bash に `WHATNEXT_ROLE=list`、`WHATNEXT_TMUX_SOCKET`、`WHATNEXT_PORT` が入っていた（#292）。デーモンは、それを起こしたプロセスの環境を持ち続け、すべての `--bg` のセッションに渡す（2.1.330 で 2026-11-22 に起きたデーモンの環境に、一覧のプロセスの `WHATNEXT_ROLE=list`、`WHATNEXT_DIGEST=1` なども入っていた。#363、#368） |
 | 利用者の `~/.claude/settings.json`、managed settings の `env` | 届く見込み（未確認） |
 
 - 外で起動した `--bg` のセッションに、あとから OTel を付ける手段はない。`claude respawn <id>` はフラグを取らず、保存済みの起動時の引数で起動し直す。止めてから `claude --bg --resume <sessionId> --settings '...'` とすると、別の ID のコピーが起動し、元のセッションも残る。
