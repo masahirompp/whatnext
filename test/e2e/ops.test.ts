@@ -1,5 +1,6 @@
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
 import {afterEach, describe, expect, it} from 'vitest';
 import {bg, Harness, sid, sleep, tty} from './harness.js';
 
@@ -19,6 +20,20 @@ const panel = (s: string, title: RegExp) => {
       );
 };
 
+/**
+ * `n` の欄(`New session in:`)の先頭から `want.length` 行が `want` になるまで待つ。`whole` なら欄の全体を比べる。
+ * 入力欄の行だけを待つと、候補の行がまだ前の形のことがある(ghq の候補は後から届く。入力欄は `zq█` なのに、絞り込む前の
+ * 候補が残った画面を読んで落ちた。#373)。待ち切れなければ、最後の画面で expect して差分を出す。
+ */
+async function waitDirs(want: string[], opts: {whole?: boolean; timeout?: number} = {}): Promise<void> {
+  const pick = (s: string) => {
+    const p = panel(s, /New session in:/);
+    return opts.whole ? p : p.slice(0, want.length);
+  };
+  const s = await h.waitFor(v => isDeepStrictEqual(pick(v), want), opts.timeout).catch(() => h.screen());
+  expect(pick(s)).toEqual(want);
+}
+
 describe('新しいセッションの起動', () => {
   it('8・43: 候補を絞り込んで選ぶと起動して attach し、離脱すると一覧に出る。Other... の Esc で候補に戻る', async () => {
     h = new Harness();
@@ -28,18 +43,14 @@ describe('新しいセッションの起動', () => {
     h.agents([bg('a', {cwd: app, name: 'alpha'})]);
     await h.start({cwd: app});
     await h.keys('n');
-    let s = await h.waitFor(/New session in:/);
-    expect(panel(s, /New session in:/)).toEqual([
-      'New session in: █',
-      '> app',
-      '  ghq-repo',
-      '  Other...',
-      'Type to filter · Enter start · Esc close',
-    ]);
+    // ghq の候補は後から届く
+    await waitDirs(
+      ['New session in: █', '> app', '  ghq-repo', '  Other...', 'Type to filter · Enter start · Esc close'],
+      {whole: true},
+    );
     // 絞り込み
     await h.type('gr');
-    s = await h.waitFor(/New session in: gr█/);
-    expect(panel(s, /New session in:/).slice(1, 3)).toEqual(['> ghq-repo', '  Other...']);
+    await waitDirs(['New session in: gr█', '> ghq-repo', '  Other...']);
     // Other... は打った文字を引き継ぐ。存在しないパスと相対パスは断る
     await h.keys('Down', 'Enter');
     await h.waitFor(/Directory: gr█/);
@@ -91,12 +102,10 @@ describe('新しいセッションの起動', () => {
     await h.keys('n');
     await h.waitFor(/New session in:/);
     await h.type('zq');
-    let s = await h.waitFor(/New session in: zq█/);
-    expect(panel(s, /New session in:/).slice(1, 3)).toEqual(['> zxq', '  Other...']);
+    await waitDirs(['New session in: zq█', '> zxq', '  Other...']);
     // ghq の結果(よりよく当たる zq)が届くと、zq は上に入るが、カーソルは zxq に残る
     writeFileSync(join(h.dir, 'ghq-go'), '');
-    s = await h.waitFor(/^ {2}zq$/m, 10000);
-    expect(panel(s, /New session in:/).slice(1, 4)).toEqual(['  zq', '> zxq', '  Other...']);
+    await waitDirs(['New session in: zq█', '  zq', '> zxq', '  Other...'], {timeout: 10000});
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to/);
     expect(h.calls().find(c => c.args[0] === '--bg')?.cwd).toBe(zxq);
@@ -109,16 +118,14 @@ describe('新しいセッションの起動', () => {
     writeFileSync(join(h.dir, 'ghq-hold'), '');
     await h.start({cwd: app});
     await h.keys('n');
-    let s = await h.waitFor(/New session in:/);
-    expect(panel(s, /New session in:/).slice(1, 3)).toEqual(['> app', '  Other...']);
+    await waitDirs(['New session in: █', '> app', '  Other...']);
     await h.keys('Down', 'Enter');
     await h.waitFor(/Directory: █/);
     // 偽の ghq は 0.1 秒ごとに ghq-go を見る。届くまで待つ
     writeFileSync(join(h.dir, 'ghq-go'), '');
     await sleep(1500);
     await h.keys('Escape');
-    s = await h.waitFor(/New session in: █/);
-    expect(panel(s, /New session in:/).slice(1, 4)).toEqual(['> app', '  ghq-repo', '  Other...']);
+    await waitDirs(['New session in: █', '> app', '  ghq-repo', '  Other...']);
   });
 
   it('8: 一覧の n では、候補の先頭がカーソルのあるセッションのリポジトリ', async () => {
@@ -129,16 +136,14 @@ describe('新しいセッションの起動', () => {
     await h.start({cwd: app});
     await h.select('libby');
     await h.keys('n');
-    const s = await h.waitFor(/New session in:/);
-    expect(panel(s, /New session in:/).slice(1, 3)).toEqual(['> lib', '  app']);
+    await waitDirs(['New session in: █', '> lib', '  app']);
     // --json を読めずにエラーを出している間は、見えない行のリポジトリを先頭にしない
     await h.keys('Escape');
     h.conf({agentsFail: true});
     await h.keys('r');
     await h.waitFor(/Could not read claude agents --json/);
     await h.keys('n');
-    const s2 = await h.waitFor(/New session in:/);
-    expect(panel(s2, /New session in:/)[1]).toBe('> app');
+    await waitDirs(['New session in: █', '> app']);
   });
 
   it('8: 起動の出力から id を読めないときは、出力を残してキーを待つ', async () => {
@@ -322,8 +327,7 @@ describe('attach している間のキー', () => {
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to l0000000/);
     await h.keys('C-q', 'C-n');
-    const s = await h.waitFor(/New session in:/);
-    expect(panel(s, /New session in:/)[1]).toBe('> lib');
+    await waitDirs(['New session in: █', '> lib']);
     await h.keys('Escape');
     await h.waitFor(s2 => !/New session in/.test(s2) && /^> libby/m.test(s2));
     await h.keys('Enter');
