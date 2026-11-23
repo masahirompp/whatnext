@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 画面の通しの偽の claude。状態は $FAKE_DIR/agents.json に持ち、呼ばれたコマンドを $FAKE_DIR/calls.log に書く。
 // 行に付けた `_fake` の項目で振る舞いを変える(stopFails、rm: 'unpushed' | 'uncommitted' | 'lock' | 'fail')。
+// fake.json の attachExitOnRm で、行が消えたときに attach を終える。rmDelay(ミリ秒)で、rm が行を消すまでを遅らせる。
 import {appendFileSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {randomBytes, randomUUID} from 'node:crypto';
 import {join} from 'node:path';
@@ -140,7 +141,11 @@ if (cmd === 'rm') {
       process.exit(1);
     }
   }
+  const delay = conf().rmDelay;
+  if (delay) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
   save(rows.filter(x => x.id !== id));
+  // attachExitOnRm: 行を消してから少し後に終える(その間に attach が終わる。whatnext が畳むより先に)
+  if (conf().attachExitOnRm) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
   process.stdout.write(`removed ${id}\n`);
   process.exit(0);
 }
@@ -155,6 +160,8 @@ if (cmd === 'attach') {
     process.exit(1);
   }
   process.stdout.write(`\x1b]2;fake ${id}\x07\x1b[2J\x1b[Hfake claude attached to ${id}\r\n❯ `);
+  // attachExitOnRm: 行が消えたら(claude rm のあと)attach を終える
+  if (c.attachExitOnRm) setInterval(() => load().some(x => x.id === id) || process.exit(0), 200);
   let input = '';
   process.stdin.setRawMode?.(true);
   process.stdin.on('data', b => {

@@ -267,6 +267,37 @@ describe('停止と削除', () => {
     await h.waitFor(s => !/alpha/.test(s));
   });
 
+  it('9: 前に入ったセッションを消している間に別のセッションに入っても、消し終わったときに一覧に戻されない', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha', state: 'stopped', pid: undefined, status: undefined}), bg('b', {name: 'beta'})]);
+    h.conf({attachExitOnRm: true, rmDelay: 3000});
+    await h.start();
+    await h.select('alpha');
+    await h.keys('Enter');
+    await h.waitFor(/fake claude attached to a0000000/);
+    await h.keys('C-q', 'C-l');
+    await h.waitFor(/^> alpha/m);
+    // 一覧に戻っても、alpha の claude の画面のセッションは裏で残っている
+    expect(h.sessions()).toContain('a0000000');
+    await h.keys('C-x');
+    await h.waitFor(/Press Ctrl\+X again/);
+    await h.keys('C-x');
+    await h.waitFor(/alpha +Deleting\.\.\./);
+    await h.keys('Down');
+    await h.waitFor(/^> beta/m);
+    await h.keys('Enter');
+    await h.waitFor(/fake claude attached to b0000000/);
+    // alpha の claude attach が終わり、セッションが畳まれるまで待つ
+    await h.until(
+      'alpha の画面のセッションが消える',
+      () => h.sessions().join(' '),
+      v => !v.split(' ').includes('a0000000'),
+      15000,
+    );
+    await sleep(1000);
+    expect(h.screen()).toMatch(/fake claude attached to b0000000/);
+  });
+
   it('51: 選んでいる行が外で消えてカーソルが移った直後の Ctrl+X は受け付けない', async () => {
     h = new Harness();
     h.agents([bg('a', {name: 'alpha'}), bg('b', {name: 'beta', state: 'working', status: 'busy'})]);

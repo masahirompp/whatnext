@@ -99,6 +99,13 @@ export function scripts(socket: string): Record<string, string> {
   };
 }
 
+/**
+ * セッション `session` の中で中身が終わったとき、そのセッションを映しているクライアントだけを一覧に戻す sh。
+ * `-c` なしの `switch-client` は、映しているクライアントがないとき、別のセッションを見ているクライアントを動かす(#374)。
+ */
+const returnToListSh = (T: string, session: string) =>
+  `for c in $(${T} list-clients -t '=${session}' -F '#{client_tty}' 2>/dev/null); do ${T} switch-client -c "$c" -t '=${LIST}' 2>/dev/null; done`;
+
 const callScript = (socket: string, name: string, args: string) =>
   `sh -c "$(tmux -L ${socket} show -gv ${name})" wn ${args} >/dev/null 2>&1; true`;
 
@@ -314,7 +321,7 @@ export class Tmux {
       `  printf '\\n[claude attach exited with code %s. Press any key to return to the list.]' "$rc"`,
       '  stty raw -echo 2>/dev/null; dd bs=1 count=1 >/dev/null 2>&1; stty sane 2>/dev/null',
       'fi',
-      `${T} switch-client -t '=${LIST}' 2>/dev/null`,
+      returnToListSh(T, id),
       'exit 0',
     ].join('\n');
     const r = await this.t([
@@ -386,7 +393,7 @@ export class Tmux {
   async newTrustSession(dir: string): Promise<string | undefined> {
     const name = `trust-${Math.random().toString(36).slice(2, 8)}`;
     const T = `tmux -L ${shq(this.socket)}`;
-    const cmd = `claude; ${T} switch-client -t '=${LIST}' 2>/dev/null; exit 0`;
+    const cmd = `claude; ${returnToListSh(T, name)}; exit 0`;
     const r = await this.t([
       'new-session',
       '-d',
