@@ -434,16 +434,21 @@ export class Harness {
    * 消したセッション `name` が画面から消えるまで待ち、`Deleted <name>.` の知らせが出たことを確かめる。
    * 知らせの文言だけは名前が残っていてよいとする。知らせは 5 秒出るので、画面全体から名前が消えるのを待つと、
    * 行が消えたあとも知らせが消えるまで待ってしまう。
+   * 一覧は rm が通ってから作業台を畳み、そのあとで知らせを出すので、その間に別の更新で行が消えた画面が先に描かれる
+   * ことがある。行が消えていても、知らせが出るまでは待ち続ける。
    */
   async waitDeleted(name: string, timeout = 8000): Promise<string> {
     const notice = `Deleted ${name}.`;
     let noticed = false;
-    const s = await this.waitFor(v => {
-      if (v.includes(notice)) noticed = true;
-      return !v.replaceAll(notice, '').includes(name);
-    }, timeout);
-    if (!noticed) throw new Error(`"${notice}" was not shown; screen was:\n${s}`);
-    return s;
+    try {
+      return await this.waitFor(v => {
+        if (v.includes(notice)) noticed = true;
+        return noticed && !v.replaceAll(notice, '').includes(name);
+      }, timeout);
+    } catch (e) {
+      if (noticed) throw e;
+      throw new Error(`"${notice}" was not shown; ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   /** 更新を押して終わるまで待つ。 */
