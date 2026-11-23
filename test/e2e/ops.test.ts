@@ -203,8 +203,8 @@ describe('停止と削除', () => {
     ]);
     await h.start();
     await h.keys('C-x');
-    await h.waitFor(/Press Ctrl\+X again within 2s to delete\./);
-    expect(h.screen()).toMatch(/alpha +Stopped/);
+    // 知らせが先に描かれ、行の段がまだ前のことがあるので、行まで待つ
+    await h.waitFor(s => /Press Ctrl\+X again within 2s to delete\./.test(s) && /alpha +Stopped/.test(s));
     await h.keys('C-x');
     // ロックで断られている間も Deleting... のまま待つ
     await h.waitFor(/alpha +Deleting\.\.\./);
@@ -237,8 +237,7 @@ describe('停止と削除', () => {
     await h.keys('C-x');
     await h.waitFor(/Press Ctrl\+X again/);
     await h.keys('C-x');
-    await h.waitFor(/The worktree has uncommitted changes/);
-    expect(h.screen()).toMatch(/beta +Stopped/);
+    await h.waitFor(s => /The worktree has uncommitted changes/.test(s) && /beta +Stopped/.test(s));
   });
 
   it('40: 止める操作が失敗すると、出力と2回目で削除できることを示す', async () => {
