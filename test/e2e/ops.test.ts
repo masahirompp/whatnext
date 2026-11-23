@@ -73,8 +73,8 @@ describe('新しいセッションの起動', () => {
     expect(bgCall?.args).not.toContain('--model');
     expect(bgCall?.cwd).toBe(other);
     await h.keys('C-q', 'C-l');
-    await h.waitFor(/── elsewhere/);
-    expect(h.screen()).toMatch(/^> \S+ +Question \(blocked\)/m);
+    // 見出しが先に描かれ、カーソルの行がまだのことがあるので、行まで待つ
+    await h.waitFor(s => /── elsewhere/.test(s) && /^> \S+ +Question \(blocked\)/m.test(s));
   });
 
   it('8: 空のまま Enter を押すと起動したディレクトリで起動する。ghq がなくても候補は出る。起動中は一覧に戻らない', async () => {
