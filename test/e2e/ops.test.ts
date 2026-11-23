@@ -270,7 +270,7 @@ describe('停止と削除', () => {
   it('9: 前に入ったセッションを消している間に別のセッションに入っても、消し終わったときに一覧に戻されない', async () => {
     h = new Harness();
     h.agents([bg('a', {name: 'alpha', state: 'stopped', pid: undefined, status: undefined}), bg('b', {name: 'beta'})]);
-    h.conf({attachExitOnRm: true, rmDelay: 3000});
+    h.conf({attachExitOnRm: true});
     await h.start();
     await h.select('alpha');
     await h.keys('Enter');
@@ -287,6 +287,10 @@ describe('停止と削除', () => {
     await h.waitFor(/^> beta/m);
     await h.keys('Enter');
     await h.waitFor(/fake claude attached to b0000000/);
+    // beta に入った時点で、alpha はまだ消えていない(偽の rm は rm-go を待っている)
+    expect(h.sessions()).toContain('a0000000');
+    expect(h.readAgents().map(r => r.id)).toContain('a0000000');
+    writeFileSync(join(h.dir, 'rm-go'), '');
     // alpha の claude attach が終わり、セッションが畳まれるまで待つ
     await h.until(
       'alpha の画面のセッションが消える',
