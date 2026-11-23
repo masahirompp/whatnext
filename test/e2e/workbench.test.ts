@@ -21,10 +21,15 @@ describe('作業台の画面', () => {
     ]);
     await h.start();
     await h.startWorkbench();
-    await h.waitFor(/No workbench for alpha yet\.\nEnter: open a shell in .*app/, 5000, 'wb');
-    expect(h.screen('wb')).toMatch(/workbench: alpha/);
+    // 案内の文とステータス行の名前は、一覧が別々に入れ、別々に描かれる(負荷が高いと順がずれる)ので、両方を待つ。
     // 案内のセッションには分割とウィンドウのキーを出さず、セッション名だけを出す
-    expect(h.lines('wb').at(-1)?.trimEnd()).toMatch(/workbench: alpha$/);
+    await h.waitFor(
+      s =>
+        /No workbench for alpha yet\.\nEnter: open a shell in .*app/.test(s) &&
+        /workbench: alpha$/.test(s.replace(/\n$/, '').split('\n').at(-1)?.trimEnd() ?? ''),
+      5000,
+      'wb',
+    );
     await h.select('beta');
     await h.waitFor(/No workbench for beta yet/, 5000, 'wb');
     await h.select('poke');

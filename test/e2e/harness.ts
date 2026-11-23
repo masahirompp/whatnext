@@ -301,7 +301,11 @@ export class Harness {
     );
   }
 
-  /** 外側の tmux のセッション `name` で `whatnext workbench` を動かし、その画面が内側の tmux のクライアントになるまで待つ。 */
+  /**
+   * 外側の tmux のセッション `name` で `whatnext workbench` を動かし、その画面が内側の tmux のクライアントになるまで待つ。
+   * 戻った時点では、作業台の画面(案内の文、ステータス行の名前など)はまだ描かれていないことがある。確かめるものは、
+   * 呼び出し側が waitFor で待つ(案内の文とステータス行は別々に描かれるので、片方が出ても、もう片方はまだのことがある)。
+   */
   async startWorkbench(name = 'wb', size = {cols: 80, rows: 20}): Promise<void> {
     this.open(name, `${this.envLine()} node ${q(CLI)} workbench`, size);
     const tty = this.tmux('display', '-p', '-t', `=${name}:`, '#{pane_tty}').trim();
