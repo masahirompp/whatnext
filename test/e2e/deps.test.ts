@@ -247,14 +247,14 @@ describe('待ち先', () => {
     await h.keys('C-x');
     await h.waitFor(/Also delete 1 session .*\(yank\)/);
     await h.keys('n');
-    await h.waitFor(s => !/xray/.test(s));
+    await h.waitDeleted('xray');
     expect(h.screen()).toMatch(/yank/);
     // 待ち先が対話セッションだけなら、聞かずに待ち元だけを消す
     await h.select('whisky');
     await h.keys('C-x');
     await h.waitFor(/Stopped whisky/);
     await h.keys('C-x');
-    await h.waitFor(s => !/whisky/.test(s));
+    await h.waitDeleted('whisky');
     expect(h.screen()).not.toMatch(/Also delete/);
   });
 
@@ -413,7 +413,7 @@ describe('起動された行', () => {
     // 起動元が止まって pid がなくなり、起動された行の祖先は付け替わった
     h.procs([[300, 1]]);
     await h.keys('C-x');
-    await h.waitFor(s => !/orchestrator/.test(s), 10000);
+    await h.waitDeleted('orchestrator', 10000);
     expect(h.screen()).not.toMatch(/Also delete/);
     await h.refresh();
     expect(h.screen()).toMatch(/^[> ] worker \(tty\)/m);

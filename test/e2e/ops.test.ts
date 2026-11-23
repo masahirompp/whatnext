@@ -203,7 +203,7 @@ describe('停止と削除', () => {
     await h.keys('C-x');
     // ロックで断られている間も Deleting... のまま待つ
     await h.waitFor(/alpha +Deleting\.\.\./);
-    await h.waitFor(s => !/alpha/.test(s), 15000);
+    await h.waitDeleted('alpha', 15000);
     expect(h.calls().filter(c => c.args[0] === 'rm').length).toBe(3);
   });
 
@@ -220,7 +220,7 @@ describe('停止と削除', () => {
     await h.keys('C-x');
     await h.waitFor(/Discard 1 unpushed commit and delete session a0000000\? \[y\/N\]/);
     await h.keys('y');
-    await h.waitFor(s => !/alpha/.test(s));
+    await h.waitDeleted('alpha');
     expect(h.calls().find(c => c.args.includes('--discard-unpushed'))?.args).toEqual([
       'rm',
       'a0000000',
@@ -246,7 +246,7 @@ describe('停止と削除', () => {
     // 知らせが出ている間は、2秒を過ぎても2回目を削除として受け付ける
     await sleep(3000);
     await h.keys('C-x');
-    await h.waitFor(s => !/alpha/.test(s), 10000);
+    await h.waitDeleted('alpha', 10000);
     expect(h.calls().filter(c => c.args[0] === 'stop').length).toBe(1);
     expect(h.calls().some(c => c.args[0] === 'rm')).toBe(true);
   });
@@ -264,7 +264,7 @@ describe('停止と削除', () => {
     await h.keys('Escape', 'C-x');
     await h.waitFor(/Press Ctrl\+X again/);
     await h.keys('C-q', 'C-x');
-    await h.waitFor(s => !/alpha/.test(s));
+    await h.waitDeleted('alpha');
   });
 
   it('51: 選んでいる行が外で消えてカーソルが移った直後の Ctrl+X は受け付けない', async () => {
@@ -309,7 +309,7 @@ describe('attach している間のキー', () => {
     await h.keys('C-q', 'C-x');
     await h.waitFor(/alpha +(Stopping\.\.\.|Stopped)/);
     await h.keys('C-q', 'C-x');
-    await h.waitFor(s => !/alpha/.test(s));
+    await h.waitDeleted('alpha');
   });
 
   it('54・55: ctrl+q ctrl+n で候補の先頭がいたセッションのリポジトリ、ctrl+q ctrl+f でその行の待ち先のメニュー', async () => {
