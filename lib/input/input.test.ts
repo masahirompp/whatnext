@@ -180,6 +180,30 @@ describe('フックと補う値', () => {
     expect(supplement(store.get('s'), undefined, undefined).lastText).toBeUndefined();
   });
 
+  it('指示でない prompt(タスクの通知)は丸ごと無視し、前の指示と値を残す(#361)', () => {
+    let t = 1000;
+    const store = new HookStore(() => t);
+    store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'run the tests in background'});
+    t = 2000;
+    store.receiveHook({session_id: 's', hook_event_name: 'Stop', last_assistant_message: 'Started.'});
+    const before = structuredClone(store.get('s'));
+    const seen: string[] = [];
+    store.onEvent((_sid, event) => seen.push(event));
+    t = 3000;
+    store.receiveHook({
+      session_id: 's',
+      hook_event_name: 'UserPromptSubmit',
+      prompt:
+        '<task-notification>\n<task-id>bq1x2y3z4</task-id>\n<tool-use-id>toolu_01AbCdEf</tool-use-id>\n<status>completed</status>\n</task-notification>',
+    });
+    expect(store.get('s')).toEqual(before);
+    expect(seen).toEqual([]);
+    expect(supplement(store.get('s'), undefined, undefined).prompt).toEqual({
+      text: 'run the tests in background',
+      at: 1000,
+    });
+  });
+
   it('失敗は文言を、なければ符号を出す', () => {
     const store = new HookStore(() => 1);
     store.receiveHook({session_id: 'a', hook_event_name: 'StopFailure', error: 'model_not_found'});

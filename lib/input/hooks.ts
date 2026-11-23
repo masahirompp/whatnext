@@ -1,6 +1,6 @@
 // 入力: whatnext が起動したセッションから受けるフックと OTel の値(メモリにだけ持つ)。
 
-import {leadLine, promptLine, toolTarget} from './text.js';
+import {instructionText, leadLine, toolTarget} from './text.js';
 import type {TranscriptFacts} from './transcript.js';
 
 export interface HookFacts {
@@ -43,7 +43,10 @@ export class HookStore {
     const f = this.bySid.get(sid) ?? {};
     switch (event) {
       case 'UserPromptSubmit': {
-        const text = typeof b.prompt === 'string' ? promptLine(b.prompt) : undefined;
+        // タスクの通知(`<task-notification>` で始まる本文)なども UserPromptSubmit で届く。
+        // 会話記録の側と同じく指示に数えず、前の指示の値を残す(#361)。
+        const text = typeof b.prompt === 'string' ? instructionText(b.prompt) : undefined;
+        if (typeof b.prompt === 'string' && text === undefined) return;
         f.prompt = text !== undefined ? {text, at} : undefined;
         f.stop = undefined;
         f.failure = undefined;
