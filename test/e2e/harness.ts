@@ -2,7 +2,7 @@ import {execFileSync} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {join, resolve} from 'node:path';
-import {makeTmpDir} from './tmpdir.js';
+import {makeTmpDir, tmpTag} from './tmpdir.js';
 import {until} from './until.js';
 
 // 画面の通しの口。外側の tmux のセッションを端末の代わりにし、偽の claude を PATH の前に置いて whatnext を動かす
@@ -104,8 +104,9 @@ export class Harness {
 
   constructor() {
     // mkdtemp は使わない。乱数の英字に絞り込みの入力(`zq`、`gr` など)が並ぶと、候補がフルパスで当たって残る(#382)
+    // 絞り込みの入力に数字を使うと、今度は名前の数字に当たる。テストでは数字を打たない(DESIGN.md「確かめ方」)
     this.dir = realpathSync(makeTmpDir('/tmp/wne-'));
-    const tag = this.dir.slice(-6).replace(/[^a-zA-Z0-9]/g, 'x');
+    const tag = tmpTag(this.dir);
     this.outer = `wno-${tag}`;
     this.socket = `wnx-${tag}`;
     for (const d of ['state', 'cfg/projects', 'home', 'bin']) mkdirSync(join(this.dir, d), {recursive: true});

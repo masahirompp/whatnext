@@ -2,7 +2,7 @@ import {mkdtempSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
-import {digitName, makeTmpDir, TMP_DIGITS} from '../e2e/tmpdir.js';
+import {digitName, makeTmpDir, TMP_DIGITS, tmpTag} from '../e2e/tmpdir.js';
 
 // 画面の通しの一時ディレクトリの名前(#382)。絞り込みの入力がフルパスの乱数の部分に当たらないことを、ここで確かめる
 
@@ -45,6 +45,12 @@ describe('画面の通しの一時ディレクトリ', () => {
     const second = makeTmpDir(p, seq(0.123456, 0.123456, 0.654321));
     expect(basename(first)).toBe('wne-123456');
     expect(basename(second)).toBe('wne-654321');
+  });
+
+  it('ソケット名に使うタグは、名前の数字の部分の全体になる', () => {
+    expect(tmpTag(digitName('/tmp/wne-', () => 0.123456))).toBe('123456');
+    expect(tmpTag('/private/tmp/wne-000042')).toBe('000042');
+    for (let i = 0; i < 100; i++) expect(tmpTag(digitName('/tmp/wne-'))).toMatch(new RegExp(`^\\d{${TMP_DIGITS}}$`));
   });
 
   it('空きが見つからなければ例外にする。EEXIST 以外の失敗は、作り直さずにそのまま出す', () => {
