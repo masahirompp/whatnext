@@ -384,7 +384,65 @@ describe('ダイジェスト', () => {
     });
   });
 
-  it('82: 動いている一覧のダイジェストの有無は、つなぐときの引数で変わらず、違っていても知らせない', async () => {
+  describe('88: ダイジェストが有効な一覧が動いているときの whatnext --no-digest', () => {
+    const REFUSED =
+      /whatnext: a whatnext with digests is already running\. Quit it first \(run whatnext, then press q\), then run whatnext --no-digest\.\n\[exit 1\]/;
+    const WIDE_SCREEN = {cols: 150, rows: 30};
+
+    it('つながずに、標準エラーに1行出して終了コード 1 で終わる。動いている一覧と、その画面はそのまま', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      await h.start({args: '', size: WIDE_SCREEN});
+      const before = h.clients();
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(REFUSED, 10000, 'second');
+      // 前の画面は離されず、版の違いの知らせも置かれない(サーバに何も書かずに終わる)
+      expect(h.clients()).toEqual(before);
+      expect(h.innerQuiet('show', '-gv', '@wn_newer').trim()).toBe('');
+      expect(await h.refresh()).toMatch(/alpha/);
+      // 引数なしなら、今までどおりつながる
+      h.open('third', `${h.envLine()} node ${CLI}`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 10000, 'third');
+    });
+
+    it('--no-digest の一覧には、今までどおりつながる', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      await h.start({args: '--no-digest', size: WIDE_SCREEN});
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 10000, 'second');
+      expect(h.screen('second')).not.toMatch(/\[exit \d+\]/);
+    });
+
+    it('0.24 の一覧(--digest のときだけ、サーバ全体のオプション @wn_digest に 1 を置く)は、その値で判定する', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      await h.start({args: '--no-digest', size: WIDE_SCREEN});
+      // 0.24 の一覧に見せる: 一覧のセッションの値を外す
+      h.inner('set', '-u', '-t', '=list:', '@wn_digest');
+      // 0.24 の `whatnext --digest` の一覧: 断る
+      h.inner('set', '-g', '@wn_digest', '1');
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(REFUSED, 10000, 'second');
+      // 0.24 の引数なしの一覧(ダイジェストなし): つなぐ
+      h.inner('set', '-gu', '@wn_digest');
+      h.open('third', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 10000, 'third');
+    });
+
+    it('一覧のセッションの値が、サーバ全体に残った 0.24 の値より先に読まれる', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      await h.start({args: '--no-digest', size: WIDE_SCREEN});
+      // 0.24 の --digest の一覧が異常終了し、作業台のためにサーバが残ったあとの値
+      h.inner('set', '-g', '@wn_digest', '1');
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 10000, 'second');
+      expect(h.screen('second')).not.toMatch(/\[exit \d+\]/);
+    });
+  });
+
+  it('82: --no-digest の一覧に引数なしでつないでも、一覧は今のまま動き、何も示されない', async () => {
     h = new Harness();
     const app = h.repo('app');
     const demo = h.repo('demo');

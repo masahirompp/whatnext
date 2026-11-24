@@ -13,7 +13,7 @@ import {Locations, Prs} from '../input/where.js';
 import {App} from '../ops/app.js';
 import {startGuide} from '../ops/guide-session.js';
 import {ATTACH_KEYS, ATTACH_KEYS_HELP} from '../ops/keys.js';
-import {DIGEST_LIVE} from '../ops/names.js';
+import {DIGEST_LIVE, DIGEST_ON} from '../ops/names.js';
 import {StateFile, statePath} from '../state/state.js';
 import {type Env, modDir, paneCommand, tmuxEnv, workbenchCommand} from './env.js';
 
@@ -73,6 +73,9 @@ export async function startList(env: Env): Promise<number> {
   );
   if (r.code !== 0) log(`sourceConfig failed: ${r.stderr}`);
   await tmux.t(['set', '-w', '-t', `=${LIST}:`, 'remain-on-exit', 'off']);
+  // 起動の口が「この一覧はダイジェストが有効か」を読む口(`whatnext --no-digest` を断るのに使う)。有効でも切っていても置く。
+  // 一覧のセッションのオプションなので、一覧のプロセスがどう終わっても古い値は残らない
+  await tmux.t(['set', '-t', `=${LIST}:`, DIGEST_ON, env.digest ? '1' : '0']);
   // mod が「ダイジェストを受けているか」を確かめる口(受け口を開けて mod を付けるときだけ置く)
   if (settings && pluginDir) {
     const sock = (await tmux.t(['display-message', '-p', '-t', `=${LIST}:`, '#{socket_path}'])).stdout.trim();

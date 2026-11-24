@@ -6,7 +6,7 @@ import {type Env, myTty, paneCommand, tmuxEnv} from './env.js';
 
 // `whatnext` の起動(DESIGN.md「一覧と作業台の仕組み」)。専用の tmux サーバの `list` につなぐ。なければ作る。
 
-import {MAIN_TTY, NEWER, WB_TTY} from '../ops/names.js';
+import {DIGEST_ON, MAIN_TTY, NEWER, WB_TTY} from '../ops/names.js';
 
 const tmuxRun: typeof run = (cmd, args, opts) => run(cmd, args, {...opts, env: tmuxEnv(opts?.env ?? process.env)});
 
@@ -16,14 +16,34 @@ export async function tmuxVersion(): Promise<string | undefined> {
   return r.code === 0 ? r.stdout.trim() : undefined;
 }
 
+/**
+ * 動いている一覧が、ダイジェストを有効にして動いているか。一覧が、一覧のセッションのオプション `@wn_digest` に `1` か `0` を置く。
+ * 値がないのは 0.24 までの一覧で、0.24 は `--digest` のときだけサーバ全体のオプションに `1` を置いたので、そちらを読む
+ * (0.23 までの一覧にはどちらもなく、ダイジェストもない)。
+ */
+async function listHasDigests(tmux: Tmux): Promise<boolean> {
+  const r = await tmux.t(['show-options', '-t', `=${LIST}:`, '-qv', DIGEST_ON]);
+  const own = r.code === 0 ? r.stdout.trim() : '';
+  if (own) return own === '1';
+  return (await tmux.option(DIGEST_ON)) === '1';
+}
+
 export async function launch(env: Env): Promise<number> {
   const tmux = new Tmux(env.socket, tmuxRun);
   const tty = myTty();
   if (await tmux.hasSession(LIST)) {
+    // 明示した --no-digest が効かない一覧には、つながずに断る(黙ってつなぐと、切ったつもりのセッションが Haiku を呼ぶ)。
+    // 何も変えずに終わるので、サーバのオプションに触れる前に確かめる
+    if (!env.digest && (await listHasDigests(tmux))) {
+      process.stderr.write(
+        'whatnext: a whatnext with digests is already running. Quit it first (run whatnext, then press q), then run whatnext --no-digest.\n',
+      );
+      return 1;
+    }
     const running = await tmux.option('@wn_version');
     if (running && running !== env.version) await tmux.setOption(NEWER, env.version);
     else await tmux.unsetOption(NEWER);
-    // 動いている一覧のダイジェストの有無は変えず、違っていても知らせない(PRODUCT.md「ダイジェスト」)
+    // 逆向き(--no-digest の一覧に引数なしでつなぐ)は、何も示さずにつなぐ(PRODUCT.md「ダイジェスト」)
   } else {
     if ((await probe(env.port)) === 'whatnext') {
       process.stderr.write(

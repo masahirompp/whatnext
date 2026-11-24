@@ -37,7 +37,7 @@ npx @masahirompp/whatnext --no-digest
 
 With `--no-digest`, sessions get no mod, make no Haiku call, and the list shows no goal lines and no right-hand pane. (Up to 0.24 digests were opt-in with `--digest`. That option is gone: drop it from your aliases.)
 
-The Haiku call is made only while a whatnext with digests on is taking them: after you quit whatnext or start it again with `--no-digest`, the sessions that already have the mod make no Haiku call and send nothing, and they start again from the next turn once whatnext runs without `--no-digest` again. A list that is already running keeps its setting whichever way you connect to it; quit it and start it again to change it. If the port is used by another program, whatnext says so in the right-hand pane. Digests reach whatnext only from sessions it started, are kept in memory only, and need Claude Code's mod support (an early-access API that may change between releases).
+The Haiku call is made only while a whatnext with digests on is taking them: after you quit whatnext or start it again with `--no-digest`, the sessions that already have the mod make no Haiku call and send nothing, and they start again from the next turn once whatnext runs without `--no-digest` again. A list that is already running keeps its setting; quit it and start it again to change it. If a list with digests is running, `whatnext --no-digest` does not connect to it and tells you to quit it first. If the port is used by another program, whatnext says so in the right-hand pane. Digests reach whatnext only from sessions it started, are kept in memory only, and need Claude Code's mod support (an early-access API that may change between releases).
 
 Keys in the list:
 
