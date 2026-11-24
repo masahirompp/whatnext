@@ -1,3 +1,4 @@
+import {execFileSync} from 'node:child_process';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {createServer, type Server} from 'node:http';
 import type {AddressInfo} from 'node:net';
@@ -115,13 +116,13 @@ function talk(x: Harness): void {
 }
 
 describe('ダイジェスト', () => {
-  it('80・81: --digest で起動すると、届いたダイジェストの Goal が各行の一言の上に、カーソルの行のダイジェストと会話リンクが右の欄に出る', async () => {
+  it('80・81: 引数なしで起動すると、届いたダイジェストの Goal が各行の一言の上に、カーソルの行のダイジェストと会話リンクが右の欄に出る', async () => {
     h = new Harness();
     const app = h.repo('app');
     const demo = h.repo('demo');
     h.agents(rows(app, demo));
     talk(h);
-    await h.start({args: '--digest', size: {cols: 150, rows: 30}});
+    await h.start({args: '', size: {cols: 150, rows: 30}});
     await sendAll(h.port);
     let s = await h.refresh();
     s = await h.waitFor(/◎ README/);
@@ -155,7 +156,7 @@ describe('ダイジェスト', () => {
     const demo = h.repo('demo');
     h.agents(rows(app, demo));
     talk(h);
-    await h.start({args: '--digest', size: {cols: 110, rows: 30}});
+    await h.start({args: '', size: {cols: 110, rows: 30}});
     await sendAll(h.port);
     await h.refresh();
     const s = await h.waitFor(/◎ README/);
@@ -164,22 +165,22 @@ describe('ダイジェスト', () => {
     expect(s).toMatch(/◎ ログイン画面の二重送信を直す/);
   });
 
-  it('82: --digest なしでは、ダイジェストが届いても今までどおり', async () => {
+  it('82: --no-digest では、ダイジェストが届いても Goal の行も右の欄も出ない', async () => {
     h = new Harness();
     const app = h.repo('app');
     const demo = h.repo('demo');
     h.agents(rows(app, demo));
     talk(h);
-    await h.start({size: {cols: 150, rows: 30}});
+    await h.start({args: '--no-digest', size: {cols: 150, rows: 30}});
     await sendAll(h.port);
     const s = await h.refresh();
     expect(s).not.toMatch(/◎|│ Goal|o links/);
   });
 
-  it('83: n で起動するセッションに --digest のときだけ mod が付く', async () => {
+  it('83: 引数なしで起動した一覧の n で起動するセッションに mod が付く', async () => {
     h = new Harness();
     const app = h.repo('app');
-    await h.start({cwd: app, args: '--digest'});
+    await h.start({cwd: app, args: ''});
     await h.keys('n', 'Enter');
     await h.waitFor(/fake claude attached/, 10000);
     const call = h.calls().find(c => c.args[0] === '--bg');
@@ -194,10 +195,10 @@ describe('ダイジェスト', () => {
     expect(live(settings.env.WHATNEXT_DIGEST_SOCKET)).toBe(String(h.port));
   });
 
-  it('83: --digest なしの n には mod が付かない', async () => {
+  it('83: --no-digest の n には mod が付かない', async () => {
     h = new Harness();
     const app = h.repo('app');
-    await h.start({cwd: app});
+    await h.start({cwd: app, args: '--no-digest'});
     await h.keys('n', 'Enter');
     await h.waitFor(/fake claude attached/, 10000);
     const call = h.calls().find(c => c.args[0] === '--bg');
@@ -210,7 +211,7 @@ describe('ダイジェスト', () => {
     it(`82: 作業台でコマンドが動いている間に一覧が ${signal} で終わり、サーバが残っても、mod が確かめる口は残らない`, async () => {
       h = new Harness();
       h.agents([bg('a', {name: 'alpha'})]);
-      await h.start({args: '--digest'});
+      await h.start({args: ''});
       await h.keys('w');
       await h.waitForSession('sh-a0000000');
       h.inner('send-keys', '-t', '=sh-a0000000:', 'sleep 1007', 'Enter');
@@ -229,7 +230,7 @@ describe('ダイジェスト', () => {
     const app = h.repo('app');
     const demo = h.repo('demo');
     h.agents(rows(app, demo));
-    await h.start({args: '--digest', size: {cols: 150, rows: 30}});
+    await h.start({args: '', size: {cols: 150, rows: 30}});
     await sendAll(h.port);
     await h.refresh();
     await h.select('fix-login');
@@ -257,7 +258,7 @@ describe('ダイジェスト', () => {
     async function openMenuOn412(): Promise<void> {
       const app = h.repo('app');
       h.agents([bg('fixlogin', {name: 'fix-login', cwd: app}), bg('other', {name: 'other', cwd: app})]);
-      await h.start({args: '--digest', size: {cols: 150, rows: 30}, env: {WHATNEXT_REFRESH_MS: String(REFRESH_MS)}});
+      await h.start({args: '', size: {cols: 150, rows: 30}, env: {WHATNEXT_REFRESH_MS: String(REFRESH_MS)}});
       await post(h.port, links([L58, L412]));
       await h.refresh();
       await h.select('fix-login');
@@ -313,7 +314,7 @@ describe('ダイジェスト', () => {
     const app = h.repo('app');
     const demo = h.repo('demo');
     h.agents(rows(app, demo));
-    await h.start({args: '--digest', size: {cols: 150, rows: 30}});
+    await h.start({args: '', size: {cols: 150, rows: 30}});
     await post(h.port, digest('fixlogin', {goal: 'evil\x1b[2Jgoal\nx', progress: 'n', next: 'x'}));
     let s = await h.refresh();
     expect(s).toMatch(/◎ evil\[2Jgoal x/);
@@ -330,7 +331,7 @@ describe('ダイジェスト', () => {
     const app = h.repo('app');
     const demo = h.repo('demo');
     h.agents(rows(app, demo));
-    await h.start({args: '--digest', size: {cols: 150, rows: 30}, env: {TERM: 'xterm-256color'}});
+    await h.start({args: '', size: {cols: 150, rows: 30}, env: {TERM: 'xterm-256color'}});
     await sendAll(h.port);
     await h.refresh();
     await h.select('fix-login');
@@ -354,7 +355,7 @@ describe('ダイジェスト', () => {
       occupant = undefined;
     });
 
-    it('--digest では mod を付けず、右の欄に、ダイジェストが届かない理由を出す', async () => {
+    it('引数なしで起動すると mod を付けず、右の欄に、ダイジェストが届かない理由を出す', async () => {
       h = new Harness();
       const srv = createServer((_req, res) => {
         res.writeHead(404);
@@ -366,7 +367,7 @@ describe('ダイジェスト', () => {
       h.port = (srv.address() as AddressInfo).port;
       const app = h.repo('app');
       h.agents([bg('alpha', {name: 'alpha', cwd: app})]);
-      await h.start({cwd: app, args: '--digest', size: {cols: 150, rows: 30}});
+      await h.start({cwd: app, args: '', size: {cols: 150, rows: 30}});
       await h.keys('n', 'Enter');
       await h.waitFor(/fake claude attached/, 10000);
       const call = h.calls().find(c => c.args[0] === '--bg');
@@ -384,17 +385,164 @@ describe('ダイジェスト', () => {
     });
   });
 
-  it('86: --digest なしで動いている一覧に whatnext --digest でつなぐと、そのことが示される', async () => {
+  describe('88: ダイジェストが有効な一覧が動いているときの whatnext --no-digest', () => {
+    const REFUSED =
+      /whatnext: a whatnext with digests is already running\. Quit it first \(run whatnext without --no-digest, then press q\), then run whatnext --no-digest\.\n\[exit 1\]/;
+    const WIDE_SCREEN = {cols: 150, rows: 30};
+
+    it('つながずに、標準エラーに1行出して終了コード 1 で終わる。動いている一覧と、その画面はそのまま', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      await h.start({args: '', size: WIDE_SCREEN});
+      const before = h.clients();
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(REFUSED, 10000, 'second');
+      // 前の画面は離されず、版の違いの知らせも置かれない(サーバに何も書かずに終わる)
+      expect(h.clients()).toEqual(before);
+      expect(h.innerQuiet('show', '-gv', '@wn_newer').trim()).toBe('');
+      expect(await h.refresh()).toMatch(/alpha/);
+      // 引数なしなら、今までどおりつながる
+      h.open('third', `${h.envLine()} node ${CLI}`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 10000, 'third');
+    });
+
+    it('--no-digest の一覧には、今までどおりつながる', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      await h.start({args: '--no-digest', size: WIDE_SCREEN});
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 10000, 'second');
+      expect(h.screen('second')).not.toMatch(/\[exit \d+\]/);
+    });
+
+    it('0.24 の一覧(--digest のときだけ、サーバ全体のオプション @wn_digest に 1 を置く)は、その値で判定する', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      await h.start({args: '--no-digest', size: WIDE_SCREEN});
+      // 0.24 の一覧に見せる: 一覧のセッションの値を外す
+      h.inner('set', '-u', '-t', '=list:', '@wn_digest');
+      // 0.24 の `whatnext --digest` の一覧: 断る
+      h.inner('set', '-g', '@wn_digest', '1');
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(REFUSED, 10000, 'second');
+      // 0.24 の引数なしの一覧(ダイジェストなし): つなぐ
+      h.inner('set', '-gu', '@wn_digest');
+      h.open('third', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 10000, 'third');
+    });
+
+    it('一覧のセッションの値が、サーバ全体に残った 0.24 の値より先に読まれる', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      await h.start({args: '--no-digest', size: WIDE_SCREEN});
+      // 0.24 の --digest の一覧が異常終了し、作業台のためにサーバが残ったあとの値
+      h.inner('set', '-g', '@wn_digest', '1');
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 10000, 'second');
+      expect(h.screen('second')).not.toMatch(/\[exit \d+\]/);
+    });
+
+    // 一覧の起動を遅らせて、起動の直後(セッション `list` はあるが、一覧がまだ何も置いていない間)を広げる。PATH の前に tmux の
+    // 包みを置き、一覧が起動時に流す `source-file` だけを待たせる
+    const slowListStart = (hh: Harness) => {
+      const real = execFileSync('which', ['tmux'], {encoding: 'utf8'}).trim();
+      const body = `#!/bin/bash\nfor a in "$@"; do if [ "$a" = source-file ]; then sleep 5; fi; done\nexec '${real}' "$@"\n`;
+      writeFileSync(join(hh.dir, 'bin', 'tmux'), body, {mode: 0o755});
+    };
+
+    it('起動した直後の一覧にも断る(値は、セッションを作る呼び出しの中で置く)', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      slowListStart(h);
+      await h.start({args: '', size: WIDE_SCREEN, wait: false});
+      await h.waitForSession('list');
+      expect(h.inner('show-options', '-t', '=list:', '-qv', '@wn_digest').trim()).toBe('1');
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(REFUSED, 4000, 'second');
+    });
+
+    it('サーバ全体に 0.24 の値が残っていても、起動した直後の --no-digest の一覧にはつながり、古い値は外れる', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      slowListStart(h);
+      // 0.24 の --digest の一覧が異常終了し、作業台のためにサーバが残った形
+      h.inner('-f', '/dev/null', 'new-session', '-d', '-s', 'keep', 'sleep 600');
+      h.inner('set-environment', '-g', 'FAKE_DIR', h.dir);
+      h.inner('set', '-g', '@wn_digest', '1');
+      await h.start({args: '--no-digest', size: WIDE_SCREEN, wait: false});
+      await h.waitForSession('list');
+      expect(h.inner('show-options', '-t', '=list:', '-qv', '@wn_digest').trim()).toBe('0');
+      expect(h.innerQuiet('show', '-gqv', '@wn_digest').trim()).toBe('');
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 20000, 'second');
+      expect(h.screen('second')).not.toMatch(/\[exit \d+\]/);
+    });
+  });
+
+  it('82: --no-digest の一覧に引数なしでつないでも、一覧は今のまま動き、何も示されない', async () => {
+    h = new Harness();
+    const app = h.repo('app');
+    const demo = h.repo('demo');
+    h.agents(rows(app, demo));
+    talk(h);
+    await h.start({args: '--no-digest', size: {cols: 150, rows: 30}});
+    await sendAll(h.port);
+    // --no-digest の一覧に、引数なしでつなぐ
+    h.open('second', `${h.envLine()} node ${CLI}`, {cols: 150, rows: 30});
+    await h.waitFor(/fix-login/, 10000, 'second');
+    // 前の画面(main)は離されるので、つないだ画面のほうで更新する
+    await h.keysTo('second', 'r');
+    const s = await h.waitFor(/Refreshed\./, 8000, 'second');
+    expect(s).toMatch(/fix-login/);
+    expect(s).not.toMatch(/◎|│ Goal|o links|digest/i);
+  });
+
+  it('0.24 の whatnext --digest が置いた @wn_digest_wanted を、つなぐときに外す(0.24 の一覧に、消した --digest を打てという知らせを残さない)', async () => {
     h = new Harness();
     h.agents([bg('a', {name: 'alpha'})]);
-    await h.start();
-    h.open('second', `${h.envLine()} node ${CLI} --digest`);
-    const s = await h.waitFor(
-      /whatnext is running without --digest\. Quit it, then run "whatnext --digest" to see digests\./,
-      10000,
-      'second',
+    await h.start({args: '--no-digest'});
+    // 0.24 の `whatnext --digest` が、--digest なしの 0.24 の一覧につないだあとの状態(0.24 の一覧は、これがある間知らせる)
+    h.inner('set', '-g', '@wn_digest_wanted', '1');
+    expect(h.inner('show', '-gv', '@wn_digest_wanted').trim()).toBe('1');
+    h.open('second', `${h.envLine()} node ${CLI}`);
+    await h.waitFor(/alpha/, 10000, 'second');
+    await h.until(
+      '@wn_digest_wanted to be removed',
+      () => h.innerQuiet('show', '-gv', '@wn_digest_wanted').trim(),
+      v => v === '',
     );
-    expect(s).toMatch(/alpha/);
+  });
+
+  it('42: --digest は知らないオプションとして終了コード 2 で終わり、--help には --no-digest だけが出る', async () => {
+    h = new Harness();
+    h.port = 15998;
+    h.open('a', `${h.envLine()} node ${CLI} --digest`);
+    await h.waitFor(/whatnext: unknown option --digest\nUsage: whatnext[\s\S]*\[exit 2\]/, 8000, 'a');
+    h.open('b', `${h.envLine()} node ${CLI} --help`);
+    const s = await h.waitFor(/Usage: whatnext[\s\S]*\[exit 0\]/, 8000, 'b');
+    expect(s).toMatch(/whatnext --no-digest/);
+    expect(s.replaceAll('--no-digest', '')).not.toMatch(/--digest/);
+  });
+
+  it('82: 引き継いだ WHATNEXT_DIGEST では、切れも入りもしない', async () => {
+    h = new Harness();
+    const app = h.repo('app');
+    const demo = h.repo('demo');
+    h.agents(rows(app, demo));
+    talk(h);
+    // 切る値を引き継いでいても、引数なしならダイジェストは有効
+    await h.start({args: '', env: {WHATNEXT_DIGEST: '0'}, size: {cols: 150, rows: 30}});
+    await sendAll(h.port);
+    await h.refresh();
+    expect(await h.waitFor(/│ Goal/)).toMatch(/◎ ログイン画面の二重送信を直す/);
+    await h.keys('q');
+    await h.waitFor(/\[exit 0\]/, 10000);
+    // 入れる値を引き継いでいても、--no-digest なら切れる
+    await h.start({args: '--no-digest', env: {WHATNEXT_DIGEST: '1'}, size: {cols: 150, rows: 30}});
+    await sendAll(h.port);
+    const s = await h.refresh();
+    expect(s).toMatch(/fix-login/);
+    expect(s).not.toMatch(/◎|│ Goal|o links/);
   });
 });
 
@@ -409,7 +557,7 @@ describe('81: 右の欄を出していても、一覧の下の確認の問い・
       bg('a', {name: WIDE_NAME, cwd: app, state: 'stopped', pid: undefined, status: undefined}),
       bg('b', {name: 'fix-login', cwd: app}),
     ]);
-    await h.start({args: '--digest', size: WIDE});
+    await h.start({args: '', size: WIDE});
     await h.select(WIDE_NAME);
     await h.keys('w');
     await h.waitForSession('sh-a0000000');
@@ -432,7 +580,7 @@ describe('81: 右の欄を出していても、一覧の下の確認の問い・
     h = new Harness();
     const app = h.repo('app');
     h.agents([tty('t', {name: WIDE_NAME, cwd: app}), bg('b', {name: 'fix-login', cwd: app})]);
-    await h.start({args: '--digest', size: WIDE});
+    await h.start({args: '', size: WIDE});
     await h.select(WIDE_NAME);
     await h.keys('t');
     const s = await h.waitFor(/is an interactive session/);
@@ -444,7 +592,7 @@ describe('81: 右の欄を出していても、一覧の下の確認の問い・
     h = new Harness();
     const app = h.repo('app');
     h.agents([bg('b', {name: 'fix-login', cwd: app})]);
-    await h.start({args: '--digest', size: WIDE, cwd: app});
+    await h.start({args: '', size: WIDE, cwd: app});
     await h.keys('n');
     await h.waitFor(/New session in:/);
     await h.type('zzzz');
@@ -461,7 +609,7 @@ describe('81: 右の欄を出していても、一覧の下の確認の問い・
     h = new Harness();
     const app = h.repo('app');
     h.agents([bg('a', {name: WIDE_NAME, cwd: app}), bg('b', {name: 'fix-login', cwd: app})]);
-    await h.start({args: '--digest', size: WIDE});
+    await h.start({args: '', size: WIDE});
     await h.select(WIDE_NAME);
     await h.keys('e');
     await h.waitFor(/Note for /);

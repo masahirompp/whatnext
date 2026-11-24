@@ -11,7 +11,7 @@ import {until} from './until.js';
 export const REPO = resolve(import.meta.dirname, '..', '..');
 export const CLI = join(REPO, 'dist', 'src', 'cli.js');
 const FAKE = join(REPO, 'test', 'e2e', 'fake');
-/** `whatnext --digest` の一覧と、その `n` で起動したセッションが引き継ぐ変数(`Harness.envLine`)。 */
+/** 一覧と、その `n` で起動したセッションが引き継ぐダイジェストの変数(`Harness.envLine`)。 */
 export const UNSET_DIGEST = [
   'WHATNEXT_DIGEST',
   'WHATNEXT_DIGEST_PORT',
@@ -222,9 +222,10 @@ export class Harness {
   }
 
   /**
-   * whatnext を起動するコマンドの環境。`WHATNEXT_DIGEST*` は外す。`whatnext --digest` の `n` で起動したセッション
-   * (そこで動く AI)から流すと、シェルに `WHATNEXT_DIGEST=1` が入っていて、`--digest` なしのはずの一覧が `--digest`
-   * で動いた(18件が落ちた)。
+   * whatnext を起動するコマンドの環境。`WHATNEXT_DIGEST*` は外す。0.24 までは、`whatnext --digest` の `n` で起動した
+   * セッション(そこで動く AI)から流すと、シェルに `WHATNEXT_DIGEST=1` が入っていて、`--digest` なしのはずの一覧が
+   * `--digest` で動いた(18件が落ちた)。今の起動の口は引数だけで決め、一覧の役には値をいつも明示して渡すので、
+   * 引き継いだ値は効かない。外すのは、テストの環境を引き継いだ値に頼らせないため。
    */
   envLine(extra: Record<string, string> = {}): string {
     const vars: Record<string, string> = {
@@ -298,6 +299,10 @@ export class Harness {
     }
   }
 
+  /**
+   * 一覧を開く。`args` を渡さなければ `--no-digest` で開く(ダイジェストに関係しないテストの画面に、右の欄や Goal の行を
+   * 出さないため)。既定(ダイジェストが有効)で開くテストは `args: ''` を渡す。
+   */
   async start(
     opts: {
       size?: {cols: number; rows: number};
@@ -308,7 +313,7 @@ export class Harness {
     } = {},
   ): Promise<void> {
     if (!this.port) this.port = await freePort();
-    this.open('main', `${this.envLine(opts.env)} node ${q(CLI)} ${opts.args ?? ''}`, opts.size, opts.cwd);
+    this.open('main', `${this.envLine(opts.env)} node ${q(CLI)} ${opts.args ?? '--no-digest'}`, opts.size, opts.cwd);
     if (opts.wait !== false) await this.waitFor(s => /SESSION|No sessions|Could not read/.test(s), 15000);
   }
 

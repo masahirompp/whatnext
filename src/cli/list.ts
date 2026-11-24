@@ -39,6 +39,12 @@ export async function startList(env: Env): Promise<number> {
     ? join(process.env.CLAUDE_CONFIG_DIR, '.claude.json')
     : join(homedir(), '.claude.json');
 
+  // 起動の口が「この一覧はダイジェストが有効か」を読む口(`whatnext --no-digest` を断るのに使う)。有効でも切っていても置く。
+  // 起動の口がセッションを作る呼び出しの中で同じ値を置いている(`launch.ts`)。ここでは、この一覧が動いている値で、
+  // ほかの処理(受け口、サーバの設定)より先に置き直す。一覧のセッションのオプションなので、一覧のプロセスがどう終わっても
+  // 古い値は残らない
+  await tmux.t(['set', '-t', `=${LIST}:`, DIGEST_ON, env.digest ? '1' : '0']);
+
   const hooks = new DigestHookStore(env.digest);
   let settings: string | undefined;
   let pluginDir: string | undefined;
@@ -51,7 +57,7 @@ export async function startList(env: Env): Promise<number> {
       if (env.digest) pluginDir = modDir();
     }
   }
-  // --digest で受け口を開けなかったときは、右の欄にその理由を出す(シナリオ 41 の「エラーを示さない」の、--digest のときだけの例外)
+  // ダイジェストが有効なのに受け口を開けなかったときは、右の欄にその理由を出す(シナリオ 41 の「エラーを示さない」の例外。--no-digest では出さない)
   const digestOff = env.digest && !settings ? digestOffText(occupant, env.port) : undefined;
   log(
     `start ${env.version} port=${env.port} occupant=${occupant} receiver=${settings ? 'open' : 'none'} digest=${env.digest}`,
@@ -73,8 +79,6 @@ export async function startList(env: Env): Promise<number> {
   );
   if (r.code !== 0) log(`sourceConfig failed: ${r.stderr}`);
   await tmux.t(['set', '-w', '-t', `=${LIST}:`, 'remain-on-exit', 'off']);
-  if (env.digest) await tmux.setOption(DIGEST_ON, '1');
-  else await tmux.unsetOption(DIGEST_ON);
   // mod が「ダイジェストを受けているか」を確かめる口(受け口を開けて mod を付けるときだけ置く)
   if (settings && pluginDir) {
     const sock = (await tmux.t(['display-message', '-p', '-t', `=${LIST}:`, '#{socket_path}'])).stdout.trim();
@@ -175,7 +179,7 @@ export function findTmux(path = process.env.PATH ?? ''): string {
   return 'tmux';
 }
 
-/** 受け口を開けなかった理由の文言(右の欄。`--digest` のときだけ)。 */
+/** 受け口を開けなかった理由の文言(右の欄。ダイジェストが有効なときだけ)。 */
 export function digestOffText(occupant: 'free' | 'whatnext' | 'other', port: number): string {
   if (occupant === 'other') return `Digests are off: port ${port} is used by another program.`;
   if (occupant === 'whatnext') return `Digests are off: port ${port} is used by another whatnext.`;

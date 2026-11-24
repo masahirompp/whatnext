@@ -81,7 +81,7 @@ export function parseDigestBody(body: unknown, now: number): {sid: string; recei
 }
 
 /**
- * フックの値に加えて、ダイジェストと会話リンクをセッションごとにメモリに持つ。受けるのは、`--digest` で起動したときだけ。
+ * フックの値に加えて、ダイジェストと会話リンクをセッションごとにメモリに持つ。受けるのは、ダイジェストが有効なときだけ。
  * 受けないときは、mod の本文を捨てる(lib にも渡さない)。
  */
 export class DigestHookStore extends HookStore {

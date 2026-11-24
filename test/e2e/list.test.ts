@@ -198,6 +198,39 @@ describe('一覧と並び', () => {
     expect(h.lines()[0]).toMatch(/SESSION/);
   });
 
+  it('89: キーの説明は、端末の幅に収まらないときだけ区切りで折り返し、q quit まで見える', async () => {
+    h = new Harness();
+    const app = h.repo('app');
+    h.agents([bg('a', {cwd: app, name: 'alpha'}), bg('b', {cwd: app, name: 'beta'})]);
+    // 引数なし(ダイジェストが有効)のキーの説明は 130 桁で、120 桁の端末には収まらない
+    await h.start({args: '', size: {cols: 120, rows: 20}});
+    const wrapped = (await h.waitFor(/q quit/)).replace(/\n+$/, '').split('\n');
+    expect(wrapped.slice(-2)).toEqual([
+      '↑↓ select · Enter attach · n new · ^X stop/delete · e note · f wait for · w/t workbench · v VS Code · o links',
+      'r refresh · q quit',
+    ]);
+    expect(wrapped[0]).toMatch(/SESSION/);
+    // 画面の高さを超えない(描き直しの途中で取ると 1 行少ないことがあるので、ちょうど 20 行とは見ない)
+    expect(wrapped.length).toBeLessThanOrEqual(20);
+    // 入力欄を開いている間は、キーの説明の行数だけ空く。閉じると戻る
+    await h.keys('e');
+    const noted = (await h.waitFor(/Note for alpha/)).replace(/\n+$/, '');
+    expect(noted).not.toMatch(/q quit/);
+    await h.keys('Escape');
+    await h.waitFor(/q quit/);
+    h.cleanup();
+
+    // 収まる幅では1行のまま
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start({args: '', size: {cols: 130, rows: 20}});
+    const one = (await h.waitFor(/q quit/)).replace(/\n+$/, '').split('\n');
+    expect(one.at(-1)).toBe(
+      '↑↓ select · Enter attach · n new · ^X stop/delete · e note · f wait for · w/t workbench · v VS Code · o links · r refresh · q quit',
+    );
+    expect(one.at(-2)).not.toMatch(/select/);
+  });
+
   it('4: 同じ sessionId の2行は1行にまとまり、interactive の idle は出ない', async () => {
     h = new Harness();
     h.agents([

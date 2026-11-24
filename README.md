@@ -9,7 +9,7 @@ When you split work across sessions (an implementation and its review, a big tas
 ## Principles
 
 - **Reads session state from `claude agents --json` alone.** No screen scraping. To show what each session is doing and how long ago it was started, whatnext also reads hook events from sessions it started and, for other sessions, Claude Code's own conversation transcripts (`~/.claude/projects`) — read-only. Account usage comes from `claude`'s own `/usage`, which calls no model.
-- **Sessions whatnext starts send their context size (OpenTelemetry) and hook events to whatnext on 127.0.0.1:14318, only while whatnext is running.** Nothing leaves your machine and nothing is stored. With `--digest`, they also send their digests and conversation links there.
+- **Sessions whatnext starts send their context size (OpenTelemetry) and hook events to whatnext on 127.0.0.1:14318, only while whatnext is running.** Nothing leaves your machine and nothing is stored. They also send their digests and conversation links there, unless you start whatnext with `--no-digest`.
 - **Keeps almost no state.** Sessions keep running after you quit whatnext, and sessions started elsewhere show up too. Your settings are never modified. The only file whatnext writes is `~/.local/state/whatnext/state.json` (or under `$XDG_STATE_HOME`), which keeps your notes, wait-for links and the order of the list across restarts.
 - **Never answers for you.** No input injection or auto-approval — you attach and act yourself.
 
@@ -25,15 +25,19 @@ To see a session's workbench shell next to it, split your terminal (e.g. `cmd+d`
 npx @masahirompp/whatnext workbench
 ```
 
-### Digests (opt-in)
+### Digests
+
+The sessions you start with `n` get a small Claude Code mod (shipped in this package, loaded with `--plugin-dir`). At each turn end it makes one Haiku call to write a digest of the session — its goal, its progress so far, and what comes next — and, without a model, picks up the conversation links (issues, PRs, commits and other URLs said in the conversation). The list shows each row's goal as `◎ <Goal>` above its one-liner and, when the terminal is at least 120 columns wide, the digest and conversation links of the selected row on the right, under `Goal`, `Progress`, `Next` and `Links`; click a link there to open it (cmd+click in Ghostty). Inside the session, the same digest and links show in a `Digest` pane (`/wn-digest` opens it). `o` in the list opens one of the row's links.
+
+**Digests are on by default and use your plan's usage: each session you start with `n` makes one Haiku call at every turn end.** To turn them off, start whatnext with `--no-digest`:
 
 ```sh
-npx @masahirompp/whatnext --digest
+npx @masahirompp/whatnext --no-digest
 ```
 
-With `--digest`, the sessions you start with `n` get a small Claude Code mod (shipped in this package, loaded with `--plugin-dir`). At each turn end it makes one Haiku call to write a digest of the session — its goal, its progress so far, and what comes next — and, without a model, picks up the conversation links (issues, PRs, commits and other URLs said in the conversation). The list shows each row's goal as `◎ <Goal>` above its one-liner and, when the terminal is at least 120 columns wide, the digest and conversation links of the selected row on the right, under `Goal`, `Progress`, `Next` and `Links`; click a link there to open it (cmd+click in Ghostty). Inside the session, the same digest and links show in a `Digest` pane (`/wn-digest` opens it). `o` in the list opens one of the row's links.
+With `--no-digest`, sessions get no mod, make no Haiku call, and the list shows no goal lines and no right-hand pane. (Up to 0.24 digests were opt-in with `--digest`. That option is gone: drop it from your aliases.)
 
-Digests use your plan's usage (one Haiku call per turn of each such session), so they are off unless you pass `--digest`. The call is made only while a whatnext started with `--digest` is taking digests: after you quit whatnext or start it again without `--digest`, those sessions make no Haiku call and send nothing, and they start again from the next turn once whatnext runs with `--digest` again. If the port is used by another program, whatnext says so in the right-hand pane. They reach whatnext only from sessions it started, are kept in memory only, and need Claude Code's mod support (an early-access API that may change between releases). Without `--digest`, whatnext behaves as before.
+The Haiku call is made only while a whatnext with digests on is taking them: after you quit whatnext or start it again with `--no-digest`, the sessions that already have the mod make no Haiku call and send nothing, and they start again from the next turn once whatnext runs without `--no-digest` again. A list that is already running keeps its setting; quit it and start it again to change it. If a list with digests is running, `whatnext --no-digest` does not connect to it and tells you to quit it first. If the port is used by another program, whatnext says so in the right-hand pane. Digests reach whatnext only from sessions it started, are kept in memory only, and need Claude Code's mod support (an early-access API that may change between releases).
 
 Keys in the list:
 
@@ -48,7 +52,7 @@ Keys in the list:
 | `w` | Create the session's workbench shell (in Ghostty, also opens it in a split) |
 | `t` | Same as `w`, but in Ghostty opens it in a new tab |
 | `v` | Open the session's directory in VS Code |
-| `o` | Open one of the session's conversation links (with `--digest` only) |
+| `o` | Open one of the session's conversation links (not with `--no-digest`) |
 | `r` | Refresh |
 | `q` | Quit (asks first if something is still running in a workbench) |
 

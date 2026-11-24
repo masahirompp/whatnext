@@ -21,7 +21,7 @@ export interface ScreenRow {
   ctx?: number;
   /** 作ってからの時間(ミリ秒)。 */
   age?: number;
-  /** ダイジェストの Goal(`◎ <Goal>` の行。`--digest` のときだけ)。 */
+  /** ダイジェストの Goal(`◎ <Goal>` の行。ダイジェストが有効なときだけ)。 */
   goal?: string;
   /** 一言。 */
   line?: string;
@@ -42,7 +42,7 @@ export interface ScreenGroup {
   rows: ScreenRow[];
 }
 
-/** 一覧の右の欄(カーソルの行のダイジェストと会話リンク。`--digest` のときだけ)。 */
+/** 一覧の右の欄(カーソルの行のダイジェストと会話リンク。ダイジェストが有効なときだけ)。 */
 export interface Side {
   /** カーソルの行のセッション名。 */
   title: string;
@@ -67,6 +67,9 @@ export interface Screen {
   /** 知らせ(入力欄の下、なければ一覧の下に1行空けて)。 */
   notice?: string[];
   usage?: string;
+  /** キーの説明。端末の幅に収まらなければ、区切りで折り返して複数行で出す。 */
   keys?: string;
+  /** キーの説明を出さず、その行数だけ空ける(メニューや入力欄を開いている間。Usage の位置を変えない)。 */
+  keysHidden?: boolean;
   side?: Side;
 }
