@@ -1,3 +1,4 @@
+import {execFileSync} from 'node:child_process';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {createServer, type Server} from 'node:http';
 import type {AddressInfo} from 'node:net';
@@ -438,6 +439,42 @@ describe('ダイジェスト', () => {
       h.inner('set', '-g', '@wn_digest', '1');
       h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
       await h.waitFor(/alpha/, 10000, 'second');
+      expect(h.screen('second')).not.toMatch(/\[exit \d+\]/);
+    });
+
+    // 一覧の起動を遅らせて、起動の直後(セッション `list` はあるが、一覧がまだ何も置いていない間)を広げる。PATH の前に tmux の
+    // 包みを置き、一覧が起動時に流す `source-file` だけを待たせる
+    const slowListStart = (hh: Harness) => {
+      const real = execFileSync('which', ['tmux'], {encoding: 'utf8'}).trim();
+      const body = `#!/bin/bash\nfor a in "$@"; do if [ "$a" = source-file ]; then sleep 5; fi; done\nexec '${real}' "$@"\n`;
+      writeFileSync(join(hh.dir, 'bin', 'tmux'), body, {mode: 0o755});
+    };
+
+    it('起動した直後の一覧にも断る(値は、セッションを作る呼び出しの中で置く)', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      slowListStart(h);
+      await h.start({args: '', size: WIDE_SCREEN, wait: false});
+      await h.waitForSession('list');
+      expect(h.inner('show-options', '-t', '=list:', '-qv', '@wn_digest').trim()).toBe('1');
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(REFUSED, 4000, 'second');
+    });
+
+    it('サーバ全体に 0.24 の値が残っていても、起動した直後の --no-digest の一覧にはつながり、古い値は外れる', async () => {
+      h = new Harness();
+      h.agents([bg('a', {name: 'alpha'})]);
+      slowListStart(h);
+      // 0.24 の --digest の一覧が異常終了し、作業台のためにサーバが残った形
+      h.inner('-f', '/dev/null', 'new-session', '-d', '-s', 'keep', 'sleep 600');
+      h.inner('set-environment', '-g', 'FAKE_DIR', h.dir);
+      h.inner('set', '-g', '@wn_digest', '1');
+      await h.start({args: '--no-digest', size: WIDE_SCREEN, wait: false});
+      await h.waitForSession('list');
+      expect(h.inner('show-options', '-t', '=list:', '-qv', '@wn_digest').trim()).toBe('0');
+      expect(h.innerQuiet('show', '-gqv', '@wn_digest').trim()).toBe('');
+      h.open('second', `${h.envLine()} node ${CLI} --no-digest`, WIDE_SCREEN);
+      await h.waitFor(/alpha/, 20000, 'second');
       expect(h.screen('second')).not.toMatch(/\[exit \d+\]/);
     });
   });
