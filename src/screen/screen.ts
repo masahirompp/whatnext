@@ -318,13 +318,18 @@ function layout(raw: Screen, full = raw.width): Layout {
   const h = Math.max(1, s.height);
   const usage = s.usage ? [clip(s.usage, fw)] : [];
   // キーの説明は、ヘッダと一覧の1行を残せる行数まで折り返す
-  const keys = keyLines(s.keys ?? '', fw, Math.max(1, h - usage.length - 2));
-  if (!s.keysHidden) return layoutWith(s, fw, h, [...usage, ...keys]).out;
-  // 隠すとき(メニューや入力欄を開いている間)は、同じ行数を空けて Usage の位置を変えない。ただし、下の欄かメモの入力欄が
-  // 収まらない高さでは、空行を1行まで減らして中身に譲る(1行は、折り返す前の「キーの説明の行が空になる」と同じ形)
-  for (let gap = keys.length; ; gap--) {
-    const r = layoutWith(s, fw, h, [...usage, ...Array<string>(gap).fill('')]);
-    if (r.fits || gap <= 1) return r.out;
+  const wrapped = keyLines(s.keys ?? '', fw, Math.max(1, h - usage.length - 2));
+  // 隠すとき(メニューや入力欄を開いている間)は、同じ行数を空けて Usage の位置を変えない。
+  // どちらのときも、一覧の下の欄(入力欄・メニュー・知らせ)かメモの入力欄が収まらない高さでは、行数を1行まで減らして
+  // 中身に譲る(1行は、折り返す前の最下部と同じ形)。キーの説明は、減らした分を最後の行に続けて切る
+  for (let n = wrapped.length; ; n--) {
+    const keys = s.keysHidden
+      ? Array<string>(n).fill('')
+      : n === wrapped.length
+        ? wrapped
+        : keyLines(s.keys ?? '', fw, n);
+    const r = layoutWith(s, fw, h, [...usage, ...keys]);
+    if (r.fits || n <= 1) return r.out;
   }
 }
 

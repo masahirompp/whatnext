@@ -385,6 +385,52 @@ describe('画面の組み立て', () => {
       for (const l of out) expect(width(l)).toBeLessThanOrEqual(40);
     }
   });
+  it('高さが足りないときは、キーの説明の行数を減らして、知らせを先に見せる', () => {
+    const base = (height: number, notice = ['Deleted alpha.']): Screen => ({
+      width: 60,
+      height,
+      cursor: 'a',
+      groups: [{title: 'app', rows: [row('a')]}],
+      usage: 'session 42%',
+      keys: DIGEST_KEYS_HELP,
+      notice,
+    });
+    const head = [
+      '  SESSION  STATUS  WHERE  CTX      AGE',
+      `── app ${'─'.repeat(53)}`,
+      '> a        Review           -        -',
+    ];
+    const first = '↑↓ select · Enter attach · n new · ^X stop/delete · e note';
+    // 収まる高さでは、折り返しの形を変えない
+    expect(plain(base(9))).toEqual([
+      ...head,
+      '',
+      'Deleted alpha.',
+      'session 42%',
+      first,
+      'f wait for · w/t workbench · v VS Code · o links · r refresh',
+      'q quit',
+    ]);
+    // 1行足りなければ1行減らし、残りは最後の行に続けて切る
+    expect(plain(base(8))).toEqual([
+      ...head,
+      '',
+      'Deleted alpha.',
+      'session 42%',
+      first,
+      'f wait for · w/t workbench · v VS Code · o links · r refres…',
+    ]);
+    expect(plain(base(9, ['refreshing...', 'Deleted alpha.'])).slice(3, 7)).toEqual([
+      '',
+      'refreshing...',
+      'Deleted alpha.',
+      'session 42%',
+    ]);
+    // 折り返す前(最下部が Usage とキーの説明1行)に知らせが出ていた高さでは、出る
+    expect(plain(base(7))).toEqual([...head, '', 'Deleted alpha.', 'session 42%', `${first} …`]);
+    // 1行にしても収まらない高さでは、1行のまま下から削る(折り返す前と同じ)
+    expect(plain(base(6)).slice(-2)).toEqual(['session 42%', `${first} …`]);
+  });
   it('メニューや入力欄を開いている間は、キーの説明の行数だけ空けて、Usage の位置を変えない', () => {
     const base: Screen = {
       width: 100,
