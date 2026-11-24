@@ -460,6 +460,22 @@ describe('ダイジェスト', () => {
     expect(s).not.toMatch(/◎|│ Goal|o links|digest/i);
   });
 
+  it('0.24 の whatnext --digest が置いた @wn_digest_wanted を、つなぐときに外す(0.24 の一覧に、消した --digest を打てという知らせを残さない)', async () => {
+    h = new Harness();
+    h.agents([bg('a', {name: 'alpha'})]);
+    await h.start({args: '--no-digest'});
+    // 0.24 の `whatnext --digest` が、--digest なしの 0.24 の一覧につないだあとの状態(0.24 の一覧は、これがある間知らせる)
+    h.inner('set', '-g', '@wn_digest_wanted', '1');
+    expect(h.inner('show', '-gv', '@wn_digest_wanted').trim()).toBe('1');
+    h.open('second', `${h.envLine()} node ${CLI}`);
+    await h.waitFor(/alpha/, 10000, 'second');
+    await h.until(
+      '@wn_digest_wanted to be removed',
+      () => h.innerQuiet('show', '-gv', '@wn_digest_wanted').trim(),
+      v => v === '',
+    );
+  });
+
   it('42: --digest は知らないオプションとして終了コード 2 で終わり、--help には --no-digest だけが出る', async () => {
     h = new Harness();
     h.port = 15998;

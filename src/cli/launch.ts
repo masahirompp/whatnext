@@ -6,7 +6,7 @@ import {type Env, myTty, paneCommand, tmuxEnv} from './env.js';
 
 // `whatnext` の起動(DESIGN.md「一覧と作業台の仕組み」)。専用の tmux サーバの `list` につなぐ。なければ作る。
 
-import {DIGEST_ON, MAIN_TTY, NEWER, WB_TTY} from '../ops/names.js';
+import {DIGEST_ON, LEGACY_DIGEST_WANTED, MAIN_TTY, NEWER, WB_TTY} from '../ops/names.js';
 
 const tmuxRun: typeof run = (cmd, args, opts) => run(cmd, args, {...opts, env: tmuxEnv(opts?.env ?? process.env)});
 
@@ -44,6 +44,9 @@ export async function launch(env: Env): Promise<number> {
     if (running && running !== env.version) await tmux.setOption(NEWER, env.version);
     else await tmux.unsetOption(NEWER);
     // 逆向き(--no-digest の一覧に引数なしでつなぐ)は、何も示さずにつなぐ(PRODUCT.md「ダイジェスト」)
+    // 移行のため: 0.24 の `whatnext --digest` が置いた知らせの印を外す。0.24 の一覧が動いたままだと、消した `--digest` を
+    // 打てという知らせ(whatnext is running without --digest. ...)が残る。0.24 の起動の口も、つなぐたびに外していた
+    await tmux.unsetOption(LEGACY_DIGEST_WANTED);
   } else {
     if ((await probe(env.port)) === 'whatnext') {
       process.stderr.write(
