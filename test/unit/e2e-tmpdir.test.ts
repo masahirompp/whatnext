@@ -1,4 +1,4 @@
-import {mkdtempSync, rmSync, statSync} from 'node:fs';
+import {existsSync, mkdtempSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
@@ -45,6 +45,27 @@ describe('画面の通しの一時ディレクトリ', () => {
     const second = makeTmpDir(p, seq(0.123456, 0.123456, 0.654321));
     expect(basename(first)).toBe('wne-123456');
     expect(basename(second)).toBe('wne-654321');
+  });
+
+  it('作れた名前が使えないと答えられたら、作ったディレクトリを消して名前を作り直す', () => {
+    const p = prefix();
+    const asked: string[] = [];
+    const dir = makeTmpDir(p, seq(0.123456, 0.654321), d => {
+      asked.push(basename(d));
+      expect(existsSync(d)).toBe(true);
+      return basename(d) === 'wne-123456';
+    });
+    expect(basename(dir)).toBe('wne-654321');
+    expect(asked).toEqual(['wne-123456', 'wne-654321']);
+    expect(existsSync(`${p}123456`)).toBe(false);
+    // すでにある名前(EEXIST)は、使えるかを尋ねずに作り直す
+    asked.length = 0;
+    const next = makeTmpDir(p, seq(0.654321, 0.5), d => asked.push(basename(d)) < 0);
+    expect(basename(next)).toBe('wne-500000');
+    expect(asked).toEqual(['wne-500000']);
+    // 使える名前が見つからなければ、ディレクトリを残さずに例外にする
+    expect(() => makeTmpDir(p, seq(0.25), () => true)).toThrow(/could not create a temporary directory/);
+    expect(existsSync(`${p}250000`)).toBe(false);
   });
 
   it('ソケット名に使うタグは、名前の数字の部分の全体になる', () => {

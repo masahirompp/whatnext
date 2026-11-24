@@ -1,4 +1,4 @@
-import {mkdirSync} from 'node:fs';
+import {mkdirSync, rmdirSync} from 'node:fs';
 
 // 画面の通しの一時ディレクトリの名前。tmux に依らないので、振る舞いを単体のテスト(test/unit/e2e-tmpdir.test.ts)で
 // 確かめる(#382)。
@@ -30,16 +30,25 @@ export function tmpTag(dir: string): string {
  *
  * 同じ名前がすでにあれば(`EEXIST`)、名前を作り直す。`mkdir` は「無ければ作る」を一度に行うので、並行に流れる
  * テストファイルが同じ名前を選んでも、作れるのは片方だけになる。
+ *
+ * `taken` は、作れた名前がディレクトリのほかの理由で使えないかを答える(harness は、その名前から作る tmux の
+ * ソケットで古いサーバが応答するかを見る)。使えなければ、作ったディレクトリを消して名前を作り直す。
  */
-export function makeTmpDir(prefix: string, random: () => number = Math.random): string {
+export function makeTmpDir(
+  prefix: string,
+  random: () => number = Math.random,
+  taken: (dir: string) => boolean = () => false,
+): string {
   for (let i = 0; i < 100; i++) {
     const dir = digitName(prefix, random);
     try {
       mkdirSync(dir, {mode: 0o700});
-      return dir;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      continue;
     }
+    if (!taken(dir)) return dir;
+    rmdirSync(dir);
   }
   throw new Error(`could not create a temporary directory under ${prefix}`);
 }
