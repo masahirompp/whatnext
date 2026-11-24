@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {stripAnsi, width} from '../../lib/text/text.js';
-import {parseArgs} from '../../src/cli/args.js';
+import {parseArgs, USAGE} from '../../src/cli/args.js';
+import {paneCommand, readEnv} from '../../src/cli/env.js';
 import {digestOffText, findTmux, withDigestEnv} from '../../src/cli/list.js';
 import {DigestHookStore, parseDigestBody, sanitize} from '../../src/input/digest.js';
 import {hyperlink, render, SIDE_MIN_COLS, sideLines, wrap} from '../../src/screen/screen.js';
@@ -45,7 +46,7 @@ describe('ダイジェストの受け口', () => {
     expect(sanitize(3, 10)).toBe('');
   });
 
-  it('--digest のときだけ持ち、ダイジェストのない回は前のダイジェストを残す。消えたセッションは忘れる', () => {
+  it('ダイジェストが有効なときだけ持ち、ダイジェストのない回は前のダイジェストを残す。消えたセッションは忘れる', () => {
     const on = new DigestHookStore(true, () => 1);
     on.receiveHook(body());
     on.receiveHook(body({digest: null, links: []}));
@@ -77,13 +78,29 @@ describe('ダイジェストの受け口', () => {
 });
 
 describe('起動の引数', () => {
-  it('--digest は単独のときだけ。--help は先頭のときだけ', () => {
-    expect(parseArgs([])).toEqual({cmd: 'list', digest: false});
-    expect(parseArgs(['--digest'])).toEqual({cmd: 'list', digest: true});
-    expect(parseArgs(['--digest', '--help'])).toEqual({cmd: 'bad', arg: '--help'});
-    expect(parseArgs(['--digest', 'workbench'])).toEqual({cmd: 'bad', arg: 'workbench'});
-    expect(parseArgs(['workbench', '--digest'])).toEqual({cmd: 'bad', arg: '--digest'});
-    expect(parseArgs(['--help', '--digest'])).toEqual({cmd: 'help'});
+  it('引数なしはダイジェストが有効。--no-digest は単独のときだけ。--help は先頭のときだけ', () => {
+    expect(parseArgs([])).toEqual({cmd: 'list', digest: true});
+    expect(parseArgs(['--no-digest'])).toEqual({cmd: 'list', digest: false});
+    expect(parseArgs(['--no-digest', '--help'])).toEqual({cmd: 'bad', arg: '--help'});
+    expect(parseArgs(['--no-digest', 'workbench'])).toEqual({cmd: 'bad', arg: 'workbench'});
+    expect(parseArgs(['workbench', '--no-digest'])).toEqual({cmd: 'bad', arg: '--no-digest'});
+    expect(parseArgs(['--help', '--no-digest'])).toEqual({cmd: 'help'});
+  });
+
+  it('--digest は消した(知らないオプション)。--help に --no-digest を載せ、--digest は載せない', () => {
+    expect(parseArgs(['--digest'])).toEqual({cmd: 'bad', arg: '--digest'});
+    expect(USAGE).toMatch(/--no-digest/);
+    expect(USAGE.replaceAll('--no-digest', '')).not.toMatch(/--digest/);
+  });
+
+  it('一覧の役には、ダイジェストの有無をいつも明示して渡す。起動の環境の値は、一覧の役だけが読む', () => {
+    const env = readEnv({});
+    expect(env.digest).toBe(true);
+    expect(readEnv({WHATNEXT_DIGEST: '0'}).digest).toBe(false);
+    expect(readEnv({WHATNEXT_DIGEST: '1'}).digest).toBe(true);
+    expect(paneCommand({...env, digest: true}, 'list', {})).toMatch(/ WHATNEXT_DIGEST='?1'? /);
+    expect(paneCommand({...env, digest: false}, 'list', {})).toMatch(/ WHATNEXT_DIGEST='?0'? /);
+    expect(paneCommand({...env, digest: false}, 'guide', {})).not.toMatch(/WHATNEXT_DIGEST/);
   });
 });
 

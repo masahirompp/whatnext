@@ -29,11 +29,11 @@ export interface Ports {
   size: () => {cols: number; rows: number};
   /** `n` で起動するセッションの `--settings`(受け口を開けていなければ undefined)。 */
   settings?: string;
-  /** `n` で起動するセッションに `--plugin-dir` で付けるダイジェストの mod(`--digest` で受け口を開けたときだけ)。 */
+  /** `n` で起動するセッションに `--plugin-dir` で付けるダイジェストの mod(ダイジェストが有効で、受け口を開けたときだけ)。 */
   pluginDir?: string;
-  /** `--digest` で動いているか。 */
+  /** ダイジェストを有効にして動いているか(既定。`--no-digest` で切る)。 */
   digest: boolean;
-  /** `--digest` で動いているのに受け口を開けなかった理由(右の欄に出す英語の文言)。開けたときは undefined。 */
+  /** ダイジェストが有効なのに受け口を開けなかった理由(右の欄に出す英語の文言)。開けたときは undefined。 */
   digestOff?: string;
   socket: string;
   port: number;

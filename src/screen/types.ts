@@ -21,7 +21,7 @@ export interface ScreenRow {
   ctx?: number;
   /** 作ってからの時間(ミリ秒)。 */
   age?: number;
-  /** ダイジェストの Goal(`◎ <Goal>` の行。`--digest` のときだけ)。 */
+  /** ダイジェストの Goal(`◎ <Goal>` の行。ダイジェストが有効なときだけ)。 */
   goal?: string;
   /** 一言。 */
   line?: string;
@@ -42,7 +42,7 @@ export interface ScreenGroup {
   rows: ScreenRow[];
 }
 
-/** 一覧の右の欄(カーソルの行のダイジェストと会話リンク。`--digest` のときだけ)。 */
+/** 一覧の右の欄(カーソルの行のダイジェストと会話リンク。ダイジェストが有効なときだけ)。 */
 export interface Side {
   /** カーソルの行のセッション名。 */
   title: string;

@@ -30,7 +30,7 @@ import {
   isAttachAction,
   LIST_KEYS_HELP,
 } from './keys.js';
-import {DIGEST_WANTED, GUIDE_OPTION, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
+import {GUIDE_OPTION, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
 import type {Ports} from './ports.js';
 
 // 一覧の状態の遷移と、外部に頼む作業(PRODUCT.md「操作」「作業台」「依存（待ち先と起動された行）」)。
@@ -87,10 +87,8 @@ export class App {
   private rows = new Map<string, ObsRow>();
   private spawner = new Map<string, string>();
   private supplied = new Map<string, Supplied>();
-  /** ダイジェストと会話リンク(`--digest` のときだけ。最後の更新の時点の値)。 */
+  /** ダイジェストと会話リンク(ダイジェストが有効なときだけ。最後の更新の時点の値)。 */
   private digestAndLinks = new Map<string, DigestAndLinks>();
-  /** `--digest` で起動したのに、動いている一覧は `--digest` なしだった。 */
-  private digestWanted = false;
   private error?: string;
   /** 作ってからの時間(ミリ秒)。最後の更新の時点の値で、更新の間は変えない。 */
   private ageMs = new Map<string, number>();
@@ -525,9 +523,6 @@ export class App {
     this.notices = this.notices.filter(n => n.until === undefined || n.until > now);
     for (const n of this.notices) notice.push(n.text);
     if (this.newer) notice.push(`whatnext ${this.p.version} is still running. Quit it to start ${this.newer}.`);
-    if (this.digestWanted && !this.p.digest) {
-      notice.push('whatnext is running without --digest. Quit it, then run "whatnext --digest" to see digests.');
-    }
     if (notice.length > 0) s.notice = notice;
     return s;
   }
@@ -1132,18 +1127,16 @@ export class App {
 
   private async onSignal(): Promise<void> {
     const t = this.p.tmux;
-    const [reqs, clients, mainTty, wbTty, closed, newer, digestWanted] = await Promise.all([
+    const [reqs, clients, mainTty, wbTty, closed, newer] = await Promise.all([
       t.takeRequests(),
       t.clients(),
       t.option(MAIN_TTY),
       t.option(WB_TTY),
       t.option('@wn_closed'),
       t.option(NEWER),
-      t.option(DIGEST_WANTED),
     ]);
     this.mainTty = mainTty;
     this.newer = newer || undefined;
-    this.digestWanted = digestWanted === '1';
     for (const c of clients) {
       if (c.tty !== mainTty && c.tty !== wbTty) {
         this.p.log(`detach ${c.tty} (${c.session})`);

@@ -13,7 +13,7 @@ import {Locations, Prs} from '../input/where.js';
 import {App} from '../ops/app.js';
 import {startGuide} from '../ops/guide-session.js';
 import {ATTACH_KEYS, ATTACH_KEYS_HELP} from '../ops/keys.js';
-import {DIGEST_LIVE, DIGEST_ON} from '../ops/names.js';
+import {DIGEST_LIVE} from '../ops/names.js';
 import {StateFile, statePath} from '../state/state.js';
 import {type Env, modDir, paneCommand, tmuxEnv, workbenchCommand} from './env.js';
 
@@ -51,7 +51,7 @@ export async function startList(env: Env): Promise<number> {
       if (env.digest) pluginDir = modDir();
     }
   }
-  // --digest で受け口を開けなかったときは、右の欄にその理由を出す(シナリオ 41 の「エラーを示さない」の、--digest のときだけの例外)
+  // ダイジェストが有効なのに受け口を開けなかったときは、右の欄にその理由を出す(シナリオ 41 の「エラーを示さない」の例外。--no-digest では出さない)
   const digestOff = env.digest && !settings ? digestOffText(occupant, env.port) : undefined;
   log(
     `start ${env.version} port=${env.port} occupant=${occupant} receiver=${settings ? 'open' : 'none'} digest=${env.digest}`,
@@ -73,8 +73,6 @@ export async function startList(env: Env): Promise<number> {
   );
   if (r.code !== 0) log(`sourceConfig failed: ${r.stderr}`);
   await tmux.t(['set', '-w', '-t', `=${LIST}:`, 'remain-on-exit', 'off']);
-  if (env.digest) await tmux.setOption(DIGEST_ON, '1');
-  else await tmux.unsetOption(DIGEST_ON);
   // mod が「ダイジェストを受けているか」を確かめる口(受け口を開けて mod を付けるときだけ置く)
   if (settings && pluginDir) {
     const sock = (await tmux.t(['display-message', '-p', '-t', `=${LIST}:`, '#{socket_path}'])).stdout.trim();
@@ -175,7 +173,7 @@ export function findTmux(path = process.env.PATH ?? ''): string {
   return 'tmux';
 }
 
-/** 受け口を開けなかった理由の文言(右の欄。`--digest` のときだけ)。 */
+/** 受け口を開けなかった理由の文言(右の欄。ダイジェストが有効なときだけ)。 */
 export function digestOffText(occupant: 'free' | 'whatnext' | 'other', port: number): string {
   if (occupant === 'other') return `Digests are off: port ${port} is used by another program.`;
   if (occupant === 'whatnext') return `Digests are off: port ${port} is used by another whatnext.`;

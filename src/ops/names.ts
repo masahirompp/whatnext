@@ -6,16 +6,12 @@ export const MAIN_TTY = '@wn_main_tty';
 export const WB_TTY = '@wn_wb_tty';
 /** 動いている一覧と違う版で起動したときの、起動した版。 */
 export const NEWER = '@wn_newer';
-/** 一覧が `--digest` で動いているか(`1`。一覧が置く)。 */
-export const DIGEST_ON = '@wn_digest';
 /**
- * ダイジェストを受けている受け口のポート(一覧が `--digest` で受け口を開けたときだけ、一覧のセッション `list` のオプションに
+ * ダイジェストを受けている受け口のポート(一覧がダイジェストを有効にして受け口を開けたときだけ、一覧のセッション `list` のオプションに
  * 置く)。mod はターンの終わりにこれを読み、自分の送り先のポートと同じときだけ Haiku を呼ぶ(DESIGN.md「ダイジェストの mod」)。
  * 一覧のプロセスが終わると一覧のセッションごと消えるので、作業台のためにサーバが残っても受けているとは読まれない。
  */
 export const DIGEST_LIVE = '@wn_digest_port';
-/** `--digest` で起動したが、動いている一覧は `--digest` なしだった(`whatnext --digest` が置き、一覧が知らせる)。 */
-export const DIGEST_WANTED = '@wn_digest_wanted';
 /** 作業台の画面の案内に出すもの(JSON の GuideState)。 */
 export const GUIDE_OPTION = '@wn_guide';
 

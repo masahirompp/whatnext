@@ -30,7 +30,7 @@ export type Observation =
       supplied: Map<string, Supplied>;
       /** 会話記録から分かった、セッションを作った時刻。 */
       created: Map<string, number>;
-      /** ダイジェストと会話リンク(`--digest` のときだけ。更新の時点の写し)。 */
+      /** ダイジェストと会話リンク(ダイジェストが有効なときだけ。更新の時点の写し)。 */
       digestAndLinks: Map<string, DigestAndLinks>;
     }
   | {ok: false; at: number; error: string};

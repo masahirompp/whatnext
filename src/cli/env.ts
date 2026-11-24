@@ -20,7 +20,11 @@ export interface Env {
   node: string;
   /** この cli の入口(`dist/src/cli.js`)。 */
   cli: string;
-  /** `--digest` で起動したか(一覧の役は、起動の口が渡す `WHATNEXT_DIGEST` で知る)。 */
+  /**
+   * ダイジェストを有効にするか(既定で有効。`--no-digest` で切る)。起動の口は引数だけで決め(`cli.ts`)、環境からは決めない。
+   * 一覧の役は、起動の口が `paneCommand` でいつも明示して渡す `WHATNEXT_DIGEST`(`1` か `0`)で知る。
+   * 外から引き継いだ値で、意図せず切れたり入ったりしないようにする(#362、#363)。
+   */
   digest: boolean;
   /** 一覧の自動の更新の間隔(ms)。テストが `WHATNEXT_REFRESH_MS` で短くする。 */
   refreshMs: number;
@@ -35,7 +39,7 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env): Env {
     version: packageVersion(),
     node: process.execPath,
     cli: cliPath(),
-    digest: env.WHATNEXT_DIGEST === '1',
+    digest: env.WHATNEXT_DIGEST !== '0',
     refreshMs: positiveMs(env.WHATNEXT_REFRESH_MS, DEFAULT_REFRESH_MS),
     usageMinMs: positiveMs(env.WHATNEXT_USAGE_MIN_MS, DEFAULT_USAGE_MIN_MS),
   };
@@ -140,7 +144,8 @@ export function paneCommand(env: Env, role: 'list' | 'guide', pe: NodeJS.Process
     WHATNEXT_ROLE: role,
     WHATNEXT_TMUX_SOCKET: env.socket,
     WHATNEXT_PORT: String(env.port),
-    WHATNEXT_DIGEST: role === 'list' && env.digest ? '1' : undefined,
+    // 一覧の役には、有効でも切るときでも値を明示して渡す(引き継いだ値を必ず上書きする)
+    WHATNEXT_DIGEST: role === 'list' ? (env.digest ? '1' : '0') : undefined,
     PATH: pe.PATH,
     HOME: pe.HOME,
     XDG_STATE_HOME: pe.XDG_STATE_HOME,

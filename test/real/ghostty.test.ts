@@ -94,7 +94,8 @@ describe('Ghostty(58a)', () => {
     h = new RealHarness();
     h.port = 15200 + Math.floor(Math.random() * 300);
     const script = join(h.dir, 'launch.sh');
-    writeFileSync(script, `${h.envLine()} node ${CLI}\n`);
+    // ダイジェストを確かめるテストではないので切る(右の欄を出さず、mod を付けない)
+    writeFileSync(script, `${h.envLine()} node ${CLI} --no-digest\n`);
     win = osa(
       `tell application "Ghostty"
         activate

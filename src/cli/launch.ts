@@ -6,7 +6,7 @@ import {type Env, myTty, paneCommand, tmuxEnv} from './env.js';
 
 // `whatnext` の起動(DESIGN.md「一覧と作業台の仕組み」)。専用の tmux サーバの `list` につなぐ。なければ作る。
 
-import {DIGEST_ON, DIGEST_WANTED, MAIN_TTY, NEWER, WB_TTY} from '../ops/names.js';
+import {MAIN_TTY, NEWER, WB_TTY} from '../ops/names.js';
 
 const tmuxRun: typeof run = (cmd, args, opts) => run(cmd, args, {...opts, env: tmuxEnv(opts?.env ?? process.env)});
 
@@ -23,9 +23,7 @@ export async function launch(env: Env): Promise<number> {
     const running = await tmux.option('@wn_version');
     if (running && running !== env.version) await tmux.setOption(NEWER, env.version);
     else await tmux.unsetOption(NEWER);
-    // 動いている一覧のダイジェストの有無は変えない。--digest を求めたのに一覧が --digest なしなら、一覧に知らせさせる
-    if (env.digest && (await tmux.option(DIGEST_ON)) !== '1') await tmux.setOption(DIGEST_WANTED, '1');
-    else await tmux.unsetOption(DIGEST_WANTED);
+    // 動いている一覧のダイジェストの有無は変えず、違っていても知らせない(PRODUCT.md「ダイジェスト」)
   } else {
     if ((await probe(env.port)) === 'whatnext') {
       process.stderr.write(
