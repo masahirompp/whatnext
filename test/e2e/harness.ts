@@ -1,7 +1,8 @@
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {join, resolve} from 'node:path';
+import {makeTmpDir} from './tmpdir.js';
 import {until} from './until.js';
 
 // 画面の通しの口。外側の tmux のセッションを端末の代わりにし、偽の claude を PATH の前に置いて whatnext を動かす
@@ -102,7 +103,8 @@ export class Harness {
   private started = false;
 
   constructor() {
-    this.dir = realpathSync(mkdtempSync('/tmp/wne-'));
+    // mkdtemp は使わない。乱数の英字に絞り込みの入力(`zq`、`gr` など)が並ぶと、候補がフルパスで当たって残る(#382)
+    this.dir = realpathSync(makeTmpDir('/tmp/wne-'));
     const tag = this.dir.slice(-6).replace(/[^a-zA-Z0-9]/g, 'x');
     this.outer = `wno-${tag}`;
     this.socket = `wnx-${tag}`;
