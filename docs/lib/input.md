@@ -36,6 +36,7 @@
 - 指示の行（`instructionText` が文字列を返す `user` の行）で、`prompt` をその指示にし、ターンの値（`haltAt`、`permission`、`question`、`declined`、`error`、`lastText`）を消す。
 - タスクの通知でターンが始まった行（`user` の行で、`turnOrigin` が `task_notification`、本文が指示でない文字列）でも、ターンの値を消す。`prompt` は前の指示のまま残す。`HookStore` が通知の `UserPromptSubmit` で `turnAt` を進めるのと同じ規則で、消さないと、フックのないセッションで前のターンの `declined` や `lastText` が通知のターンの値として出る（#387）。
 - 通知の行でも、記録にだけ残ってターンを始めなかったもの（`queueTranscriptOnly: true`。`turnOrigin` を持たない）は境にしない。境にすると、応答を返し終えたセッションの `lastText` が、ターンが始まっていないのに消える。
+- `turnOrigin` を確かめたのは `claude` の 2.1.295〜2.1.331 で、`turnOrigin` を書かない版の会話記録では通知の行が境にならず、前のターンの値が残る（#387 の前と同じ見え方になる）。
 - `declined` にするのは、結果のない `tool_use` に対する `tool_result` のうち、`is_error` が `true` で、`content` が `The user doesn't want to proceed with this tool use.` で始まる文字列のものだけである。文言を含むだけの結果（その文言が書かれたファイルを読んだ結果など）は、断ったとみなさない（#387）。
 - 断ったあとに本体の `assistant` の行が続いたら、`declined` を消す。文を添えて断ったときは中断の印が付かず、ターンが続く。消さないと、そのあと質問待ちになった行で、`Declined:` が最後の応答より先に出る。サイドチェーンの `assistant` の行では消さない。`supplement` がフックの `PermissionRequest` のあとに `Stop` が届いたら `declined` を出さないのと同じ規則である（#387）。
 - 指示とみなす行、除く行、サイドチェーン、中断と通知の行の形は [claude-code-behavior.md](../claude-code-behavior.md)「会話記録」にある。
