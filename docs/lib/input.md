@@ -33,13 +33,17 @@
   - `new Transcripts(configDir)`：`configDir` は `projects` を含む置き場所（`CLAUDE_CONFIG_DIR`、なければ `~/.claude`）。呼ぶ側が決めて渡す。
   - `locate(sid)`：会話記録のファイルのパスを返す Promise。見つからない、または置き場所を読めないときは `undefined`。
   - `forget(keep)`：`keep` にないセッションの覚えた値を捨てる。
-- 指示とみなす行、除く行、サイドチェーン、中断の扱いは [claude-code-behavior.md](../claude-code-behavior.md)「会話記録」にある。
+- 指示の行（`instructionText` が文字列を返す `user` の行）で、`prompt` をその指示にし、ターンの値（`haltAt`、`permission`、`question`、`declined`、`error`、`lastText`）を消す。
+- タスクの通知でターンが始まった行（`user` の行で、`turnOrigin` が `task_notification`、本文が指示でない文字列）でも、ターンの値を消す。`prompt` は前の指示のまま残す。`HookStore` が通知の `UserPromptSubmit` で `turnAt` を進めるのと同じ規則で、消さないと、フックのないセッションで前のターンの `declined` や `lastText` が通知のターンの値として出る（#387）。
+- 通知の行でも、記録にだけ残ってターンを始めなかったもの（`queueTranscriptOnly: true`。`turnOrigin` を持たない）は境にしない。境にすると、応答を返し終えたセッションの `lastText` が、ターンが始まっていないのに消える。
+- `declined` にするのは、結果のない `tool_use` に対する `tool_result` のうち、`is_error` が `true` で、`content` が `The user doesn't want to proceed with this tool use.` で始まる文字列のものだけである。文言を含むだけの結果（その文言が書かれたファイルを読んだ結果など）は、断ったとみなさない（#387）。
+- 指示とみなす行、除く行、サイドチェーン、中断と通知の行の形は [claude-code-behavior.md](../claude-code-behavior.md)「会話記録」にある。
 - 未確認の観察が2件ある（#253、#244。DESIGN.md「確かめ方」、claude-code-behavior.md）。
 
 ## 補う値（`hooks.ts` の `supplement`）
 
 - `supplement(hook, transcript, ctx)`：フックの値を主にし、今のターンの値がないときに会話記録で補った `Supplied`（`prompt`、`haltAt`、`permission`、`question`、`declined`、`error`、`lastText`、`ctx`）を返す。
-- 今のターンの境は DESIGN.md「機能ごとの入力の出どころ」のとおり。フックの値は `turnAt`（なければフックの指示の時刻）以降だけ、会話記録の値はその指示が `turnAt` の2秒前以降のときだけ使う（#267）。指示は `prompt` で選ぶので、タスクの通知で始まったターンでも一言は前の指示のまま、前のターンの値は使わない（#361）。
+- 今のターンの境は DESIGN.md「機能ごとの入力の出どころ」のとおり。フックの値は `turnAt`（なければフックの指示の時刻）以降だけ、会話記録の値はその指示が `turnAt` の2秒前以降のときだけ使う（#267）。指示は `prompt` で選ぶので、タスクの通知で始まったターンでも一言は前の指示のまま、前のターンの値は使わない（#361）。フックの値がないセッションでは、会話記録の値をそのまま使う。通知で始まったターンの境は `Transcripts` が引くので、`supplement` は会話記録のターンの始まりの時刻を受け取らない（#387）。
 
 ## 文の切り出し（`text.ts`）
 
