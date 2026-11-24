@@ -1,7 +1,8 @@
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {join, resolve} from 'node:path';
+import {makeTmpDir, tmpTag} from './tmpdir.js';
 import {until} from './until.js';
 
 // 画面の通しの口。外側の tmux のセッションを端末の代わりにし、偽の claude を PATH の前に置いて whatnext を動かす
@@ -94,6 +95,20 @@ export function tty(id: string, over: Partial<FakeRow> = {}): FakeRow {
   };
 }
 
+/** tmux のソケット名の頭。外側(端末の代わり)と内側(whatnext の専用サーバ)。 */
+const OUTER_PREFIX = 'wno-';
+const INNER_PREFIX = 'wnx-';
+
+/** ソケット名 `socket` で tmux のサーバが応答するか。サーバは起動しない(`list-sessions` はサーバが無ければ失敗する)。 */
+function serverAlive(socket: string): boolean {
+  try {
+    execFileSync('tmux', ['-L', socket, 'list-sessions'], {stdio: 'ignore', env: {...process.env, TMUX: ''}});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class Harness {
   readonly dir: string;
   readonly outer: string;
@@ -102,10 +117,17 @@ export class Harness {
   private started = false;
 
   constructor() {
-    this.dir = realpathSync(mkdtempSync('/tmp/wne-'));
-    const tag = this.dir.slice(-6).replace(/[^a-zA-Z0-9]/g, 'x');
-    this.outer = `wno-${tag}`;
-    this.socket = `wnx-${tag}`;
+    // mkdtemp は使わない。乱数の英字に絞り込みの入力(`zq`、`gr` など)が並ぶと、候補がフルパスで当たって残る(#382)
+    // 絞り込みの入力に数字を使うと、今度は名前の数字に当たる。テストでは数字を打たない(DESIGN.md「確かめ方」)
+    // 名前の空間は 10^6 で、一時ディレクトリが消えて tmux のサーバだけが生きている名前(WN_KEEP=1 で残したあと、
+    // ディレクトリだけを消したときなど)を引きうる。引くと古いサーバにつながるので、その名前から作るソケットの
+    // どちらかでサーバが応答したら、名前を作り直す。応答したサーバは止めない(並行に流れている通しのものかもしれない)
+    this.dir = realpathSync(
+      makeTmpDir('/tmp/wne-', Math.random, d => [OUTER_PREFIX, INNER_PREFIX].some(p => serverAlive(p + tmpTag(d)))),
+    );
+    const tag = tmpTag(this.dir);
+    this.outer = OUTER_PREFIX + tag;
+    this.socket = INNER_PREFIX + tag;
     for (const d of ['state', 'cfg/projects', 'home', 'bin']) mkdirSync(join(this.dir, d), {recursive: true});
     writeFileSync(join(this.dir, 'agents.json'), '[]');
     writeFileSync(join(this.dir, 'fake.json'), '{}');
