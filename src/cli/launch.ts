@@ -37,7 +37,7 @@ export async function launch(env: Env): Promise<number> {
     // 何も変えずに終わるので、サーバのオプションに触れる前に確かめる
     if (!env.digest && (await listHasDigests(tmux))) {
       process.stderr.write(
-        'whatnext: a whatnext with digests is already running. Quit it first (run whatnext, then press q), then run whatnext --no-digest.\n',
+        'whatnext: a whatnext with digests is already running. Quit it first (run whatnext without --no-digest, then press q), then run whatnext --no-digest.\n',
       );
       return 1;
     }

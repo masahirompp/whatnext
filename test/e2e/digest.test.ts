@@ -387,7 +387,7 @@ describe('ダイジェスト', () => {
 
   describe('88: ダイジェストが有効な一覧が動いているときの whatnext --no-digest', () => {
     const REFUSED =
-      /whatnext: a whatnext with digests is already running\. Quit it first \(run whatnext, then press q\), then run whatnext --no-digest\.\n\[exit 1\]/;
+      /whatnext: a whatnext with digests is already running\. Quit it first \(run whatnext without --no-digest, then press q\), then run whatnext --no-digest\.\n\[exit 1\]/;
     const WIDE_SCREEN = {cols: 150, rows: 30};
 
     it('つながずに、標準エラーに1行出して終了コード 1 で終わる。動いている一覧と、その画面はそのまま', async () => {

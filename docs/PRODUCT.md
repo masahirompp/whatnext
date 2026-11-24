@@ -468,7 +468,7 @@ sandbox の外で人が動かすコマンドを、どのセッションのため
 - Haiku を呼ぶのは、ダイジェストを有効にして起動した whatnext がダイジェストを受けているときだけである。whatnext を終了したとき、`--no-digest` で起動し直したとき、受け口のポートを別のもの（ほかのプログラムや、別のポートで動く whatnext）が使っているときは、mod を付けたセッションもターンの終わりに Haiku を呼ばず、何も送らない（会話リンクは今までどおり拾い、セッションの中のペインに出す）。引数なしで起動し直せば、次のターンの終わりからまた呼んで送る（2026-11-21、利用者の判断。#325）。受け手がいても利用者が見る機会がないとき（別のセッションに attach しているときなど）は、呼ぶ（そこまで判定するかと、人が attach して見ているときは受け手がいなくても呼んでペインを生かすかは、#328 で決める）。`--no-digest` で起動した whatnext は、この節のどれも行わない（mod を付けず、Goal の行も右の欄も出さず、`o` も効かない。ダイジェストが届いても捨てる）。
 - ダイジェストを有効にして起動した whatnext は、`n` で起動するセッションに、whatnext が配るダイジェストの mod を付ける。受け口を開けていないとき（シナリオ 41）は付けない（フックと同じ）。mod は、ターンの終わりにダイジェスト（Goal・Progress・Next）を作り、会話リンク（会話に出た issue、PR、コミット、URL など）を拾い、セッションの中のペインに出し、whatnext に送る。
 - 動いている一覧のダイジェストの有無は、つなぐときの引数で変わらない。変えるには、一覧を終了して開き直す。
-  - **ダイジェストを有効にして動いている一覧があるときに `whatnext --no-digest` を実行すると、その一覧につながずに、標準エラーに `whatnext: a whatnext with digests is already running. Quit it first (run whatnext, then press q), then run whatnext --no-digest.` と出して、終了コード 1 で終わる。** 動いている一覧と、それを映している画面には何も起きない。黙ってつなぐと、利用者は切ったつもりのまま `n` でセッションを起動し、そのセッションには mod が付いて、ターンごとに Haiku を呼ぶ（「全体」の、知らないオプションを無視しない理由と同じ）。文言は、別の whatnext が受け口を使っているときの `… Quit it first, then run whatnext again.` に揃えた。つないで一覧の下に知らせる形にしないのは、`--no-digest` を求めた人の前にダイジェストが有効な一覧を開くと、知らせを読む前に `n` を押せるためである（2026-11-24、利用者の判断。#381）。
+  - **ダイジェストを有効にして動いている一覧があるときに `whatnext --no-digest` を実行すると、その一覧につながずに、標準エラーに `whatnext: a whatnext with digests is already running. Quit it first (run whatnext without --no-digest, then press q), then run whatnext --no-digest.` と出して、終了コード 1 で終わる。** 動いている一覧と、それを映している画面には何も起きない。黙ってつなぐと、利用者は切ったつもりのまま `n` でセッションを起動し、そのセッションには mod が付いて、ターンごとに Haiku を呼ぶ（「全体」の、知らないオプションを無視しない理由と同じ）。文言は、別の whatnext が受け口を使っているときの `… Quit it first, then run whatnext again.` に揃えた。つないで一覧の下に知らせる形にしないのは、`--no-digest` を求めた人の前にダイジェストが有効な一覧を開くと、知らせを読む前に `n` を押せるためである（2026-11-24、利用者の判断。#381）。
   - `--no-digest` で動いている一覧に `whatnext` でつなぐと、一覧は今のまま動き、違いを示さない。ダイジェストが切れている一覧は `--no-digest` を自分で付けて開いたもので、付け忘れを知らせる相手がほぼいないためである（2026-11-24、利用者の判断。#381）。`--no-digest` で動いている一覧に `whatnext --no-digest` でつなぐときも、今までどおりつながる。
   - 0.24 の一覧が動いているときも同じに扱う。`--digest` で起動した 0.24 の一覧には `whatnext --no-digest` でつながず、`--digest` なしの 0.24 の一覧（ダイジェストを出さない）にはつながる。
 - **各行の一言の上に、ダイジェストの Goal を1行で出す（`◎ <Goal>`）。** 注記の並びは、Goal → 一言 → `⚙` → `↳ メモ` である。記号で始めるのは、`→` `⚙` `↳` と揃え、画面の文言を英語に保つため（`Goal` という言葉のラベルは付けない）。一言は、どの段でも今のまま残す。
@@ -896,7 +896,7 @@ claude の画面の幅は、分割の比率の分だけ減る。一時的に片�
 - **84.** 一覧で `o` を押すと、カーソルの行の会話リンクが並び、選んで `Enter` を押すとブラウザで開き、何を開いたかが一覧の下に出る。会話リンクのない行では `No links for <名前>.` が出る。
 - **85.** セッションを削除して `--json` から消えると、そのダイジェストは捨てられる。ダイジェストや会話リンクに制御文字が入っていても、画面は崩れない。
 - **86.** （廃止。動いている一覧とつなぐときの引数の違いの知らせ `whatnext is running without --digest. …` をやめた。[ADR-0023](adr/0023-digests-on-by-default.md)）
-- **88.** 引数なしで起動した whatnext が動いているときに、別の端末で `whatnext --no-digest` を実行すると、一覧にはつながらず、`whatnext: a whatnext with digests is already running. Quit it first (run whatnext, then press q), then run whatnext --no-digest.` が示されて終了コード 1 で終わる。先に開いていた画面は一覧を映したままで、一覧の下には何も出ない。`--no-digest` で起動した whatnext が動いているときの `whatnext --no-digest` は、その一覧につながる。
+- **88.** 引数なしで起動した whatnext が動いているときに、別の端末で `whatnext --no-digest` を実行すると、一覧にはつながらず、`whatnext: a whatnext with digests is already running. Quit it first (run whatnext without --no-digest, then press q), then run whatnext --no-digest.` が示されて終了コード 1 で終わる。先に開いていた画面は一覧を映したままで、一覧の下には何も出ない。`--no-digest` で起動した whatnext が動いているときの `whatnext --no-digest` は、その一覧につながる。
 
 #### `!` のコマンドのコピー
 
