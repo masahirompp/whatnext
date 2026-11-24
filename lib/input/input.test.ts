@@ -427,7 +427,7 @@ describe('会話記録 (シナリオ 33、34)', () => {
     const tr = new Transcripts(dir);
     const f = await tr.read('sid-1');
     const prompt = {text: 'run the tests in background', at: Date.parse(T(1))};
-    expect(f).toEqual({prompt});
+    expect(f).toEqual({prompt, turnAt: Date.parse(T(60))});
     // フックのないセッション(外で起動したもの)は、会話記録の値がそのまま出る
     expect(supplement(undefined, f, undefined)).toEqual({prompt});
 
@@ -457,6 +457,72 @@ describe('会話記録 (シナリオ 33、34)', () => {
     });
   });
 
+  it('フックを受けているセッションでも、通知で始まったターンを断って中断したら、そのターンの応答の冒頭を出す(#394)', async () => {
+    // フック: 指示 → Stop → 通知 → PermissionRequest(断る。Stop は届かない)。受けた時刻は会話記録の行の少し後
+    let t = Date.parse(T(1)) + 300;
+    const store = new HookStore(() => t);
+    const hook = (s: number, body: object) => {
+      t = Date.parse(T(s)) + 300;
+      store.receiveHook({session_id: 'sid-1', ...body});
+    };
+    hook(1, {hook_event_name: 'UserPromptSubmit', prompt: 'run the tests in background'});
+    hook(3, {hook_event_name: 'Stop', last_assistant_message: 'Started the tests.'});
+    hook(60, {hook_event_name: 'UserPromptSubmit', prompt: notificationBody});
+    const prompt = {text: 'run the tests in background', at: Date.parse(T(1)) + 300};
+
+    const before = [
+      {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
+      {type: 'assistant', timestamp: T(2), message: {content: [{type: 'text', text: 'Started the tests.'}]}},
+      {type: 'system', subtype: 'turn_duration', timestamp: T(3)},
+    ];
+    // 会話記録が通知の行をまだ持たない間(と、`turnOrigin` を書かない版)は、前のターンの応答を出さない
+    const stale = await transcriptDir(before);
+    expect(supplement(store.get('sid-1'), await new Transcripts(stale.dir).read('sid-1'), undefined)).toEqual({prompt});
+    const recordOnly = await transcriptDir([...before, notificationRecordOnly(60)]);
+    expect(supplement(store.get('sid-1'), await new Transcripts(recordOnly.dir).read('sid-1'), undefined)).toEqual({
+      prompt,
+    });
+
+    hook(61, {
+      hook_event_name: 'PermissionRequest',
+      tool_name: 'Bash',
+      tool_input: {command: 'rm -rf build', description: 'Remove build'},
+    });
+    const said = {
+      type: 'assistant',
+      timestamp: T(61),
+      message: {content: [{type: 'text', text: 'The tests finished. Removing the build directory.'}]},
+    };
+    const {dir} = await transcriptDir([
+      ...before,
+      notificationTurn(60),
+      said,
+      bashUse('tu1', 'rm -rf build', 61),
+      ...rejectedRows('tu1', 70),
+    ]);
+    const f = await new Transcripts(dir).read('sid-1');
+    expect(f?.turnAt).toBe(Date.parse(T(60)));
+    expect(supplement(store.get('sid-1'), f, undefined)).toEqual({
+      prompt,
+      haltAt: Date.parse(T(61)) + 300,
+      permission: 'Bash: rm -rf build',
+      lastText: 'The tests finished. Removing the build directory.',
+    });
+    // フックのないセッションと同じ一言になる
+    expect(supplement(undefined, f, undefined).lastText).toBe('The tests finished. Removing the build directory.');
+
+    // 応答の文章が無ければ、何も出ない(前のターンの応答に戻らない)
+    const noText = await transcriptDir([
+      ...before,
+      notificationTurn(60),
+      bashUse('tu1', 'rm -rf build', 61),
+      ...rejectedRows('tu1', 70),
+    ]);
+    expect(
+      supplement(store.get('sid-1'), await new Transcripts(noText.dir).read('sid-1'), undefined).lastText,
+    ).toBeUndefined();
+  });
+
   it('ターンを始めなかった通知の行(記録だけ)は境にせず、最後の応答を残す(#387)', async () => {
     const {dir} = await transcriptDir([
       {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
@@ -466,6 +532,7 @@ describe('会話記録 (シナリオ 33、34)', () => {
     ]);
     expect(await new Transcripts(dir).read('sid-1')).toEqual({
       prompt: {text: 'run the tests in background', at: Date.parse(T(1))},
+      turnAt: Date.parse(T(1)),
       lastText: 'Started the tests.',
       haltAt: Date.parse(T(3)),
     });
@@ -505,6 +572,7 @@ describe('会話記録 (シナリオ 33、34)', () => {
     const f = await new Transcripts(dir).read('sid-1');
     expect(f).toEqual({
       prompt: {text: 'clean up the build', at: Date.parse(T(1))},
+      turnAt: Date.parse(T(1)),
       question: 'Which bucket should I clean?',
       haltAt: Date.parse(T(6)),
     });
@@ -521,6 +589,7 @@ describe('会話記録 (シナリオ 33、34)', () => {
     ]);
     expect(await new Transcripts(withText.dir).read('sid-1')).toEqual({
       prompt,
+      turnAt: prompt.at,
       lastText: 'Removing build.',
       haltAt: Date.parse(T(4)),
     });
@@ -529,7 +598,11 @@ describe('会話記録 (シナリオ 33、34)', () => {
       bashUse('tu1', 'rm -rf build', 3),
       ...rejectedRows('tu1', 4),
     ]);
-    expect(await new Transcripts(noText.dir).read('sid-1')).toEqual({prompt, haltAt: Date.parse(T(4))});
+    expect(await new Transcripts(noText.dir).read('sid-1')).toEqual({
+      prompt,
+      turnAt: prompt.at,
+      haltAt: Date.parse(T(4)),
+    });
   });
 
   it('失敗の行と質問', async () => {

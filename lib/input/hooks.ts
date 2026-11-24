@@ -149,8 +149,11 @@ export function supplement(
   // (フックを受けていない指示)、そちらで引く。
   const floor = Math.max(ht ?? -Infinity, tp === undefined ? -Infinity : tp - SLACK);
   const fresh = (at: number | undefined) => at !== undefined && at >= floor;
-  // 会話記録の値は、その指示がフックのターンの始まりの2秒前以降のときだけ使う。
-  const trCurrent = tr !== undefined && (ht === undefined ? true : tp !== undefined && tp >= ht - SLACK);
+  // 会話記録の値は、会話記録のターンの始まり(指示の行か、ターンを始めた通知の行)が、フックのターンの始まりの
+  // 2秒前以降のときだけ使う。通知で始まったターンでも、会話記録が同じ通知の行で境を引いていれば今のターンの値で、
+  // 引いていなければ(通知の行をまだ読んでいない、`turnOrigin` を書かない版)前のターンの値なので使わない。
+  const tt = tr?.turnAt ?? tp;
+  const trCurrent = tr !== undefined && (ht === undefined ? true : tt !== undefined && tt >= ht - SLACK);
   const out: Supplied = {};
   if (ctx !== undefined) out.ctx = ctx;
 

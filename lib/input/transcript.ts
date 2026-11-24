@@ -7,6 +7,8 @@ import {instructionText, leadLine, toolTarget} from './text.js';
 
 export interface TranscriptFacts {
   prompt?: {text: string; at: number};
+  /** 今のターンを始めた行(指示、またはターンを始めた通知)の時刻。 */
+  turnAt?: number;
   haltAt?: number;
   permission?: string;
   question?: string;
@@ -25,6 +27,7 @@ interface FileState {
   mtimeMs: number;
   size: number;
   prompt?: {text: string; at: number};
+  turnAt?: number;
   lastText?: string;
   pending: Map<string, Pending>;
   error?: string;
@@ -66,6 +69,8 @@ function apply(st: FileState, line: string): void {
         if (at === undefined) return;
         st.prompt = {text, at};
       }
+      // 通知の行に時刻が無ければ、ターンの始まりは分からない(前のターンの時刻を残さない)
+      st.turnAt = at;
       st.lastText = undefined;
       st.pending.clear();
       st.error = undefined;
@@ -116,6 +121,7 @@ function apply(st: FileState, line: string): void {
 function facts(st: FileState): TranscriptFacts {
   const f: TranscriptFacts = {};
   if (st.prompt) f.prompt = st.prompt;
+  if (st.turnAt !== undefined) f.turnAt = st.turnAt;
   if (st.lastText) f.lastText = st.lastText;
   if (st.error) f.error = st.error;
   if (st.lastAt !== undefined) f.haltAt = st.lastAt;
