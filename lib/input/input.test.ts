@@ -230,7 +230,8 @@ describe('フックと補う値', () => {
       expect(s.prompt).toEqual({text: 'ask me which db to use', at: 1000});
       expect(s.question).toBeUndefined();
       expect(s.lastText).toBeUndefined();
-      expect(s).not.toHaveProperty('declined');
+      // 今のターンの権限待ちの対象は、フックの値で出る
+      expect(s.permission).toBe('Bash: rm -rf build');
       expect(s.haltAt).toBe(61000);
     }
   });
@@ -363,10 +364,38 @@ describe('会話記録 (シナリオ 33、34)', () => {
       }\n`,
     );
     const g = await tr.read('sid-1');
-    expect(g).not.toHaveProperty('declined');
-    expect(g?.lastText).toBeUndefined();
-    expect(g?.permission).toBeUndefined();
-    expect(g?.prompt?.text).toBe('run the build');
+    // 結果の付いた道具は権限待ちの対象から消え、ほかに値は増えない
+    expect(g).toEqual({
+      prompt: {text: 'run the build', at: Date.parse(T(10))},
+      turnAt: Date.parse(T(10)),
+      haltAt: Date.parse(T(14)),
+    });
+  });
+
+  it('サイドチェーンの行(サブエージェント)は、最後の応答にも権限待ちの対象にも入れない', async () => {
+    const prompt = {text: 'review the change', at: Date.parse(T(1))};
+    const {dir} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'review the change'}},
+      {type: 'assistant', timestamp: T(2), message: {content: [{type: 'text', text: 'Starting the review.'}]}},
+      {
+        type: 'assistant',
+        timestamp: T(3),
+        isSidechain: true,
+        message: {content: [{type: 'text', text: 'Subagent is still reporting.'}]},
+      },
+      {
+        type: 'assistant',
+        timestamp: T(4),
+        isSidechain: true,
+        message: {content: [{type: 'tool_use', id: 'side1', name: 'Bash', input: {command: 'rm -rf build'}}]},
+      },
+    ]);
+    expect(await new Transcripts(dir).read('sid-1')).toEqual({
+      prompt,
+      turnAt: prompt.at,
+      lastText: 'Starting the review.',
+      haltAt: Date.parse(T(2)),
+    });
   });
 
   // 観測した行の形(claude-code-behavior.md「会話記録」の「中断したターン」と、バックグラウンドのタスクの通知)

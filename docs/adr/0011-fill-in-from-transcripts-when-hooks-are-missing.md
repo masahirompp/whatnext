@@ -27,7 +27,9 @@ CTX の列は OTel だけから取り、会話記録では補わない。
 - 行の `type`（`user`、`assistant`）と `timestamp`
 - `message.content`：`user` の文字列（指示）、`assistant` の `text` と `tool_use`（`name`、`input`）、`tool_result`
 - 失敗の印（`isApiErrorMessage`）
-- タスクの通知で始まったターンの印（`user` の行の `turnOrigin` が `task_notification`）と、`tool_result` の `is_error`（断った道具の判定）。#387 で足した（2026-11-24）。`is_error` は、`Declined:` の表示をやめたので読まなくなった（#394）
+- タスクの通知で始まったターンの印（`user` の行の `turnOrigin` が `task_notification`）。#387 で足した（2026-11-24）
+
+#387 では `tool_result` の `is_error`（断った道具の判定）も足したが、`Declined:` の表示をやめたので読まなくなり、この一覧から外した（#394）。
 
 形式が変わって読めなくなっても、段と並びは変わらない。
 一言が出なくなり、待機時間は観測からの推定に戻るだけである。

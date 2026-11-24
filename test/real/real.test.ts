@@ -96,6 +96,15 @@ const newId = (before: Set<string>) => mine().find(a => a.id && !before.has(a.id
 /** 今の名前(`--bg` のセッションはターンを終えると名前が付け直される)。 */
 const nm = (id: string) => mine().find(a => a.id === id)?.name ?? id;
 
+/**
+ * 名前の行が画面にあり、段が合うことを確かめてから、その行の注記を返す。
+ * 行が見つからないと注記は空になり、「出ない」ことの確かめ(`not.toMatch`)が素通りする。
+ */
+function notesOfRow(name: string, tier: RegExp): string {
+  expect(h.row(name)).toMatch(tier);
+  return h.notes(name).join('\n');
+}
+
 describe('whatnext が起動したセッション', () => {
   it('23・16: 権限待ちの対象、最後の応答の冒頭、CTX が出る。断って中断した行に Declined は出ない(#394)', async () => {
     h = new RealHarness();
@@ -119,7 +128,7 @@ describe('whatnext が起動したセッション', () => {
     await h.keys('C-q', 'C-l');
     await refreshUntil(() => /Question/.test(h.row(nm(id)) ?? ''));
     // 断った道具は出さない。一言は最後の応答の冒頭で、応答の文章が無ければ何も出ない(#394)
-    expect(h.notes(nm(id)).join('\n')).not.toMatch(/Declined:|Bash: date >/);
+    expect(notesOfRow(nm(id), /Question/)).not.toMatch(/Declined:|Bash: date >/);
     // 次の指示でターンを終える
     await h.keys('Enter');
     await sleep(2000);
@@ -199,7 +208,7 @@ describe('whatnext の外で起動したセッション', () => {
     await h.keys('C-q', 'C-l');
     await refreshUntil(() => /Question/.test(h.row('wn-real-ext') ?? ''));
     // 外で起動したセッションでも、断った道具は出さない(#394)
-    expect(h.notes('wn-real-ext').join('\n')).not.toMatch(/Declined:|Bash: date >/);
+    expect(notesOfRow('wn-real-ext', /Question/)).not.toMatch(/Declined:|Bash: date >/);
     await h.keys('Enter');
     await sleep(2000);
     await sendPrompt('Write about 120 words about oolong tea. Do not use any tools. Start with the word Oolong.');
