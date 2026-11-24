@@ -404,7 +404,9 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 80〜82、84、85 | 画面の通し（`test/e2e/digest.test.ts`。mod の代わりにテストが受け口へダイジェストを送る。ハーネスの `start` は、引数を渡さなければ `--no-digest` で開くので、既定（ダイジェストが有効）を通すテストは `args: ''` で引数なしにして開く）、単体（`test/unit/digest.test.ts`）。`--no-digest` で起動し直したあとに、mod を付けたセッションが Haiku を呼ばないことは、mod のテストと実機で確かめる |
 | 88 | 画面の通し（`test/e2e/digest.test.ts`。0.24 の一覧は、`--no-digest` の一覧のセッションの `@wn_digest` を外し、サーバ全体の `@wn_digest` を置いて見立てる。0.24 の実物では確かめていない。起動した直後の一覧への判定は、偽の `tmux` で一覧の `source-file` を待たせて確かめる） |
 | 83 | mod のテスト（`npm run test:mod`）、画面の通し（`--plugin-dir` と `WHATNEXT_DIGEST_PORT` を付けること）。実機の `claude --bg` で mod が動き、ダイジェストが届くことは、実装のときに1回確かめた |
+| 86 | （廃止） |
 | 87 | 画面の通し（古い版を名乗る偽の `tmux`）、単体（`test/unit/cli.test.ts`） |
+| 89 | 画面の通し（`test/e2e/list.test.ts`）、単体（`test/unit/screen.test.ts`。折り返しの形、高さの小さい端末でメニューや入力欄を開いたときに空ける行数） |
 
 画面の通しは、外側の tmux のセッションを端末の代わりにし、偽の `claude`、`ps`、`gh`、`ghq`、`open`(`test/e2e/fake/`)を `PATH` の前に置く。偽の claude は状態を一時ディレクトリの `agents.json` に持ち、呼ばれたコマンドを `calls.log` に書き、`fake.json` と行の `_fake` で失敗や遅れを起こす。偽の `ps` は、起動元を引く2つの読み方(`ps -A -o pid=,ppid=` と `ps -E`)だけを固定の表で返し、ほかは本物に渡す。外側の tmux を挟むと Esc が約 500ms 遅れて届くので、harness は Esc のあとに待つ(#278)。実機の通しは `/tmp/whatnext-real`(git でない。初回に対話モードの claude で信頼の確認を済ませる)で haiku のセッションを起動し、テストのあとにそのディレクトリのセッションだけを `claude stop` と `claude rm` で消す。Claude Code の中のシェルから流すときは、`CLAUDE_CODE_CHILD_SESSION` などを外してから claude を動かす(引き継ぐと対話セッションが `--json` に出ない。#284)。子の `claude -p` には道具を使わない長い出力を頼む(利用者のフックが前景の `sleep` を止めると、子がすぐ終わる。#285)。Ghostty の通しは、AppleScript で新しいウィンドウを開き、`ctrl+q` の組み合わせだけを Ghostty の `send key` で送る(修飾キーのない文字は `send key` では届かず、`input text` は貼り付けとして届くため、一覧への文字キーは tmux の `send-keys` で一覧のペインに送る)。AppleScript の中では `tab` が Ghostty のタブの class と紛れるので、区切りの文字は `character id 9` と書く。
 

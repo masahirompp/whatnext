@@ -7,7 +7,7 @@ description: whatnext の画面を実機で確かめるとき(キー操作、att
 ビルドしてから、入口(`package.json` の `bin`)を tmux の中で起動する。
 
 ```sh
-tmux new-session -d -s wn -x 110 -y 20 'node dist/src/cli.js'
+tmux new-session -d -s wn -x 110 -y 20 'node dist/src/cli.js --no-digest'   # ダイジェストを確かめるときだけ --no-digest を外す
 sleep 6                                  # 最初の --json と Usage を待つ
 tmux send-keys -t wn h                   # 1キー
 tmux send-keys -t wn -l 'some text'      # 文字列はそのまま(-l がないと単語がキー名として解釈されうる)
@@ -30,7 +30,7 @@ tmux kill-session -t wn                  # 片付け
 - 引数なしで起動すると、ダイジェストが有効になる。120 桁以上の端末では一覧の右に欄が出て、`n` で起動した実物のセッションには mod が付き、ターンごとに Haiku を1回呼ぶ。ダイジェストに関係しない確かめは `--no-digest` を付けて起動する(画面の通しのハーネスの `start` も、引数を渡さなければ `--no-digest` で開く)。
 - Claude Code の Bash から起動すると `CLAUDECODE=1` が引き継がれ、whatnext は `whatnext: this shell runs inside whatnext. ...` を出して起動を断る(`src/cli/env.ts` の `insideWhatnext`。claude の Bash では、whatnext の中かどうかに関係なく断る。#300)。ペインのコマンドの中で `env -u CLAUDECODE` として外す(#374 の実機の確かめで、外さずに起動して断られた)。
 - 終わったつもりで動き続けている一覧に `send-keys -l` で文字列を送ると、その文字がキーとして効く(`n` や `Enter` で起動や attach が走る)。送る前に capture で画面を確かめる。
-- 確かめ用の tmux で `new-session -e PATH=<偽の bin>:$PATH` と渡しても、ペインのコマンドを実行するシェル(zsh)の起動処理で PATH が組み直され、偽の `claude` が使われなかった(`CLAUDE_CONFIG_DIR` は届いた)。環境はペインのコマンドの中で渡す: `tmux -L wnv new-session -d -s wn -x 130 -y 30 "env -u CLAUDECODE WHATNEXT_ROLE= WHATNEXT_TMUX_SOCKET=wn-verify WHATNEXT_PORT=14399 CLAUDE_CONFIG_DIR=$T/cfg PATH=$T/bin:\$PATH node dist/src/cli.js"`。
+- 確かめ用の tmux で `new-session -e PATH=<偽の bin>:$PATH` と渡しても、ペインのコマンドを実行するシェル(zsh)の起動処理で PATH が組み直され、偽の `claude` が使われなかった(`CLAUDE_CONFIG_DIR` は届いた)。環境はペインのコマンドの中で渡す: `tmux -L wnv new-session -d -s wn -x 130 -y 30 "env -u CLAUDECODE WHATNEXT_ROLE= WHATNEXT_TMUX_SOCKET=wn-verify WHATNEXT_PORT=14399 CLAUDE_CONFIG_DIR=$T/cfg PATH=$T/bin:\$PATH node dist/src/cli.js --no-digest"`。
 - 偽のセッションを作る: 偽の `claude` は `agents` なら固定の行(`[{"kind":"background","sessionId":"<uuid>","id":"bangtest","cwd":"/tmp","name":"bang-test","state":"done","status":"idle","pid":99999}]`)を返し、それ以外は `CLAUDE_CONFIG_DIR` を外して本物に `exec` する。会話記録は `$CLAUDE_CONFIG_DIR/projects/<任意>/<uuid>.jsonl` に、user の指示の行と assistant の text の行を置く。
 - **偽の `claude` に実行の権限がないと、黙って本物が使われる。** Node の `execFile('claude')` は PATH の中の実行できないファイルを飛ばす。一覧に利用者の本物のセッションが並び、attach して文字を送ると利用者のセッションに入力される。偽の `claude` を置いたら、そのパスで直接 `claude agents --json` を実行して出力を確かめ、起動したら一覧の行が偽のセッションだけかを確かめてから操作する。
 - **作業台に文字を送る前に、送り先が作業台の画面で、作業台ができているかを確かめる。** 送り先を取り違えると、文字は claude の画面の入力欄に入り、`Enter` で指示として送られる。`list-clients -F '#{client_tty} #{session_name}'` で、送り先の端末のクライアントが `sh-<id>` を映していることを確かめ、なければ止める。実物のセッションで試すときは `Enter` を送る操作を最小にする。
