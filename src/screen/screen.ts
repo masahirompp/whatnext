@@ -310,20 +310,34 @@ export function render(raw: Screen): string[] {
  * 一覧を `raw.width` 桁で組み立てる。メモの入力欄、一覧の下の欄、最下部の欄(Usage、キーの説明)は `full` 桁で組み立てる。
  * `blocks` は、メモの入力欄と一覧の下の欄(入力欄・メニュー・知らせ。前の空行を含む)の行の範囲。`foot` は最下部の欄の行数。
  */
-function layout(raw: Screen, full = raw.width): {lines: string[]; blocks: [number, number][]; foot: number} {
+type Layout = {lines: string[]; blocks: [number, number][]; foot: number};
+
+function layout(raw: Screen, full = raw.width): Layout {
   const s: Screen = {...raw, groups: raw.groups.map(g => ({...g, title: clean(g.title), rows: g.rows.map(cleanRow)}))};
-  const w = Math.max(1, s.width);
   const fw = Math.max(1, full);
   const h = Math.max(1, s.height);
+  const usage = s.usage ? [clip(s.usage, fw)] : [];
+  // キーの説明は、ヘッダと一覧の1行を残せる行数まで折り返す
+  const keys = keyLines(s.keys ?? '', fw, Math.max(1, h - usage.length - 2));
+  if (!s.keysHidden) return layoutWith(s, fw, h, [...usage, ...keys]).out;
+  // 隠すとき(メニューや入力欄を開いている間)は、同じ行数を空けて Usage の位置を変えない。ただし、下の欄かメモの入力欄が
+  // 収まらない高さでは、空行を1行まで減らして中身に譲る(1行は、折り返す前の「キーの説明の行が空になる」と同じ形)
+  for (let gap = keys.length; ; gap--) {
+    const r = layoutWith(s, fw, h, [...usage, ...Array<string>(gap).fill('')]);
+    if (r.fits || gap <= 1) return r.out;
+  }
+}
+
+/**
+ * 最下部の欄を `footer` にして組み立てる。`fits` は、一覧の下の欄を切らず、メモの入力欄を開いていればその行の塊が
+ * 窓に収まったか。
+ */
+function layoutWith(s: Screen, fw: number, h: number, footer: string[]): {out: Layout; fits: boolean} {
+  const w = Math.max(1, s.width);
   const bottom: string[] = [];
   if (s.panel && s.panel.length > 0) bottom.push('', ...s.panel.map(l => clip(l, fw)));
   if (s.notice && s.notice.length > 0) bottom.push('', ...s.notice.map(l => clip(l, fw)));
-  const footer: string[] = [];
-  if (s.usage) footer.push(clip(s.usage, fw));
-  // キーの説明は、ヘッダと一覧の1行を残せる行数まで折り返す。隠すとき(メニューを開いている間)も同じ行数を空けて、
-  // Usage の位置を変えない
-  const keys = keyLines(s.keys ?? '', fw, Math.max(1, h - footer.length - 2));
-  footer.push(...(s.keysHidden ? keys.map(() => '') : keys));
+  let fits = true;
 
   const top: string[] = [];
   const blocks: [number, number][] = [];
@@ -415,6 +429,7 @@ function layout(raw: Screen, full = raw.width): {lines: string[]; blocks: [numbe
       // 入力欄は最後の行まで窓に入れる
       if (s.inline && b1 > start + avail) start = Math.max(0, b1 - avail);
     }
+    if (s.inline && block[1] - block[0] > avail) fits = false;
     top.push(...body.slice(start, start + avail));
     if (inlineAt) {
       const a = Math.max(inlineAt[0], start);
@@ -428,10 +443,13 @@ function layout(raw: Screen, full = raw.width): {lines: string[]; blocks: [numbe
   // 下の欄を最下部に寄せる。収まらなければ下から削る(ヘッダは押し出さない)
   let lines = [...top, ...bottom];
   const room = h - footer.length;
-  if (lines.length > room) lines = lines.slice(0, Math.max(1, room));
+  if (lines.length > room) {
+    lines = lines.slice(0, Math.max(1, room));
+    if (bottom.length > 0) fits = false;
+  }
   while (lines.length < room) lines.push('');
   lines.push(...footer);
-  return {lines: lines.slice(0, h), blocks, foot: footer.length};
+  return {out: {lines: lines.slice(0, h), blocks, foot: footer.length}, fits};
 }
 
 /** 画面全体を1回の書き込みにする(同期出力、上書き、行末と残りを消す)。 */

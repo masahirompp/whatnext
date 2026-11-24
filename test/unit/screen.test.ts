@@ -403,6 +403,86 @@ describe('画面の組み立て', () => {
     ]);
     expect(hidden.slice(3)).toEqual(['', 'Note: █', '', 'Refreshed.', 'session 42%', '', '']);
   });
+  it('高さが足りないときは、空けた行を1行まで減らして、メニューの中身(候補、件数、案内)を先に見せる', () => {
+    const menu = (width: number, height: number) =>
+      menuLines({
+        title: 'New session in:',
+        input: '',
+        items: ['~/a', '~/b', '~/c', '~/d', '~/e', 'Other...'].map(label => ({label})),
+        selected: 0,
+        hint: 'Type to filter · Enter start · Esc close',
+        // app.ts の panel() と同じ
+        maxItems: Math.max(3, Math.floor(height / 2) - 4),
+        width,
+      });
+    const base = (width: number, height: number): Screen => ({
+      width,
+      height,
+      cursor: 'a',
+      groups: [{title: 'app', rows: [row('a'), row('b'), row('c')]}],
+      usage: 'session 42%',
+      keys: DIGEST_KEYS_HELP,
+      keysHidden: true,
+      panel: menu(width, height),
+    });
+    for (const w of [80, 60]) {
+      expect(plain(base(w, 12))).toEqual([
+        '  SESSION  STATUS  WHERE  CTX      AGE',
+        '> a        Review           -        -',
+        '1/3',
+        '',
+        'New session in: █',
+        '> ~/a',
+        '  ~/b',
+        '  ~/c',
+        '1/6',
+        'Type to filter · Enter start · Esc close',
+        'session 42%',
+        '',
+      ]);
+    }
+    // 1行ぶん高ければ、空ける行を1行だけ戻す。収まる高さでは、折り返した行数(60 桁では3行)を空けたまま
+    const hint = 'Type to filter · Enter start · Esc close';
+    expect(plain(base(60, 13)).slice(-4)).toEqual([hint, 'session 42%', '', '']);
+    expect(plain(base(60, 14)).slice(-5)).toEqual([hint, 'session 42%', '', '', '']);
+    expect(plain(base(60, 20)).slice(-4)).toEqual(['session 42%', '', '', '']);
+  });
+  it('高さが足りないときは、確認の問いとメモの入力欄も、空けた行より先に見せる', () => {
+    const base: Screen = {
+      width: 60,
+      height: 6,
+      cursor: 'a',
+      groups: [{title: 'app', rows: [row('a'), row('b'), row('c')]}],
+      usage: 'session 42%',
+      keys: DIGEST_KEYS_HELP,
+      keysHidden: true,
+    };
+    expect(plain({...base, height: 7, panel: ['Stop a? [y/N]']})).toEqual([
+      '  SESSION  STATUS  WHERE  CTX      AGE',
+      '> a        Review           -        -',
+      '1/3',
+      '',
+      'Stop a? [y/N]',
+      'session 42%',
+      '',
+    ]);
+    expect(plain({...base, inline: {sid: 'a', lines: ['Note for a: █', 'Enter confirm']}})).toEqual([
+      '  SESSION  STATUS  WHERE  CTX      AGE',
+      '    Note for a: █',
+      '    Enter confirm',
+      '1/3',
+      'session 42%',
+      '',
+    ]);
+    // 空けた行を1行にしても収まらない高さでは、1行を残して下から削る(折り返す前と同じ形)
+    expect(plain({...base, height: 5, panel: ['Stop a? [y/N]']})).toEqual([
+      '  SESSION  STATUS  WHERE  CTX      AGE',
+      '> a        Review           -        -',
+      '1/3',
+      'session 42%',
+      '',
+    ]);
+  });
   it('右の欄があるときも、キーの説明は全幅で折り返し、右の欄はその上で止まる', () => {
     const lines = plain({
       width: 120,
