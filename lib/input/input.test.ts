@@ -473,6 +473,62 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     expect(f?.lastText).toBe('The docs describe it.');
   });
 
+  it('文を添えて断ったあとターンが続いたら、断った道具を残さない(#387)', async () => {
+    // 文を添えた拒否の形(claude-code-behavior.md「会話記録」の「中断したターン」)。中断の印は付かず、本体の assistant の行が続く
+    const body =
+      "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\nuse the staging bucket instead";
+    const {dir} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'clean up the build'}},
+      bashUse('tu1', 'rm -rf build', 2),
+      {
+        type: 'user',
+        timestamp: T(4),
+        isSidechain: false,
+        toolUseResult: `Error: ${body}`,
+        message: {content: [{type: 'tool_result', tool_use_id: 'tu1', content: body, is_error: true}]},
+      },
+      {type: 'assistant', timestamp: T(5), isSidechain: false, message: {content: [{type: 'thinking', thinking: ''}]}},
+      {
+        type: 'assistant',
+        timestamp: T(6),
+        isSidechain: false,
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tu2',
+              name: 'AskUserQuestion',
+              input: {questions: [{question: 'Which bucket should I clean?'}]},
+            },
+          ],
+        },
+      },
+    ]);
+    const f = await new Transcripts(dir).read('sid-1');
+    expect(f).toEqual({
+      prompt: {text: 'clean up the build', at: Date.parse(T(1))},
+      question: 'Which bucket should I clean?',
+      haltAt: Date.parse(T(6)),
+    });
+  });
+
+  it('断って中断したターンでは、サイドチェーンの assistant の行が続いても、断った道具を残す(#387)', async () => {
+    const {dir} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'clean up the build'}},
+      bashUse('tu1', 'rm -rf build', 2),
+      ...rejectedRows('tu1', 4),
+      {
+        type: 'assistant',
+        timestamp: T(5),
+        isSidechain: true,
+        message: {content: [{type: 'text', text: 'Subagent is still reporting.'}]},
+      },
+    ]);
+    const f = await new Transcripts(dir).read('sid-1');
+    expect(f?.declined).toBe('Bash: rm -rf build');
+    expect(f?.lastText).toBeUndefined();
+  });
+
   it('失敗の行と質問', async () => {
     const {dir} = await transcriptDir([
       {type: 'user', timestamp: T(1), message: {content: 'hi'}},

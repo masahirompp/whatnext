@@ -96,6 +96,8 @@ function apply(st: FileState, line: string): void {
   }
   if (o.type === 'assistant') {
     const c = msg?.content;
+    // 断ったあとに本体の応答が続いたなら、ターンは中断していない(文を添えて断ったとき)。断った道具を残さない(#387)
+    st.declined = undefined;
     if (o.isApiErrorMessage === true) {
       const text = Array.isArray(c)
         ? c
