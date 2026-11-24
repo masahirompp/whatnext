@@ -104,6 +104,34 @@ function clip(line: string, w: number): string {
   return width(line) > w ? truncate(line, w) : line;
 }
 
+const KEYS_SEP = ' · ';
+
+/**
+ * キーの説明を幅 `w` に収める(PRODUCT.md「一覧の表示」)。収まれば1行。収まらなければ区切り(` · `)で折り、行の末尾にも
+ * 次の行の頭にも区切りの記号を置かない。1つの項目だけで幅を超える行は切る。`max` 行を超える分は、最後の行に続けて切る
+ * (端末の高さが小さいときに、一覧の行を押し出さないため)。
+ */
+export function keyLines(keys: string, w: number, max = Number.POSITIVE_INFINITY): string[] {
+  if (width(keys) <= w) return [keys];
+  const items = keys.split(KEYS_SEP);
+  const out: string[] = [];
+  let line = '';
+  for (const [i, item] of items.entries()) {
+    if (line !== '' && width(line) + width(KEYS_SEP) + width(item) <= w) {
+      line += KEYS_SEP + item;
+      continue;
+    }
+    if (line !== '') out.push(line);
+    line = item;
+    if (out.length >= max - 1) {
+      line = items.slice(i).join(KEYS_SEP);
+      break;
+    }
+  }
+  out.push(line);
+  return out.map(l => clip(l, w));
+}
+
 function header(c: Cols, w: number): string {
   const h = `  ${padEnd('SESSION', c.sess)}${GAP}${padEnd('STATUS', c.status)}${GAP}${padEnd('WHERE', c.where)}${GAP}${padStart('CTX', c.ctx)}${GAP}${padStart('AGE', c.age)}`;
   return color.bold(clip(h.trimEnd(), w));
@@ -270,26 +298,19 @@ export function render(raw: Screen): string[] {
   const side = raw.side;
   if (!side || raw.width < SIDE_MIN_COLS || raw.message !== undefined) return layout(raw).lines;
   const leftW = raw.width - SIDE_WIDTH - SIDE_GAP.length;
-  const {lines: left, blocks} = layout({...raw, width: leftW}, raw.width);
-  const footN = Math.min(left.length, (raw.usage ? 1 : 0) + 1);
-  const room = left.length - footN;
+  const {lines: left, blocks, foot} = layout({...raw, width: leftW}, raw.width);
+  const room = left.length - Math.min(left.length, foot);
   const wide = blocks.find(([a, b]) => left.slice(a, b).some(l => width(l) > leftW));
   const stop = Math.min(room, wide ? wide[0] : room);
   const sl = sideLines(side, SIDE_WIDTH, stop);
-  const out = left
-    .slice(0, room)
-    .map((l, i) => (i < stop ? `${padEnd(l, leftW)}${color.gray(SIDE_GAP)}${sl[i] ?? ''}` : l));
-  const w = Math.max(1, raw.width);
-  if (raw.usage) out.push(clip(raw.usage, w));
-  out.push(clip(raw.keys ?? '', w));
-  return out.slice(0, left.length);
+  return left.map((l, i) => (i < stop ? `${padEnd(l, leftW)}${color.gray(SIDE_GAP)}${sl[i] ?? ''}` : l));
 }
 
 /**
- * 一覧を `raw.width` 桁で組み立てる。メモの入力欄と一覧の下の欄は `full` 桁で切る。
- * `blocks` は、メモの入力欄と一覧の下の欄(入力欄・メニュー・知らせ。前の空行を含む)の行の範囲。
+ * 一覧を `raw.width` 桁で組み立てる。メモの入力欄、一覧の下の欄、最下部の欄(Usage、キーの説明)は `full` 桁で組み立てる。
+ * `blocks` は、メモの入力欄と一覧の下の欄(入力欄・メニュー・知らせ。前の空行を含む)の行の範囲。`foot` は最下部の欄の行数。
  */
-function layout(raw: Screen, full = raw.width): {lines: string[]; blocks: [number, number][]} {
+function layout(raw: Screen, full = raw.width): {lines: string[]; blocks: [number, number][]; foot: number} {
   const s: Screen = {...raw, groups: raw.groups.map(g => ({...g, title: clean(g.title), rows: g.rows.map(cleanRow)}))};
   const w = Math.max(1, s.width);
   const fw = Math.max(1, full);
@@ -298,8 +319,11 @@ function layout(raw: Screen, full = raw.width): {lines: string[]; blocks: [numbe
   if (s.panel && s.panel.length > 0) bottom.push('', ...s.panel.map(l => clip(l, fw)));
   if (s.notice && s.notice.length > 0) bottom.push('', ...s.notice.map(l => clip(l, fw)));
   const footer: string[] = [];
-  if (s.usage) footer.push(clip(s.usage, w));
-  footer.push(clip(s.keys ?? '', w));
+  if (s.usage) footer.push(clip(s.usage, fw));
+  // キーの説明は、ヘッダと一覧の1行を残せる行数まで折り返す。隠すとき(メニューを開いている間)も同じ行数を空けて、
+  // Usage の位置を変えない
+  const keys = keyLines(s.keys ?? '', fw, Math.max(1, h - footer.length - 2));
+  footer.push(...(s.keysHidden ? keys.map(() => '') : keys));
 
   const top: string[] = [];
   const blocks: [number, number][] = [];
@@ -407,7 +431,7 @@ function layout(raw: Screen, full = raw.width): {lines: string[]; blocks: [numbe
   if (lines.length > room) lines = lines.slice(0, Math.max(1, room));
   while (lines.length < room) lines.push('');
   lines.push(...footer);
-  return {lines: lines.slice(0, h), blocks};
+  return {lines: lines.slice(0, h), blocks, foot: footer.length};
 }
 
 /** 画面全体を1回の書き込みにする(同期出力、上書き、行末と残りを消す)。 */

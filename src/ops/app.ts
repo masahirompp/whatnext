@@ -495,8 +495,8 @@ export class App {
         title: g.title,
         rows: g.nodes.filter(n => this.rows.has(n.sid)).map(n => this.screenRow(n.sid, g.root, n, titles)),
       })),
-      keys:
-        this.mode.k === 'list' && this.confirms.length === 0 ? (this.p.digest ? DIGEST_KEYS_HELP : LIST_KEYS_HELP) : '',
+      keys: this.p.digest ? DIGEST_KEYS_HELP : LIST_KEYS_HELP,
+      keysHidden: !(this.mode.k === 'list' && this.confirms.length === 0),
       usage: this.usageText(),
     };
     const cur = this.cursor ? this.rows.get(this.cursor) : undefined;

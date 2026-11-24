@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {stripAnsi, width} from '../../lib/text/text.js';
-import {formatAge, formatCtx, menuLines, render} from '../../src/screen/screen.js';
+import {DIGEST_KEYS_HELP, LIST_KEYS_HELP} from '../../src/ops/keys.js';
+import {formatAge, formatCtx, keyLines, menuLines, render} from '../../src/screen/screen.js';
 import type {Screen, ScreenRow} from '../../src/screen/types.js';
 
 const row = (sid: string, over: Partial<ScreenRow> = {}): ScreenRow => ({
@@ -305,6 +306,120 @@ describe('画面の組み立て', () => {
     const lines = render(s);
     expect(lines.join('\n')).not.toContain(`${esc}]2;`);
     expect(lines.map(stripAnsi).join('\n')).toContain('bad[31mname');
+  });
+  it('キーの説明は、幅に収まれば1行で、収まらないときだけ区切りで折り返す', () => {
+    expect(keyLines(DIGEST_KEYS_HELP, 130)).toEqual([DIGEST_KEYS_HELP]);
+    expect(keyLines(LIST_KEYS_HELP, 120)).toEqual([LIST_KEYS_HELP]);
+    expect(keyLines(DIGEST_KEYS_HELP, 129)).toEqual([
+      '↑↓ select · Enter attach · n new · ^X stop/delete · e note · f wait for · w/t workbench · v VS Code · o links · r refresh',
+      'q quit',
+    ]);
+    expect(keyLines(DIGEST_KEYS_HELP, 100)).toEqual([
+      '↑↓ select · Enter attach · n new · ^X stop/delete · e note · f wait for · w/t workbench · v VS Code',
+      'o links · r refresh · q quit',
+    ]);
+    expect(keyLines(LIST_KEYS_HELP, 40)).toEqual([
+      '↑↓ select · Enter attach · n new',
+      '^X stop/delete · e note · f wait for',
+      'w/t workbench · v VS Code · r refresh',
+      'q quit',
+    ]);
+    // 文言は削らない。どの幅でも、行をつなぎ直すと元の説明に戻り、行は幅を超えない
+    for (const help of [LIST_KEYS_HELP, DIGEST_KEYS_HELP]) {
+      for (let w = 14; w <= 140; w++) {
+        const lines = keyLines(help, w);
+        expect(lines.join(' · ')).toBe(help);
+        for (const l of lines) expect(width(l)).toBeLessThanOrEqual(w);
+      }
+    }
+  });
+  it('キーの説明の1つの項目が幅を超えるときは、その行を切る。行数の上限を超える分は、最後の行に続けて切る', () => {
+    expect(keyLines('↑↓ select · ^X stop/delete · q quit', 10)).toEqual(['↑↓ select', '^X stop/d…', 'q quit']);
+    expect(keyLines(LIST_KEYS_HELP, 40, 2)).toEqual([
+      '↑↓ select · Enter attach · n new',
+      '^X stop/delete · e note · f wait for · …',
+    ]);
+    expect(keyLines(LIST_KEYS_HELP, 40, 1)).toEqual(['↑↓ select · Enter attach · n new · ^X s…']);
+    expect(keyLines('', 40)).toEqual(['']);
+  });
+  it('折り返したキーの説明の分だけ一覧の窓が減り、選んだ行は見えたままになる', () => {
+    const rows = Array.from({length: 30}, (_, i) => row(`s${i}`));
+    const s: Screen = {
+      width: 60,
+      height: 12,
+      cursor: 's29',
+      groups: [{title: 'app', rows}],
+      usage: 'session 42%',
+      keys: LIST_KEYS_HELP,
+    };
+    const lines = plain(s);
+    expect(lines.length).toBe(12);
+    expect(lines[0]).toMatch(/SESSION/);
+    expect(lines.some(l => l.startsWith('> s29'))).toBe(true);
+    expect(lines.slice(-3)).toEqual([
+      'session 42%',
+      '↑↓ select · Enter attach · n new · ^X stop/delete · e note',
+      'f wait for · w/t workbench · v VS Code · r refresh · q quit',
+    ]);
+    expect(lines[8]).toBe('30/30');
+  });
+  it('端末の高さが小さいときは、ヘッダと一覧の1行を残して、キーの説明の行数を抑える', () => {
+    const base: Screen = {
+      width: 40,
+      height: 5,
+      cursor: 'a',
+      groups: [{title: 'app', rows: [row('a')]}],
+      keys: LIST_KEYS_HELP,
+    };
+    const lines = plain(base);
+    expect(lines.length).toBe(5);
+    expect(lines[0]).toMatch(/SESSION/);
+    expect(lines.slice(2)).toEqual([
+      '↑↓ select · Enter attach · n new',
+      '^X stop/delete · e note · f wait for',
+      'w/t workbench · v VS Code · r refresh ·…',
+    ]);
+    for (let h = 1; h <= 8; h++) {
+      const out = render({...base, height: h, usage: 'session 42%'});
+      expect(out.length).toBe(h);
+      for (const l of out) expect(width(l)).toBeLessThanOrEqual(40);
+    }
+  });
+  it('メニューや入力欄を開いている間は、キーの説明の行数だけ空けて、Usage の位置を変えない', () => {
+    const base: Screen = {
+      width: 100,
+      height: 10,
+      cursor: 'a',
+      groups: [{title: 'app', rows: [row('a')]}],
+      usage: 'session 42%',
+      keys: DIGEST_KEYS_HELP,
+    };
+    const open = plain(base);
+    const hidden = plain({...base, keysHidden: true, panel: ['Note: █'], notice: ['Refreshed.']});
+    expect(open.slice(-3)).toEqual([
+      'session 42%',
+      '↑↓ select · Enter attach · n new · ^X stop/delete · e note · f wait for · w/t workbench · v VS Code',
+      'o links · r refresh · q quit',
+    ]);
+    expect(hidden.slice(3)).toEqual(['', 'Note: █', '', 'Refreshed.', 'session 42%', '', '']);
+  });
+  it('右の欄があるときも、キーの説明は全幅で折り返し、右の欄はその上で止まる', () => {
+    const lines = plain({
+      width: 120,
+      height: 10,
+      cursor: 'a',
+      groups: [{title: 'app', rows: [row('a')]}],
+      usage: 'session 42%',
+      keys: DIGEST_KEYS_HELP,
+      side: {title: 'a', links: []},
+    });
+    expect(lines.length).toBe(10);
+    expect(lines[6]).toMatch(/ │/);
+    expect(lines.slice(-3)).toEqual([
+      'session 42%',
+      '↑↓ select · Enter attach · n new · ^X stop/delete · e note · f wait for · w/t workbench · v VS Code · o links',
+      'r refresh · q quit',
+    ]);
   });
   it('メニューは候補が多いと窓を出す', () => {
     const items = Array.from({length: 20}, (_, i) => ({label: `c${i}`}));

@@ -67,6 +67,9 @@ export interface Screen {
   /** 知らせ(入力欄の下、なければ一覧の下に1行空けて)。 */
   notice?: string[];
   usage?: string;
+  /** キーの説明。端末の幅に収まらなければ、区切りで折り返して複数行で出す。 */
   keys?: string;
+  /** キーの説明を出さず、その行数だけ空ける(メニューや入力欄を開いている間。Usage の位置を変えない)。 */
+  keysHidden?: boolean;
   side?: Side;
 }
