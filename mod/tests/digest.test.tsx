@@ -393,7 +393,7 @@ test('with no whatnext taking digests, a turn end calls no model and sends nothi
     '-qv',
     '@wn_digest_port',
   ]);
-  // whatnext runs again, without --digest (the option unset), or takes digests on another port
+  // whatnext runs again, with --no-digest (the option unset), or takes digests on another port
   live = '';
   await turn($, 'x', 'ok', 't2');
   live = '14318';
@@ -404,7 +404,7 @@ test('with no whatnext taking digests, a turn end calls no model and sends nothi
   const ui = await $.ui.mount({...PANE, surface: 'terminal'});
   expect((await ui.findAll({type: 'Link'})).map(l => l.props.href)).toEqual(['https://github.com/acme/app/pull/1']);
   await ui.unmount();
-  // whatnext runs with --digest again: the next turn end writes a digest and sends it
+  // whatnext runs without --no-digest again: the next turn end writes a digest and sends it
   live = '15555';
   await turn($, 'x', 'ok', 't4');
   expect(asks.length).toBe(1);
