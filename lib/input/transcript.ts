@@ -10,7 +10,6 @@ export interface TranscriptFacts {
   haltAt?: number;
   permission?: string;
   question?: string;
-  declined?: string;
   error?: string;
   lastText?: string;
 }
@@ -28,7 +27,6 @@ interface FileState {
   prompt?: {text: string; at: number};
   lastText?: string;
   pending: Map<string, Pending>;
-  declined?: string;
   error?: string;
   lastAt?: number;
 }
@@ -36,9 +34,6 @@ interface FileState {
 const TAIL = 512 * 1024;
 const MAX_BACK = 16 * 1024 * 1024;
 const HEAD = 2 * 1024 * 1024;
-
-/** 権限の確認で断ったときの `tool_result` の本文の冒頭(claude-code-behavior.md「会話記録」の「中断したターン」)。 */
-const DECLINE_MARK = "The user doesn't want to proceed with this tool use.";
 
 function ts(o: Record<string, unknown>): number | undefined {
   const t = o.timestamp;
@@ -73,7 +68,6 @@ function apply(st: FileState, line: string): void {
       }
       st.lastText = undefined;
       st.pending.clear();
-      st.declined = undefined;
       st.error = undefined;
       st.lastAt = undefined;
       return;
@@ -82,12 +76,8 @@ function apply(st: FileState, line: string): void {
       for (const item of c) {
         if (!item || typeof item !== 'object') continue;
         if (item.type === 'tool_result' && typeof item.tool_use_id === 'string') {
-          const p = st.pending.get(item.tool_use_id);
+          // 断った結果も、ほかの結果と同じく待ちを消すだけ(断った道具は出さない。#394)
           st.pending.delete(item.tool_use_id);
-          // 文言を含むだけの結果(文言の書かれたファイルを読んだ結果など)を、断ったとみなさない(#387)
-          const rejected =
-            item.is_error === true && typeof item.content === 'string' && item.content.startsWith(DECLINE_MARK);
-          if (p && rejected) st.declined = toolTarget(p.name, p.input);
         }
       }
       if (at !== undefined && st.prompt) st.lastAt = at;
@@ -96,8 +86,6 @@ function apply(st: FileState, line: string): void {
   }
   if (o.type === 'assistant') {
     const c = msg?.content;
-    // 断ったあとに本体の応答が続いたなら、ターンは中断していない(文を添えて断ったとき)。断った道具を残さない(#387)
-    st.declined = undefined;
     if (o.isApiErrorMessage === true) {
       const text = Array.isArray(c)
         ? c
@@ -129,7 +117,6 @@ function facts(st: FileState): TranscriptFacts {
   const f: TranscriptFacts = {};
   if (st.prompt) f.prompt = st.prompt;
   if (st.lastText) f.lastText = st.lastText;
-  if (st.declined) f.declined = st.declined;
   if (st.error) f.error = st.error;
   if (st.lastAt !== undefined) f.haltAt = st.lastAt;
   for (const p of st.pending.values()) {

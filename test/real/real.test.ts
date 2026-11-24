@@ -97,7 +97,7 @@ const newId = (before: Set<string>) => mine().find(a => a.id && !before.has(a.id
 const nm = (id: string) => mine().find(a => a.id === id)?.name ?? id;
 
 describe('whatnext が起動したセッション', () => {
-  it('23・45・16: 権限待ちの対象、断った道具、最後の応答の冒頭、CTX が出る', async () => {
+  it('23・16: 権限待ちの対象、最後の応答の冒頭、CTX が出る。断って中断した行に Declined は出ない(#394)', async () => {
     h = new RealHarness();
     await h.start({size: {cols: 150, rows: 45}});
     const before = new Set(mine().map(a => a.id as string));
@@ -118,7 +118,8 @@ describe('whatnext が起動したセッション', () => {
     await sleep(2000);
     await h.keys('C-q', 'C-l');
     await refreshUntil(() => /Question/.test(h.row(nm(id)) ?? ''));
-    expect(h.notes(nm(id)).join('\n')).toMatch(/Declined: Bash: date >/);
+    // 断った道具は出さない。一言は最後の応答の冒頭で、応答の文章が無ければ何も出ない(#394)
+    expect(h.notes(nm(id)).join('\n')).not.toMatch(/Declined:|Bash: date >/);
     // 次の指示でターンを終える
     await h.keys('Enter');
     await sleep(2000);
@@ -182,7 +183,7 @@ describe('whatnext が起動したセッション', () => {
 });
 
 describe('whatnext の外で起動したセッション', () => {
-  it('33・45: 権限待ちの対象と AGE が最初の一覧から出て、CTX は -。断ると Declined、終えると最後の応答の冒頭', async () => {
+  it('33: 権限待ちの対象と AGE が最初の一覧から出て、CTX は -。断っても Declined は出ず(#394)、終えると最後の応答の冒頭', async () => {
     const id = startBg('wn-real-ext', PERMISSION_PROMPT('ext'));
     await waitAgent(a => a.some(x => x.id === id && x.waitingFor === 'permission prompt'));
     await sleep(2000);
@@ -197,7 +198,8 @@ describe('whatnext の外で起動したセッション', () => {
     await sleep(2000);
     await h.keys('C-q', 'C-l');
     await refreshUntil(() => /Question/.test(h.row('wn-real-ext') ?? ''));
-    expect(h.notes('wn-real-ext').join('\n')).toMatch(/Declined: Bash: date >/);
+    // 外で起動したセッションでも、断った道具は出さない(#394)
+    expect(h.notes('wn-real-ext').join('\n')).not.toMatch(/Declined:|Bash: date >/);
     await h.keys('Enter');
     await sleep(2000);
     await sendPrompt('Write about 120 words about oolong tea. Do not use any tools. Start with the word Oolong.');

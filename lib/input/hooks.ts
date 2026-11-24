@@ -128,7 +128,6 @@ export interface Supplied {
   haltAt?: number;
   permission?: string;
   question?: string;
-  declined?: string;
   error?: string;
   lastText?: string;
   ctx?: number;
@@ -170,8 +169,6 @@ export function supplement(
   out.question = pick(hook?.question, hook?.question?.text, tr?.question);
   const permHook = hook?.permission && fresh(hook.permission.at) ? hook.permission : undefined;
   out.permission = permHook ? permHook.target : trCurrent ? tr?.permission : undefined;
-  const stoppedAfter = permHook && hook?.stop && hook.stop.at >= permHook.at;
-  out.declined = permHook && !stoppedAfter ? permHook.target : trCurrent ? tr?.declined : undefined;
   for (const k of Object.keys(out) as (keyof Supplied)[]) if (out[k] === undefined) delete out[k];
   return out;
 }

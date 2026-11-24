@@ -424,7 +424,7 @@ export class App {
       case 'permission':
         return s.permission;
       case 'question':
-        return s.question ?? (s.declined ? `Declined: ${s.declined}` : lead);
+        return s.question ?? lead;
       case 'failed':
         return s.error ?? lead;
       default:
