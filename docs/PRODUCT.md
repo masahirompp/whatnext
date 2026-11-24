@@ -874,6 +874,7 @@ claude の画面の幅は、分割の比率の分だけ減る。一時的に片�
 - **83.** 引数なしで起動した whatnext の `n` で起動したセッションに attach すると、セッションの中のペイン（`Digest`）に、一覧と同じ見出しでダイジェストと会話リンクが出る。`/wn-digest` でペインを開ける。
 - **84.** 一覧で `o` を押すと、カーソルの行の会話リンクが並び、選んで `Enter` を押すとブラウザで開き、何を開いたかが一覧の下に出る。会話リンクのない行では `No links for <名前>.` が出る。
 - **85.** セッションを削除して `--json` から消えると、そのダイジェストは捨てられる。ダイジェストや会話リンクに制御文字が入っていても、画面は崩れない。
+- **86.** （廃止。動いている一覧とつなぐときの引数の違いの知らせ `whatnext is running without --digest. …` をやめた。[ADR-0023](adr/0023-digests-on-by-default.md)）
 - **88.** 引数なしで起動した whatnext が動いているときに、別の端末で `whatnext --no-digest` を実行すると、一覧にはつながらず、`whatnext: a whatnext with digests is already running. Quit it first (run whatnext, then press q), then run whatnext --no-digest.` が示されて終了コード 1 で終わる。先に開いていた画面は一覧を映したままで、一覧の下には何も出ない。`--no-digest` で起動した whatnext が動いているときの `whatnext --no-digest` は、その一覧につながる。
 
 #### `!` のコマンドのコピー
