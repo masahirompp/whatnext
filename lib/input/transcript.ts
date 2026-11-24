@@ -37,7 +37,8 @@ const TAIL = 512 * 1024;
 const MAX_BACK = 16 * 1024 * 1024;
 const HEAD = 2 * 1024 * 1024;
 
-const DECLINE_MARK = "doesn't want to proceed";
+/** 権限の確認で断ったときの `tool_result` の本文の冒頭(claude-code-behavior.md「会話記録」の「中断したターン」)。 */
+const DECLINE_MARK = "The user doesn't want to proceed with this tool use.";
 
 function ts(o: Record<string, unknown>): number | undefined {
   const t = o.timestamp;
@@ -62,8 +63,14 @@ function apply(st: FileState, line: string): void {
     if (typeof c === 'string') {
       if (o.isMeta === true || o.isCompactSummary === true) return;
       const text = instructionText(c);
-      if (text === undefined || at === undefined) return;
-      st.prompt = {text, at};
+      // タスクの通知で始まったターン(`turnOrigin` が `task_notification`)は、指示に数えず前の指示を残すが、
+      // 新しいターンなので前のターンの値は消す(#387)。記録にだけ残る通知の行(`queueTranscriptOnly`)は
+      // `turnOrigin` を持たず、ターンを始めないので境にしない。
+      if (text === undefined && o.turnOrigin !== 'task_notification') return;
+      if (text !== undefined) {
+        if (at === undefined) return;
+        st.prompt = {text, at};
+      }
       st.lastText = undefined;
       st.pending.clear();
       st.declined = undefined;
@@ -77,8 +84,10 @@ function apply(st: FileState, line: string): void {
         if (item.type === 'tool_result' && typeof item.tool_use_id === 'string') {
           const p = st.pending.get(item.tool_use_id);
           st.pending.delete(item.tool_use_id);
-          const body = typeof item.content === 'string' ? item.content : JSON.stringify(item.content ?? '');
-          if (p && body.includes(DECLINE_MARK)) st.declined = toolTarget(p.name, p.input);
+          // 文言を含むだけの結果(文言の書かれたファイルを読んだ結果など)を、断ったとみなさない(#387)
+          const rejected =
+            item.is_error === true && typeof item.content === 'string' && item.content.startsWith(DECLINE_MARK);
+          if (p && rejected) st.declined = toolTarget(p.name, p.input);
         }
       }
       if (at !== undefined && st.prompt) st.lastAt = at;
