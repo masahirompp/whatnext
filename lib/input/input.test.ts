@@ -315,12 +315,15 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
           {
             type: 'user',
             timestamp: T(14),
+            toolUseResult: 'User rejected tool use',
             message: {
               content: [
                 {
                   type: 'tool_result',
                   tool_use_id: 'tu1',
-                  content: "The user doesn't want to proceed with this tool use.",
+                  content:
+                    "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+                  is_error: true,
                 },
               ],
             },
@@ -339,6 +342,191 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     expect(g?.declined).toBe('Bash: npm run build');
     expect(g?.permission).toBeUndefined();
     expect(g?.prompt?.text).toBe('run the build');
+  });
+
+  // 観測した行の形(claude-code-behavior.md「会話記録」の「中断したターン」と、バックグラウンドのタスクの通知)
+  const REJECTED =
+    "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+  const bashUse = (id: string, command: string, s: number) => ({
+    type: 'assistant',
+    timestamp: T(s),
+    message: {content: [{type: 'tool_use', id, name: 'Bash', input: {command}}]},
+  });
+  const rejectedRows = (id: string, s: number) => [
+    {
+      type: 'user',
+      timestamp: T(s),
+      toolUseResult: 'User rejected tool use',
+      message: {content: [{type: 'tool_result', tool_use_id: id, content: REJECTED, is_error: true}]},
+    },
+    {
+      type: 'user',
+      timestamp: T(s),
+      message: {content: [{type: 'text', text: '[Request interrupted by user for tool use]'}]},
+    },
+    {type: 'system', subtype: 'turn_duration', timestamp: T(s)},
+  ];
+  const notificationBody =
+    '<task-notification>\n<task-id>bq1x2y3z4</task-id>\n<tool-use-id>toolu_01AbCdEf</tool-use-id>\n<output-file>/tmp/tasks/bq1x2y3z4.output</output-file>\n<status>completed</status>\n<summary>Background command completed</summary>\n</task-notification>';
+  const origin = {kind: 'task-notification', producer: 'session-task', runId: '0mw2mysuf-0bbeafe0'};
+  /** ターンを始めた通知の行。 */
+  const notificationTurn = (s: number) => ({
+    type: 'user',
+    timestamp: T(s),
+    isSidechain: false,
+    promptSource: 'system',
+    origin,
+    turnOrigin: 'task_notification',
+    turnPosition: {promptIndex: 1, turnIndex: 2},
+    message: {role: 'user', content: notificationBody},
+  });
+  /** 記録にだけ残り、ターンを始めなかった通知の行。 */
+  const notificationRecordOnly = (s: number) => ({
+    type: 'user',
+    timestamp: T(s),
+    isSidechain: false,
+    promptSource: 'system',
+    origin,
+    queueTranscriptOnly: true,
+    message: {role: 'user', content: notificationBody},
+  });
+
+  it('通知で始まったターンは、指示を前のまま残し、前のターンの断った道具と最後の応答を出さない(#387)', async () => {
+    const {dir, file} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
+      {type: 'assistant', timestamp: T(2), message: {content: [{type: 'text', text: 'Started the tests.'}]}},
+      bashUse('tu1', 'rm -rf build', 3),
+      ...rejectedRows('tu1', 5),
+      notificationTurn(60),
+    ]);
+    const tr = new Transcripts(dir);
+    const f = await tr.read('sid-1');
+    const prompt = {text: 'run the tests in background', at: Date.parse(T(1))};
+    expect(f).toEqual({prompt});
+    // フックのないセッション(外で起動したもの)は、会話記録の値がそのまま出る
+    expect(supplement(undefined, f, undefined)).toEqual({prompt});
+
+    // 通知のターンが道具だけを使い、本文の応答なしで終わったら、一言は何も出さない
+    const append = async (rows: object[]) =>
+      writeFile(file, (await readFile(file, 'utf8')) + rows.map(l => `${JSON.stringify(l)}\n`).join(''));
+    await append([
+      bashUse('tu2', 'cat /tmp/tasks/bq1x2y3z4.output', 61),
+      {
+        type: 'user',
+        timestamp: T(62),
+        message: {content: [{type: 'tool_result', tool_use_id: 'tu2', content: 'ok', is_error: false}]},
+      },
+      {type: 'system', subtype: 'turn_duration', timestamp: T(63)},
+    ]);
+    expect(supplement(undefined, await tr.read('sid-1'), undefined)).toEqual({prompt, haltAt: Date.parse(T(63))});
+
+    // 次の通知のターンで応答が出れば、それを出す
+    await append([
+      notificationTurn(120),
+      {type: 'assistant', timestamp: T(121), message: {content: [{type: 'text', text: 'All tests passed.'}]}},
+    ]);
+    expect(supplement(undefined, await tr.read('sid-1'), undefined)).toEqual({
+      prompt,
+      lastText: 'All tests passed.',
+      haltAt: Date.parse(T(121)),
+    });
+  });
+
+  it('ターンを始めなかった通知の行(記録だけ)は境にせず、最後の応答を残す(#387)', async () => {
+    const {dir} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
+      {type: 'assistant', timestamp: T(2), message: {content: [{type: 'text', text: 'Started the tests.'}]}},
+      {type: 'system', subtype: 'turn_duration', timestamp: T(3)},
+      notificationRecordOnly(60),
+    ]);
+    expect(await new Transcripts(dir).read('sid-1')).toEqual({
+      prompt: {text: 'run the tests in background', at: Date.parse(T(1))},
+      lastText: 'Started the tests.',
+      haltAt: Date.parse(T(3)),
+    });
+  });
+
+  it('道具の結果の本文に断りの文言が含まれるだけでは、断ったとみなさない(#387)', async () => {
+    // 文言を含むファイルを grep した結果(is_error は false、本文は文言で始まらない)
+    const {dir} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'check the docs'}},
+      bashUse('tu1', 'grep -n "interrupted" docs/claude-code-behavior.md', 2),
+      {
+        type: 'user',
+        timestamp: T(3),
+        toolUseResult: {stdout: '', stderr: '', interrupted: false, isImage: false, noOutputExpected: false},
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tu1',
+              content: `233:- **中断したターン**:(1) \`user\` の行で、\`tool_result\`(\`${REJECTED}\`)。`,
+              is_error: false,
+            },
+          ],
+        },
+      },
+      {type: 'assistant', timestamp: T(4), message: {content: [{type: 'text', text: 'The docs describe it.'}]}},
+    ]);
+    const f = await new Transcripts(dir).read('sid-1');
+    expect(f?.declined).toBeUndefined();
+    expect(f?.lastText).toBe('The docs describe it.');
+  });
+
+  it('文を添えて断ったあとターンが続いたら、断った道具を残さない(#387)', async () => {
+    // 文を添えた拒否の形(claude-code-behavior.md「会話記録」の「中断したターン」)。中断の印は付かず、本体の assistant の行が続く
+    const body =
+      "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\nuse the staging bucket instead";
+    const {dir} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'clean up the build'}},
+      bashUse('tu1', 'rm -rf build', 2),
+      {
+        type: 'user',
+        timestamp: T(4),
+        isSidechain: false,
+        toolUseResult: `Error: ${body}`,
+        message: {content: [{type: 'tool_result', tool_use_id: 'tu1', content: body, is_error: true}]},
+      },
+      {type: 'assistant', timestamp: T(5), isSidechain: false, message: {content: [{type: 'thinking', thinking: ''}]}},
+      {
+        type: 'assistant',
+        timestamp: T(6),
+        isSidechain: false,
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tu2',
+              name: 'AskUserQuestion',
+              input: {questions: [{question: 'Which bucket should I clean?'}]},
+            },
+          ],
+        },
+      },
+    ]);
+    const f = await new Transcripts(dir).read('sid-1');
+    expect(f).toEqual({
+      prompt: {text: 'clean up the build', at: Date.parse(T(1))},
+      question: 'Which bucket should I clean?',
+      haltAt: Date.parse(T(6)),
+    });
+  });
+
+  it('断って中断したターンでは、サイドチェーンの assistant の行が続いても、断った道具を残す(#387)', async () => {
+    const {dir} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'clean up the build'}},
+      bashUse('tu1', 'rm -rf build', 2),
+      ...rejectedRows('tu1', 4),
+      {
+        type: 'assistant',
+        timestamp: T(5),
+        isSidechain: true,
+        message: {content: [{type: 'text', text: 'Subagent is still reporting.'}]},
+      },
+    ]);
+    const f = await new Transcripts(dir).read('sid-1');
+    expect(f?.declined).toBe('Bash: rm -rf build');
+    expect(f?.lastText).toBeUndefined();
   });
 
   it('失敗の行と質問', async () => {
