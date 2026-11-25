@@ -221,7 +221,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 - `WHATNEXT_DIGEST_TMUX` は、tmux の実行ファイルの絶対パスにする。mod はこの値をそのまま `$.process.run` に渡し、動かせなければ「受けていない」と読むので（「ダイジェストの mod」の受け手の確かめ）、素の `tmux` を渡すと、セッションの `PATH` に tmux が無い限り、ダイジェストは最後まで出ない。一覧は tmux の中で動くので、自分の `PATH` で見つかる（`findTmux`）。`whatnext new` は端末のないランチャーからも呼ばれるので、呼ぶ側の環境（`NewPorts.pe`）の `PATH` を先に、なければよくある置き場所（`TMUX_DIRS`）を探す（`locateTmux`）。見つからなければ素の `tmux` を渡して起動し、標準エラーで知らせる。
 - mod は、一覧のセッションの `@wn_digest_port` が送り先のポートと同じときだけ Haiku を呼ぶ（「ダイジェストの mod」の受け手の確かめ）。一覧が動いていない、`--no-digest` で動いている、のどちらでもこのオプションがないので、`whatnext new` が一覧の状態を見ずに mod を付けても、利用枠は使わない。
 - 作業ディレクトリは、既存のディレクトリ（`~` を展開し、相対パスは呼んだ場所から解く）を先に見て、なければ `ghq list -p` のパスを、パスの区切りの単位で末尾から比べる（`matchRepos`）。`/`、`~`、`./`、`../` で始まる引数は、リポジトリ名として探さない。
-- 信頼されていないディレクトリは、`n` と同じく、`claude --bg` の出力の `Workspace not trusted` で知る。`n` は信頼の確認を端末に出すが、`whatnext new` は端末がないので、`Not trusted` を出して終わる。
+- 信頼されていないディレクトリは、`n` と同じく、`claude --bg` の出力の `Workspace not trusted` で知る。`n` は信頼の確認を端末に出すが、`whatnext new` は端末がないので、`Not trusted` を出して終わる。`n` は、信頼の確認のあとのやり直しでは信頼の文言を見ず、`backgrounded · <id>` があれば起動できたと読む（`readBgOutput` の `afterTrust`。#358 の前の `n` と同じ読み方）。
 - `claude` に渡す環境から `WHATNEXT_*` を外す（`claudeEnv`）。claude のデーモンは、それを起こしたプロセスの環境を持ち続け、すべての `--bg` のセッションに渡す（[claude-code-behavior.md](claude-code-behavior.md)「`--bg` のセッションに OTel の設定を渡す経路」）。一覧の `n` の起動は、今までどおり外さない。
 - 一覧の `n` と共有する部品は `src/ops/start.ts` に置く（`bgArgs`、`readBgOutput`、`existingDir`、`ghqPaths`）。起動のあとと、信頼されていないときの扱いは、呼ぶ側が決める。
 - 外に触れる口（`run`、`probe`、tmux の実行ファイルを探す `findTmux`、環境、今の場所、出力）は `NewPorts` で受け、単体のテストが差し替える。

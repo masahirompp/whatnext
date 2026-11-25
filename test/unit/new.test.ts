@@ -160,6 +160,18 @@ describe('claude --bg の引数と出力(n と共有する部品)', () => {
     expect(readBgOutput('something went wrong\n', '')).toEqual({k: 'failed', out: 'something went wrong\n'});
   });
 
+  it('信頼の確認のあとのやり直し(n)では、信頼の文言を見ず、id があれば起動できたと読む', () => {
+    const untrusted = 'Workspace not trusted. Run claude in /x once and accept the trust prompt, then retry.\n';
+    const started = '\x1b[32mbackgrounded\x1b[0m · 0a1b2c3d · x\n';
+    // 最初の起動: 文言があれば、id があっても信頼の確認に進む
+    expect(readBgOutput(untrusted + started, '').k).toBe('untrusted');
+    expect(readBgOutput(started, untrusted).k).toBe('untrusted');
+    // やり直し: id があれば起動できた。なければ失敗(信頼の確認は繰り返さない)
+    expect(readBgOutput(untrusted + started, '', {afterTrust: true})).toEqual({k: 'started', id: '0a1b2c3d'});
+    expect(readBgOutput(started, untrusted, {afterTrust: true})).toEqual({k: 'started', id: '0a1b2c3d'});
+    expect(readBgOutput(untrusted, '', {afterTrust: true})).toEqual({k: 'failed', out: untrusted});
+  });
+
   it('既存のディレクトリ: ~ を展開し、相対パスは base があるときだけ受ける', () => {
     const d = dir('exist/sub');
     expect(existingDir(`${d}/`, root)).toBe(d);

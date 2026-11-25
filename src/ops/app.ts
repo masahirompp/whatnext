@@ -989,8 +989,8 @@ export class App {
     try {
       const args = bgArgs({settings: this.p.settings, pluginDir: this.p.pluginDir});
       const r = await this.p.run('claude', args, {cwd: dir, timeout: BG_TIMEOUT_MS});
-      const res = readBgOutput(r.stdout, r.stderr);
-      if (res.k === 'untrusted' && !retried) {
+      const res = readBgOutput(r.stdout, r.stderr, {afterTrust: retried});
+      if (res.k === 'untrusted') {
         clearInterval(tick);
         const trusted = await this.trust(dir);
         if (trusted) return this.startSession(dir, waitFor, true);

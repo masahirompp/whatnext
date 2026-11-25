@@ -26,10 +26,14 @@ export function bgArgs(a: Attachments, prompt?: string): string[] {
 /** `claude --bg` の結果。`out` は制御列を除いた出力(失敗の表示に使う)。 */
 export type BgResult = {k: 'started'; id: string} | {k: 'untrusted'; out: string} | {k: 'failed'; out: string};
 
-/** `claude --bg` の出力(標準出力と標準エラー)から、起動できたか、信頼されていないディレクトリかを読む。 */
-export function readBgOutput(stdout: string, stderr: string): BgResult {
+/**
+ * `claude --bg` の出力(標準出力と標準エラー)から、起動できたか、信頼されていないディレクトリかを読む。
+ * `afterTrust` は、信頼の確認のあとのやり直し(`n`)。このときは信頼の文言を見ず、`backgrounded · <id>` があれば起動できたと読む
+ * (文言と id の両方がある出力でも、起動したセッションを失敗の画面にしない。#358 の前の `n` と同じ)。
+ */
+export function readBgOutput(stdout: string, stderr: string, opts: {afterTrust?: boolean} = {}): BgResult {
   const out = stripControl(`${stdout}${stderr}`);
-  if (/Workspace not trusted/i.test(out)) return {k: 'untrusted', out};
+  if (!opts.afterTrust && /Workspace not trusted/i.test(out)) return {k: 'untrusted', out};
   const m = /backgrounded\s*·\s*([0-9a-f]{8})/.exec(out);
   return m ? {k: 'started', id: m[1]} : {k: 'failed', out};
 }
