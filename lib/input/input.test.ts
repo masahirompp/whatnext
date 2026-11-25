@@ -552,6 +552,76 @@ describe('会話記録 (シナリオ 33、34)', () => {
     ).toBeUndefined();
   });
 
+  it('フックが通知を受けていなくても、会話記録が通知の行で新しいターンを示せば、前のターンのフックの値を出さない(#394)', async () => {
+    // フック: 指示 →(質問、権限の確認)→ Stop か StopFailure まで。通知の UserPromptSubmit は受けていない
+    const hooks = (end: object) => {
+      let t = 0;
+      const store = new HookStore(() => t);
+      const hook = (s: number, body: object) => {
+        t = Date.parse(T(s)) + 300;
+        store.receiveHook({session_id: 'sid-1', ...body});
+      };
+      hook(1, {hook_event_name: 'UserPromptSubmit', prompt: 'run the tests in background'});
+      hook(2, {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'AskUserQuestion',
+        tool_input: {questions: [{question: 'Which suite?'}]},
+      });
+      hook(3, {hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: {command: 'npm test'}});
+      hook(5, end);
+      return store.get('sid-1');
+    };
+    const stopped = hooks({hook_event_name: 'Stop', last_assistant_message: 'Started the tests.'});
+    const failed = hooks({
+      hook_event_name: 'StopFailure',
+      error: 'rate_limit',
+      last_assistant_message: 'API Error: rate limited',
+    });
+    const prompt = {text: 'run the tests in background', at: Date.parse(T(1)) + 300};
+    const before = [
+      {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
+      {type: 'assistant', timestamp: T(4), message: {content: [{type: 'text', text: 'Started the tests.'}]}},
+      {type: 'system', subtype: 'turn_duration', timestamp: T(5)},
+    ];
+    const read = async (rows: object[]) => new Transcripts((await transcriptDir(rows)).dir).read('sid-1');
+
+    // 通知の行だけ: 前のターンの応答、失敗、質問、権限待ちの対象、止まった時刻のどれも出さない
+    const started = await read([...before, notificationTurn(60)]);
+    expect(started?.turnAt).toBe(Date.parse(T(60)));
+    expect(supplement(stopped, started, undefined)).toEqual({prompt});
+    expect(supplement(failed, started, undefined)).toEqual({prompt});
+
+    // 通知のターンの応答があれば、それを出す
+    const replied = await read([
+      ...before,
+      notificationTurn(60),
+      {type: 'assistant', timestamp: T(61), message: {content: [{type: 'text', text: 'All tests passed.'}]}},
+    ]);
+    const current = {prompt, lastText: 'All tests passed.', haltAt: Date.parse(T(61))};
+    expect(supplement(stopped, replied, undefined)).toEqual(current);
+    expect(supplement(failed, replied, undefined)).toEqual(current);
+
+    // 記録にだけ残った通知の行は境にしない。返し終えた応答は、フックの値のまま出る
+    const recordOnly = await read([...before, notificationRecordOnly(60)]);
+    expect(supplement(stopped, recordOnly, undefined)).toMatchObject({
+      prompt,
+      lastText: 'Started the tests.',
+      haltAt: Date.parse(T(5)) + 300,
+    });
+
+    // 通知の行のあとに受けたフックの値(通知の UserPromptSubmit だけ受け損ねた)は、今のターンの値として出る
+    let t = prompt.at;
+    const late = new HookStore(() => t);
+    late.receiveHook({session_id: 'sid-1', hook_event_name: 'UserPromptSubmit', prompt: 'run the tests in background'});
+    t = Date.parse(T(62)) + 300;
+    late.receiveHook({session_id: 'sid-1', hook_event_name: 'Stop', last_assistant_message: 'All tests passed.'});
+    expect(supplement(late.get('sid-1'), replied, undefined)).toEqual({
+      prompt,
+      lastText: 'All tests passed.',
+      haltAt: Date.parse(T(62)) + 300,
+    });
+  });
+
   it('ターンを始めなかった通知の行(記録だけ)は境にせず、最後の応答を残す(#387)', async () => {
     const {dir} = await transcriptDir([
       {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
