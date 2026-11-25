@@ -29,7 +29,8 @@ interface Call {
 /** 偽の口。`claude` と `ghq` の結果と、受け口のポートの状態を決めて渡す。 */
 function ports(
   o: {
-    occupant?: Occupant;
+    /** 受け口のポートの状態。配列なら、確かめるたびに先頭から順に答え、最後の値を繰り返す。 */
+    occupant?: Occupant | Occupant[];
     claude?: Partial<RunResult>;
     ghq?: string[] | null;
     pe?: NodeJS.ProcessEnv;
@@ -42,6 +43,7 @@ function ports(
   let out = '';
   let err = '';
   const tmuxAsked: string[] = [];
+  let probes = 0;
   const p: NewPorts = {
     run: async (cmd, args, opts) => {
       calls.push({cmd, args, opts});
@@ -56,7 +58,11 @@ function ports(
         ...o.claude,
       };
     },
-    probe: async () => o.occupant ?? 'whatnext',
+    probe: async () => {
+      probes++;
+      if (!Array.isArray(o.occupant)) return o.occupant ?? 'whatnext';
+      return o.occupant[Math.min(probes, o.occupant.length) - 1];
+    },
     findTmux: path => {
       tmuxAsked.push(path);
       return o.tmux === null ? undefined : (o.tmux ?? '/opt/x/bin/tmux');
@@ -71,7 +77,15 @@ function ports(
       err += s;
     },
   };
-  return {p, calls, tmuxAsked, claude: () => calls.find(c => c.cmd === 'claude'), out: () => out, err: () => err};
+  return {
+    p,
+    calls,
+    tmuxAsked,
+    probes: () => probes,
+    claude: () => calls.find(c => c.cmd === 'claude'),
+    out: () => out,
+    err: () => err,
+  };
 }
 
 const ENV = {port: 14318, socket: 'whatnext'};
@@ -295,6 +309,23 @@ describe('whatnext new の起動', () => {
     expect(t.err()).toBe(
       'whatnext: port 14318 is used by another program. Started the session without hooks, so the list shows no context size or digest for it.\n',
     );
+  });
+
+  it('一覧の応答が1回遅れて other と読めても、確かめ直して、フックと OTel と mod を付ける', async () => {
+    const t = ports({occupant: ['other', 'whatnext']});
+    expect(await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, t.p)).toBe(0);
+    expect(t.probes()).toBe(2);
+    expect(settingsOf(t.claude()).env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://127.0.0.1:14318');
+    expect(t.claude()?.args).toContain('--plugin-dir');
+    expect(t.err()).toBe('');
+    // 2回とも other なら、ほかのプログラムとみなす。other でなければ、確かめ直さない
+    const other = ports({occupant: 'other'});
+    await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, other.p);
+    expect(other.probes()).toBe(2);
+    expect(other.claude()?.args).toEqual(['--bg', '--', 'x']);
+    const free = ports({occupant: 'free'});
+    await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, free.p);
+    expect(free.probes()).toBe(1);
   });
 
   it('92: リポジトリ名でも起動する', async () => {

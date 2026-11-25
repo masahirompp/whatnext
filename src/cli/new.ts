@@ -86,6 +86,16 @@ export function claudeEnv(pe: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return out;
 }
 
+/**
+ * 受け口のポートの状態。`other` のときは、もう一度だけ確かめる。`probe` は、応答が1秒より遅れたときも `other` と答えるので、
+ * 動いている一覧の応答が1回遅れただけで「ほかのプログラム」と決めると、何も付けずに起動してしまう(付けるものは起動時に固定)。
+ * ほかのプログラムはすぐに答えるので、確かめ直しても待たせない。
+ */
+async function occupantOf(p: Pick<NewPorts, 'probe'>, port: number): Promise<Occupant> {
+  const first = await p.probe(port);
+  return first === 'other' ? p.probe(port) : first;
+}
+
 export async function newSession(
   env: Pick<Env, 'port' | 'socket'>,
   a: {target: string; prompt: string},
@@ -102,7 +112,7 @@ export async function newSession(
     return 1;
   }
 
-  const occupant = await p.probe(env.port);
+  const occupant = await occupantOf(p, env.port);
   const attached = attachmentsFor(env.port, decideAttachments(occupant, {who: 'new'}));
   // mod は、渡した tmux で一覧に「受けているか」を問う。セッションの PATH に tmux があるとは限らないので、絶対パスで渡す
   let tmux: string | undefined;
