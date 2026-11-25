@@ -12,7 +12,7 @@ import {
   TMUX_DIRS,
   withDigestEnv,
 } from './attachments.js';
-import type {Env} from './env.js';
+import {type Env, tmuxEnv} from './env.js';
 
 // `whatnext new <ディレクトリかリポジトリ名> <指示>`(PRODUCT.md「一覧の外からの起動」、ADR-0024)。
 // 一覧の外(端末のないスクリプトなど)から、`n` と同じものを付けたセッションを `claude --bg -- <指示>` で起動し、
@@ -45,9 +45,12 @@ const realPorts = (): NewPorts => ({
   err: s => process.stderr.write(s),
 });
 
-/** パスとして書かれた引数か(リポジトリ名として探さない)。`.github` のような名前は、パスとみなさない。 */
+/**
+ * パスとして書かれた引数か(リポジトリ名として探さない)。`/`、`~`、`./`、`../` で始まるものと、`.`、`..`。`~user` も
+ * パスとみなす(展開はしないので、`Not a directory` になる)。`.github` のような名前は、パスとみなさない。
+ */
 function pathLike(arg: string): boolean {
-  return arg.startsWith('/') || arg === '~' || arg.startsWith('~/') || /^\.\.?(\/|$)/.test(arg);
+  return arg.startsWith('/') || arg.startsWith('~') || /^\.\.?(\/|$)/.test(arg);
 }
 
 /** `ghq list -p` のパスのうち、末尾が名前に一致するもの(`name`、`owner/name`、`github.com/owner/name`)。 */
@@ -77,12 +80,13 @@ export async function resolveTarget(
 }
 
 /**
- * `claude` に渡す環境。`WHATNEXT_*` を外す。claude のデーモンは、それを起こしたプロセスの環境を持ち続け、そのあとの
- * すべての `--bg` のセッションに渡す(#363)。
+ * `claude` に渡す環境。`WHATNEXT_*` と、tmux の `TMUX`、`TMUX_PANE` を外す。claude のデーモンは、それを起こしたプロセスの
+ * 環境を持ち続け、そのあとのすべての `--bg` のセッションに渡す(#363)。作業台のシェルから呼ぶと、`TMUX` は専用サーバを指す。
+ * 一覧の `n` も、`TMUX` と `TMUX_PANE` を外した環境(`tmuxEnv`)で claude を動かす。
  */
 export function claudeEnv(pe: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(pe)) if (!k.startsWith('WHATNEXT_')) out[k] = v;
+  for (const [k, v] of Object.entries(tmuxEnv(pe))) if (!k.startsWith('WHATNEXT_')) out[k] = v;
   return out;
 }
 

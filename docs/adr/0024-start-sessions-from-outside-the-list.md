@@ -52,6 +52,7 @@ sandbox の中では claude が claude を起動できないので、`CLAUDECODE
 claude のデーモンは、それを起こしたプロセスの環境を持ち続け、そのあとのすべての `--bg` のセッションに渡す（#363）。
 `whatnext new` がデーモンを起こすと、テスト用のポートやソケット名（`WHATNEXT_PORT`、`WHATNEXT_TMUX_SOCKET`）が、利用者のすべてのセッションに残りうる。
 セッションに渡す値は `--settings` の `env` で渡すので、環境からは外す（2026-11-24、利用者の判断）。
+作業台のシェルから呼んだときの `TMUX` と `TMUX_PANE`（専用サーバを指す）も、同じ理由で外す。一覧の `n` が claude に渡す環境とそろえる。
 
 ## Considered Options
 

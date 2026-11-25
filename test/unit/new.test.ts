@@ -103,6 +103,22 @@ describe('whatnext new の引数', () => {
     });
   });
 
+  it('ディレクトリかリポジトリ名は、前後の空白を切って渡す(指示は切らない)', () => {
+    expect(parseArgs(['new', ' ~/src/foo\n', ' x '])).toEqual({cmd: 'new', target: '~/src/foo', prompt: ' x '});
+  });
+
+  it('new のあとの --help は、知らないオプションにする(指示が --help のセッションを起動しない)', () => {
+    expect(parseArgs(['new', '--help'])).toEqual({cmd: 'bad', arg: '--help'});
+    expect(parseArgs(['new', '~/src/foo', '--help'])).toEqual({cmd: 'bad', arg: '--help'});
+    expect(parseArgs(['new', '--help', 'x'])).toEqual({cmd: 'bad', arg: '--help'});
+    // --help を含むだけの指示は、指示として渡す
+    expect(parseArgs(['new', 'foo', '--help と打って'])).toEqual({
+      cmd: 'new',
+      target: 'foo',
+      prompt: '--help と打って',
+    });
+  });
+
   it('指示がない、空、引数が多いときは、使い方を出す側に振り分ける', () => {
     expect(parseArgs(['new'])).toEqual({cmd: 'new-usage'});
     expect(parseArgs(['new', 'foo'])).toEqual({cmd: 'new-usage'});
@@ -227,7 +243,7 @@ describe('whatnext new のディレクトリの解決(シナリオ 92、94)', ()
   });
 
   it('パスとして書いた引数は、リポジトリ名として探さない', async () => {
-    for (const arg of [join(root, 'nope'), '~/nope', './nope', '../nope']) {
+    for (const arg of [join(root, 'nope'), '~/nope', '~nobody/nope', '~nobody', './nope', '../nope']) {
       const t = ports({ghq});
       expect(await resolveTarget(arg, t.p)).toEqual({error: [`Not a directory: ${arg}`]});
       expect(t.calls).toEqual([]);
@@ -402,6 +418,11 @@ describe('whatnext new の起動', () => {
     expect(claudeEnv({PATH: '/bin', WHATNEXT_PORT: '1', WHATNEXT_ROLE: 'list', WHATNEXTX: 'keep'})).toEqual({
       PATH: '/bin',
       WHATNEXTX: 'keep',
+    });
+    // 作業台のシェルの TMUX(専用サーバを指す)と TMUX_PANE も外す(一覧の n が claude に渡す環境と同じ)
+    expect(claudeEnv({PATH: '/bin', TMUX: '/tmp/tmux-501/whatnext,1,0', TMUX_PANE: '%3', TMUX_TMPDIR: '/t'})).toEqual({
+      PATH: '/bin',
+      TMUX_TMPDIR: '/t',
     });
     const t = ports({pe: {PATH: '/bin', WHATNEXT_PORT: '15000', WHATNEXT_TMUX_SOCKET: 's', WHATNEXT_DIGEST: '0'}});
     await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, t.p);

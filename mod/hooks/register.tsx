@@ -6,7 +6,8 @@ import {DIGEST_SYSTEM, digestBody, digestPrompt, instructionsOf, nameOf, parseDi
 import type {Mention} from './links';
 import {addLinks, mentionsOf, NOT_ARGUMENTS, toolMentions} from './links';
 
-// The mod whatnext gives the sessions it starts with `n` unless it runs with `--no-digest` (docs/DESIGN.md "ダイジェストの mod").
+// The mod whatnext gives the sessions it starts: with `n` in the list unless the list runs with `--no-digest`, and with
+// `whatnext new` always (docs/DESIGN.md "ダイジェストの mod", "一覧の外からの起動").
 // At each turn end it writes a digest of the session (goal, progress, next) with Haiku, keeps the links said in the conversation,
 // draws both in a pane and posts them to whatnext's receiver. Sending fails silently. When no whatnext takes
 // digests on that port (it quit, runs with --no-digest, or something else holds the port), the turn end calls

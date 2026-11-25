@@ -129,6 +129,20 @@ describe('whatnext new', () => {
     expect(bgCall()).toBeUndefined();
   });
 
+  it('42: new のあとの --help は、知らないオプションとして使い方を出し、終了コード 2 で終わる(セッションを起動しない)', async () => {
+    h = new Harness();
+    for (const args of [
+      ['new', '--help'],
+      ['new', h.repo('foo'), '--help'],
+    ]) {
+      const r = await h.runCli(args);
+      expect(r.code).toBe(2);
+      expect(r.stdout).toBe('');
+      expect(r.stderr).toMatch(/^whatnext: unknown option --help\nUsage: whatnext /);
+    }
+    expect(bgCall()).toBeUndefined();
+  });
+
   it('95: claude の Bash(CLAUDECODE=1)から呼ぶと断り、終了コード 1 で終わる', async () => {
     h = new Harness();
     const r = await h.runCli(['new', h.repo('foo'), 'x'], {env: {CLAUDECODE: '1'}});
