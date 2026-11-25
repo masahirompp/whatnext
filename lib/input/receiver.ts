@@ -82,7 +82,7 @@ export function openReceiver(port: number, store: HookStore): Promise<Receiver |
   });
 }
 
-/** `n` で起動するセッションに付ける `--settings` の中身(フックと OTel)。 */
+/** `n` と `whatnext new` で起動するセッションに付ける `--settings` の中身(フックと OTel)。 */
 export function launchSettings(port: number): string {
   const hook = {
     type: 'command',

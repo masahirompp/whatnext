@@ -19,7 +19,17 @@ import {type Env, tmuxEnv} from './env.js';
 // 一覧の外(端末のないスクリプトなど)から、`n` と同じものを付けたセッションを `claude --bg -- <指示>` で起動し、
 // id を出してすぐ終わる。端末も tmux も使わない。
 
-export const NEW_USAGE = 'Usage: whatnext new <directory|repository> <prompt>\n';
+export const NEW_USAGE = 'Usage: whatnext new <directory|repository> "<prompt>"\n';
+
+/**
+ * 引数が合わないときに標準エラーに出す文(使い方の行は呼ぶ側が続ける)。引数が多いのは、指示を引用符で囲み忘れたときなので
+ * (`whatnext new foo fix the tests`)、両方渡したつもりの利用者に、指示を1つの引数で渡すと伝える。
+ */
+export function newUsageError(many: boolean): string {
+  return many
+    ? 'whatnext: new takes the prompt as one argument. Quote the prompt.\n'
+    : 'whatnext: new needs a directory or a repository name, and a prompt.\n';
+}
 
 /** 外に触れる口(テストが差し替える)。 */
 export interface NewPorts {

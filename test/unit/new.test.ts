@@ -7,7 +7,7 @@ import type {Occupant} from '../../lib/input/receiver.js';
 import {parseArgs} from '../../src/cli/args.js';
 import {decideAttachments, locateTmux, socketPathOf} from '../../src/cli/attachments.js';
 import {modDir} from '../../src/cli/env.js';
-import {claudeEnv, matchRepos, type NewPorts, newSession, resolveTarget} from '../../src/cli/new.js';
+import {claudeEnv, matchRepos, type NewPorts, newSession, newUsageError, resolveTarget} from '../../src/cli/new.js';
 import {bgArgs, existingDir, readBgOutput} from '../../src/ops/start.js';
 
 // `whatnext new`(PRODUCT.md「一覧の外からの起動」、シナリオ 90〜97)。外のコマンドと受け口の確かめは口で差し替える。
@@ -128,11 +128,14 @@ describe('whatnext new の引数', () => {
   });
 
   it('指示がない、空、引数が多いときは、使い方を出す側に振り分ける', () => {
-    expect(parseArgs(['new'])).toEqual({cmd: 'new-usage'});
-    expect(parseArgs(['new', 'foo'])).toEqual({cmd: 'new-usage'});
-    expect(parseArgs(['new', 'foo', '  '])).toEqual({cmd: 'new-usage'});
-    expect(parseArgs(['new', '', 'x'])).toEqual({cmd: 'new-usage'});
-    expect(parseArgs(['new', 'foo', 'fix', 'the', 'tests'])).toEqual({cmd: 'new-usage'});
+    expect(parseArgs(['new'])).toEqual({cmd: 'new-usage', many: false});
+    expect(parseArgs(['new', 'foo'])).toEqual({cmd: 'new-usage', many: false});
+    expect(parseArgs(['new', 'foo', '  '])).toEqual({cmd: 'new-usage', many: false});
+    expect(parseArgs(['new', '', 'x'])).toEqual({cmd: 'new-usage', many: false});
+    // 引数が多いのは、指示を引用符で囲み忘れたとき。別の文言にするために分ける
+    expect(parseArgs(['new', 'foo', 'fix', 'the', 'tests'])).toEqual({cmd: 'new-usage', many: true});
+    expect(newUsageError(false)).toBe('whatnext: new needs a directory or a repository name, and a prompt.\n');
+    expect(newUsageError(true)).toBe('whatnext: new takes the prompt as one argument. Quote the prompt.\n');
   });
 
   it('new のほかの振り分けは変わらない', () => {

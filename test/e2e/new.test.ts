@@ -134,14 +134,22 @@ describe('whatnext new', () => {
     expect(bgCall()).toBeUndefined();
   });
 
-  it('94: 指示がなければ、使い方を出して終了コード 1 で終わる', async () => {
+  it('94: 指示がない、または引数が多いときは、使い方を出して終了コード 1 で終わる', async () => {
     h = new Harness();
-    const r = await h.runCli(['new', h.repo('foo')]);
+    const foo = h.repo('foo');
+    const r = await h.runCli(['new', foo]);
     expect(r).toEqual({
       code: 1,
       stdout: '',
       stderr:
-        'whatnext: new needs a directory or a repository name, and a prompt.\nUsage: whatnext new <directory|repository> <prompt>\n',
+        'whatnext: new needs a directory or a repository name, and a prompt.\nUsage: whatnext new <directory|repository> "<prompt>"\n',
+    });
+    // 指示を引用符で囲み忘れたとき(引数が多い)は、指示を1つの引数で渡すと出す
+    expect(await h.runCli(['new', foo, 'fix', 'the', 'tests'])).toEqual({
+      code: 1,
+      stdout: '',
+      stderr:
+        'whatnext: new takes the prompt as one argument. Quote the prompt.\nUsage: whatnext new <directory|repository> "<prompt>"\n',
     });
     expect(bgCall()).toBeUndefined();
   });
