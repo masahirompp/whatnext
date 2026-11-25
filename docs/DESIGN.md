@@ -218,13 +218,14 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 - `probe` は、応答が 1 秒より遅れたときも `other` と答える（[lib/input.md](lib/input.md)）。一覧のプロセスの応答が1回遅れただけで `other` と決めると、動いている一覧があるのに何も付けずに起動し、`is used by another program` と事実と違う文言を出す。`whatnext new` は `other` のときだけ `probe` をもう一度呼び、その答えで決める（`occupantOf`）。ほかのプログラムはすぐに答えるので、確かめ直しは待たせない。応答しないプログラムがポートを使っているときは、合わせて 2 秒待つ。一覧の起動（`list.ts`、`launch.ts`）は確かめ直さない（今までどおり）。
 - `whatnext new` は受け口を開けない。`free` のときに付けたフックと OTel は、あとで一覧が同じポートで受け口を開けてから届く。それまでのフックは `curl` が黙って失敗し、OTel は失われる（再送されない）。一覧を止めた状態で起動し、最初のターンが終わってから一覧を開くと、行は一言付きで出て CTX は `-` で、次のターンで CTX が出た（実機、2.1.331、2026-11-24）。
 - mod に渡す環境（`WHATNEXT_DIGEST_PORT`、`WHATNEXT_DIGEST_TMUX`、`WHATNEXT_DIGEST_SOCKET`）は、一覧と同じ関数（`digestEnv`）で組む。違いはソケットのパスの出どころである。一覧は自分のサーバの `#{socket_path}` を読み、`whatnext new` は tmux に問い合わせずに組む（`socketPathOf`。`TMUX_TMPDIR`、なければ `/tmp` の実パスの下の `tmux-<uid>/<ソケット名>`。tmux 3.7c の `#{socket_path}` と一致した。`TMUX_TMPDIR` が存在しないディレクトリのときは、tmux はエラーにせず `/tmp` の実パスの下に置くので、`socketPathOf` も `/tmp` に落とす。tmux 3.8、2026-11-25、`TMUX_TMPDIR=<存在しないパス> tmux -L <名前> new-session -d` のあとの `#{socket_path}` が `/private/tmp/tmux-501/<名前>` だった）。一覧が動いていなくても決まり、あとで開いた一覧のサーバは、そのパスにいる。呼ぶ側と一覧の `TMUX_TMPDIR` が違うと、mod は一覧を見つけられず、Haiku を呼ばない。
+- ポートの状態が `whatnext`（一覧が動いている）のときは、組んだパスにソケットがあるかを確かめ（`NewPorts.socketExists`）、無ければ、起動したあとに標準エラーで知らせる。一覧は専用サーバの中で動くので、受け口が答えるならソケットはもうある。無いのは、組んだパスが一覧のものと違うときである。`free` のときは、ソケットが無いのが普通なので確かめない。起動に失敗したときは、失敗の理由だけを出す。
 - `WHATNEXT_DIGEST_TMUX` は、tmux の実行ファイルの絶対パスにする。mod はこの値をそのまま `$.process.run` に渡し、動かせなければ「受けていない」と読むので（「ダイジェストの mod」の受け手の確かめ）、素の `tmux` を渡すと、セッションの `PATH` に tmux が無い限り、ダイジェストは最後まで出ない。一覧は tmux の中で動くので、自分の `PATH` で見つかる（`findTmux`）。`whatnext new` は端末のないランチャーからも呼ばれるので、呼ぶ側の環境（`NewPorts.pe`）の `PATH` を先に、なければよくある置き場所（`TMUX_DIRS`）を探す（`locateTmux`）。見つからなければ素の `tmux` を渡して起動し、標準エラーで知らせる。
 - mod は、一覧のセッションの `@wn_digest_port` が送り先のポートと同じときだけ Haiku を呼ぶ（「ダイジェストの mod」の受け手の確かめ）。一覧が動いていない、`--no-digest` で動いている、のどちらでもこのオプションがないので、`whatnext new` が一覧の状態を見ずに mod を付けても、利用枠は使わない。
 - 作業ディレクトリは、既存のディレクトリ（`~` を展開し、相対パスは呼んだ場所から解く）を先に見て、なければ `ghq list -p` のパスを、パスの区切りの単位で末尾から比べる（`matchRepos`）。`/`、`~`、`./`、`../` で始まる引数と、`.`、`..` は、リポジトリ名として探さない（`pathLike`。`~user` は展開しない）。
 - 信頼されていないディレクトリは、`n` と同じく、`claude --bg` の出力の `Workspace not trusted` で知る。`n` は信頼の確認を端末に出すが、`whatnext new` は端末がないので、`Not trusted` を出して終わる。`n` は、信頼の確認のあとのやり直しでは信頼の文言を見ず、`backgrounded · <id>` があれば起動できたと読む（`readBgOutput` の `afterTrust`。#358 の前の `n` と同じ読み方）。
 - `claude` に渡す環境から `WHATNEXT_*` と、tmux の `TMUX`、`TMUX_PANE` を外す（`claudeEnv`）。作業台のシェルから呼ぶと `TMUX` は専用サーバを指し、デーモンを起こしたときにそのまま残る。一覧の `n` も、`TMUX` と `TMUX_PANE` を外した環境（`tmuxEnv`）で claude を動かしている。claude のデーモンは、それを起こしたプロセスの環境を持ち続け、すべての `--bg` のセッションに渡す（[claude-code-behavior.md](claude-code-behavior.md)「`--bg` のセッションに OTel の設定を渡す経路」）。一覧の `n` の起動は、今までどおり外さない。
 - 一覧の `n` と共有する部品は `src/ops/start.ts` に置く（`bgArgs`、`readBgOutput`、`existingDir`、`ghqPaths`）。起動のあとと、信頼されていないときの扱いは、呼ぶ側が決める。
-- 外に触れる口（`run`、`probe`、tmux の実行ファイルを探す `findTmux`、環境、今の場所、出力）は `NewPorts` で受け、単体のテストが差し替える。
+- 外に触れる口（`run`、`probe`、tmux の実行ファイルを探す `findTmux`、ソケットがあるかを見る `socketExists`、環境、今の場所、出力）は `NewPorts` で受け、単体のテストが差し替える。
 
 ## 会話記録の読み取り
 

@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
 import {escapeRe, Harness, REPO} from './harness.js';
 
-// `whatnext new`(PRODUCT.md「一覧の外からの起動」、シナリオ 90〜96)。build した cli を端末なしで動かし、偽の claude に
+// `whatnext new`(PRODUCT.md「一覧の外からの起動」、シナリオ 90〜97)。build した cli を端末なしで動かし、偽の claude に
 // 渡った引数と、一覧の画面を見る。一言、CTX、ダイジェストが実物の claude で出ることは、実機の通しで確かめる。
 
 let h: Harness;
@@ -63,6 +63,23 @@ describe('whatnext new', () => {
     await h.waitFor(new RegExp(`── foo[\\s\\S]*${escapeRe(r.stdout.trim())}`));
     // あとで開いた一覧の専用サーバは、起動のときに渡したソケットにいる
     expect(h.inner('display-message', '-p', '#{socket_path}').trim()).toBe(s.env.WHATNEXT_DIGEST_SOCKET);
+  });
+
+  it('97: 一覧が動いていて、呼ぶ側の TMUX_TMPDIR が一覧の端末のものと違うときは、起動して、ダイジェストが出ないと標準エラーに出る', async () => {
+    h = new Harness();
+    const foo = h.repo('foo');
+    await h.start({args: ''});
+    // 存在する空のディレクトリ。組んだパスに、一覧の専用サーバのソケットは無い
+    const elsewhere = h.repo('elsewhere');
+    const r = await h.runCli(['new', foo, 'x'], {env: {TMUX_TMPDIR: elsewhere}});
+    const sock = settingsOf(bgCall()?.args).env.WHATNEXT_DIGEST_SOCKET;
+    expect(sock).toMatch(new RegExp(`^${escapeRe(elsewhere)}/tmux-\\d+/${escapeRe(h.socket)}$`));
+    expect(sock).not.toBe(h.inner('display-message', '-p', '#{socket_path}').trim());
+    expect(r).toEqual({
+      code: 0,
+      stdout: expect.stringMatching(/^[0-9a-f]{8}\n$/),
+      stderr: `whatnext: the list is running, but its tmux socket is not at ${sock}. Started the session, but its digest will not show in the list. Check that TMUX_TMPDIR here matches the list's terminal.\n`,
+    });
   });
 
   it('92: リポジトリ名でも起動する。相対パスの既存のディレクトリも受ける', async () => {

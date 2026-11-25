@@ -1,3 +1,4 @@
+import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {type Run, run} from '../../lib/input/exec.js';
 import {type Occupant, probe} from '../../lib/input/receiver.js';
@@ -26,6 +27,8 @@ export interface NewPorts {
   probe: (port: number) => Promise<Occupant>;
   /** tmux の実行ファイルの絶対パスを、PATH の形の文字列から探す。なければ undefined。 */
   findTmux: (path: string) => string | undefined;
+  /** 専用サーバのソケットが、そのパスにあるか。 */
+  socketExists: (path: string) => boolean;
   pe: NodeJS.ProcessEnv;
   cwd: string;
   home: string;
@@ -38,6 +41,7 @@ const realPorts = (): NewPorts => ({
   probe,
   // 呼ぶ側の PATH に無ければ、よくある置き場所も探す(ランチャーの PATH は短い)
   findTmux: path => locateTmux(path, TMUX_DIRS),
+  socketExists: existsSync,
   pe: process.env,
   cwd: process.cwd(),
   home: homedir(),
@@ -120,14 +124,17 @@ export async function newSession(
   const attached = attachmentsFor(env.port, decideAttachments(occupant, {who: 'new'}));
   // mod は、渡した tmux で一覧に「受けているか」を問う。セッションの PATH に tmux があるとは限らないので、絶対パスで渡す
   let tmux: string | undefined;
+  let socketPath: string | undefined;
   if (attached.settings && attached.pluginDir) {
     tmux = p.findTmux(p.pe.PATH ?? '');
     // 一覧が動いていなくても組める値だけを渡す。mod は、一覧がダイジェストを受けている間だけ Haiku を呼ぶ
-    attached.settings = withDigestEnv(
-      attached.settings,
-      digestEnv(env.port, socketPathOf(env.socket, p.pe), tmux ?? 'tmux'),
-    );
+    socketPath = socketPathOf(env.socket, p.pe);
+    attached.settings = withDigestEnv(attached.settings, digestEnv(env.port, socketPath, tmux ?? 'tmux'));
   }
+  // 一覧が動いているのに、組んだパスに専用サーバのソケットが無い(呼ぶ側の `TMUX_TMPDIR` が、一覧の端末のものと違う)。
+  // 一覧が動いていないとき(`free`)は、ソケットが無いのが普通なので、見ない
+  const lostSocket =
+    occupant === 'whatnext' && socketPath !== undefined && !p.socketExists(socketPath) ? socketPath : undefined;
 
   const r = await p.run('claude', bgArgs(attached, a.prompt), {
     cwd: target.dir,
@@ -153,6 +160,12 @@ export async function newSession(
     // 素の `tmux` を渡した。設定は起動時に固定なので、セッションが tmux を動かせなければ、ダイジェストはあとからも出ない
     p.err(
       'whatnext: tmux not found on PATH. Started the session, but its digest shows in the list only if the session can run tmux.\n',
+    );
+  }
+  if (lostSocket) {
+    // mod は、このパスで一覧に「受けているか」を問う。設定は起動時に固定なので、ダイジェストはあとからも出ない
+    p.err(
+      `whatnext: the list is running, but its tmux socket is not at ${lostSocket}. Started the session, but its digest will not show in the list. Check that TMUX_TMPDIR here matches the list's terminal.\n`,
     );
   }
   p.out(`${res.id}\n`);

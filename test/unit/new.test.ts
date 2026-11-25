@@ -10,7 +10,7 @@ import {modDir} from '../../src/cli/env.js';
 import {claudeEnv, matchRepos, type NewPorts, newSession, resolveTarget} from '../../src/cli/new.js';
 import {bgArgs, existingDir, readBgOutput} from '../../src/ops/start.js';
 
-// `whatnext new`(PRODUCT.md「一覧の外からの起動」、シナリオ 90〜96)。外のコマンドと受け口の確かめは口で差し替える。
+// `whatnext new`(PRODUCT.md「一覧の外からの起動」、シナリオ 90〜97)。外のコマンドと受け口の確かめは口で差し替える。
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'wn-new-')));
 afterAll(() => rmSync(root, {recursive: true, force: true}));
@@ -37,12 +37,15 @@ function ports(
     cwd?: string;
     /** tmux の置き場所(見つからないなら null)。 */
     tmux?: string | null;
+    /** 組んだパスに、専用サーバのソケットがあるか(既定はある)。 */
+    socket?: boolean;
   } = {},
 ) {
   const calls: Call[] = [];
   let out = '';
   let err = '';
   const tmuxAsked: string[] = [];
+  const socketAsked: string[] = [];
   let probes = 0;
   const p: NewPorts = {
     run: async (cmd, args, opts) => {
@@ -67,6 +70,10 @@ function ports(
       tmuxAsked.push(path);
       return o.tmux === null ? undefined : (o.tmux ?? '/opt/x/bin/tmux');
     },
+    socketExists: path => {
+      socketAsked.push(path);
+      return o.socket ?? true;
+    },
     pe: o.pe ?? {PATH: '/nonexistent', HOME: root},
     cwd: o.cwd ?? root,
     home: root,
@@ -81,6 +88,7 @@ function ports(
     p,
     calls,
     tmuxAsked,
+    socketAsked,
     probes: () => probes,
     claude: () => calls.find(c => c.cmd === 'claude'),
     out: () => out,
@@ -303,6 +311,35 @@ describe('whatnext new の起動', () => {
     await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, other.p);
     expect(other.tmuxAsked).toEqual([]);
     expect(other.err()).not.toContain('tmux');
+  });
+
+  it('一覧が動いているのに、組んだパスに専用サーバのソケットが無いときは、起動して、ダイジェストが出ないと標準エラーで知らせる', async () => {
+    const pe = {PATH: '/nonexistent', TMUX_TMPDIR: root};
+    const sock = join(root, `tmux-${process.getuid?.()}`, 'whatnext');
+    const t = ports({occupant: 'whatnext', socket: false, pe});
+    expect(await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, t.p)).toBe(0);
+    expect(t.socketAsked).toEqual([sock]);
+    // 起動は変えない(mod も、組んだパスも付ける。あとでそのパスに一覧が開けば届く)
+    expect(t.claude()?.args).toContain('--plugin-dir');
+    expect(settingsOf(t.claude()).env.WHATNEXT_DIGEST_SOCKET).toBe(sock);
+    expect(t.out()).toBe('1a2b3c4d\n');
+    expect(t.err()).toBe(
+      `whatnext: the list is running, but its tmux socket is not at ${sock}. Started the session, but its digest will not show in the list. Check that TMUX_TMPDIR here matches the list's terminal.\n`,
+    );
+    // 一覧が動いていないとき(ポートが空いている)は、ソケットが無いのが普通なので、確かめず、知らせない
+    const free = ports({occupant: 'free', socket: false, pe});
+    expect(await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, free.p)).toBe(0);
+    expect(free.socketAsked).toEqual([]);
+    expect(free.err()).toBe('');
+    // ポートをほかのプログラムが使っているときも、確かめない(mod を付けない)
+    const other = ports({occupant: 'other', socket: false, pe});
+    await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, other.p);
+    expect(other.socketAsked).toEqual([]);
+    expect(other.err()).not.toContain('TMUX_TMPDIR');
+    // 起動に失敗したときは、失敗の理由だけを出す
+    const failed = ports({occupant: 'whatnext', socket: false, pe, claude: {code: 1, stdout: 'boom\n'}});
+    expect(await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, failed.p)).toBe(1);
+    expect(failed.err()).not.toContain('TMUX_TMPDIR');
   });
 
   it('tmux は PATH を先に、なければよくある置き場所を探す(ランチャーの PATH に tmux が無くても見つける)', () => {
