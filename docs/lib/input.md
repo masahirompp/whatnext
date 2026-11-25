@@ -28,24 +28,23 @@
 ## 会話記録（`transcript.ts`）
 
 - `Transcripts`：`~/.claude/projects/*/<sessionId>.jsonl`（`CLAUDE_CONFIG_DIR` があればその下）を読む。読むだけで書かない。
-  - `read(sid)`：更新時刻が変わったファイルだけを末尾から読み、`TranscriptFacts`（`prompt`、`haltAt`、`permission`、`question`、`declined`、`error`、`lastText`）を返す。なければ `undefined`。
+  - `read(sid)`：更新時刻が変わったファイルだけを末尾から読み、`TranscriptFacts`（`prompt`、`turnAt`、`haltAt`、`permission`、`question`、`error`、`lastText`）を返す。なければ `undefined`。
   - `createdAt(sid)`：会話記録の先頭から、`timestamp` を持つ最初の行の時刻（エポックミリ秒）。セッションを作った時刻として使う。先頭から最大 2MB を読み、一度見つけたら覚える。ファイルがない、時刻のある行がないときは `undefined`。時刻のある行がなかったときは、ファイルの大きさが変わるまで読み直さない。
   - `new Transcripts(configDir)`：`configDir` は `projects` を含む置き場所（`CLAUDE_CONFIG_DIR`、なければ `~/.claude`）。呼ぶ側が決めて渡す。
   - `locate(sid)`：会話記録のファイルのパスを返す Promise。見つからない、または置き場所を読めないときは `undefined`。
   - `forget(keep)`：`keep` にないセッションの覚えた値を捨てる。
-- 指示の行（`instructionText` が文字列を返す `user` の行）で、`prompt` をその指示にし、ターンの値（`haltAt`、`permission`、`question`、`declined`、`error`、`lastText`）を消す。
-- タスクの通知でターンが始まった行（`user` の行で、`turnOrigin` が `task_notification`、本文が指示でない文字列）でも、ターンの値を消す。`prompt` は前の指示のまま残す。`HookStore` が通知の `UserPromptSubmit` で `turnAt` を進めるのと同じ規則で、消さないと、フックのないセッションで前のターンの `declined` や `lastText` が通知のターンの値として出る（#387）。
+- 指示の行（`instructionText` が文字列を返す `user` の行）で、`prompt` をその指示にし、ターンの値（`haltAt`、`permission`、`question`、`error`、`lastText`）を消す。`turnAt`（今のターンを始めた行の時刻）は、その行の時刻にする。
+- タスクの通知でターンが始まった行（`user` の行で、`turnOrigin` が `task_notification`、本文が指示でない文字列）でも、ターンの値を消し、`turnAt` をその行の時刻にする（行に時刻がなければ `turnAt` は持たない）。`prompt` は前の指示のまま残す。`HookStore` が通知の `UserPromptSubmit` で `turnAt` を進めるのと同じ規則で、消さないと、フックのないセッションで前のターンの `lastText` が通知のターンの値として出る（#387）。
 - 通知の行でも、記録にだけ残ってターンを始めなかったもの（`queueTranscriptOnly: true`。`turnOrigin` を持たない）は境にしない。境にすると、応答を返し終えたセッションの `lastText` が、ターンが始まっていないのに消える。
 - `turnOrigin` を確かめたのは `claude` の 2.1.295〜2.1.331 で、`turnOrigin` を書かない版の会話記録では通知の行が境にならず、前のターンの値が残る（#387 の前と同じ見え方になる）。
-- `declined` にするのは、結果のない `tool_use` に対する `tool_result` のうち、`is_error` が `true` で、`content` が `The user doesn't want to proceed with this tool use.` で始まる文字列のものだけである。文言を含むだけの結果（その文言が書かれたファイルを読んだ結果など）は、断ったとみなさない（#387）。
-- 断ったあとに本体の `assistant` の行が続いたら、`declined` を消す。文を添えて断ったときは中断の印が付かず、ターンが続く。消さないと、そのあと質問待ちになった行で、`Declined:` が最後の応答より先に出る。サイドチェーンの `assistant` の行では消さない。`supplement` がフックの `PermissionRequest` のあとに `Stop` が届いたら `declined` を出さないのと同じ規則である（#387）。
+- 権限の確認で断ったかどうかは見分けない。断った `tool_result`（`is_error` が `true` で、`The user doesn't want to proceed with this tool use.` で始まる）も、ほかの結果と同じく、結果のない `tool_use` を消すだけである。断った道具を値として返さない（`Declined:` の表示をやめた。#394）。
 - 指示とみなす行、除く行、サイドチェーン、中断と通知の行の形は [claude-code-behavior.md](../claude-code-behavior.md)「会話記録」にある。
 - 未確認の観察が2件ある（#253、#244。DESIGN.md「確かめ方」、claude-code-behavior.md）。
 
 ## 補う値（`hooks.ts` の `supplement`）
 
-- `supplement(hook, transcript, ctx)`：フックの値を主にし、今のターンの値がないときに会話記録で補った `Supplied`（`prompt`、`haltAt`、`permission`、`question`、`declined`、`error`、`lastText`、`ctx`）を返す。
-- 今のターンの境は DESIGN.md「機能ごとの入力の出どころ」のとおり。フックの値は `turnAt`（なければフックの指示の時刻）以降だけ、会話記録の値はその指示が `turnAt` の2秒前以降のときだけ使う（#267）。指示は `prompt` で選ぶので、タスクの通知で始まったターンでも一言は前の指示のまま、前のターンの値は使わない（#361）。フックの値がないセッションでは、会話記録の値をそのまま使う。通知で始まったターンの境は `Transcripts` が引くので、`supplement` は会話記録のターンの始まりの時刻を受け取らない（#387）。
+- `supplement(hook, transcript, ctx)`：フックの値を主にし、今のターンの値がないときに会話記録で補った `Supplied`（`prompt`、`haltAt`、`permission`、`question`、`error`、`lastText`、`ctx`）を返す。
+- 今のターンの境は DESIGN.md「機能ごとの入力の出どころ」のとおり。フックの値はフックの `turnAt`（なければフックの指示の時刻）以降だけ使う。会話記録の `turnAt`（なければ会話記録の指示の時刻）の2秒前のほうが後なら、そちら以降だけ使う。会話記録が、フックの受けていないターンの始まり（指示の行か、ターンを始めた通知の行）を持つときで、前のターンの `Stop` の応答、失敗、質問、権限待ちの対象を今のターンの値にしない。会話記録の値は、会話記録の `turnAt`（なければ会話記録の指示の時刻）がフックの `turnAt` の2秒前以降のときだけ使う（#267）。指示は `prompt` で選ぶので、タスクの通知で始まったターンでも一言は前の指示のまま、前のターンの値は使わない（#361）。フックが通知を受けたターンでも、会話記録が同じ通知の行で境を引いていれば（会話記録の `turnAt` がその行の時刻になっていれば）、会話記録の値は今のターンの値なので使う。使わないと、`Stop` の届かない止まり方（権限の確認で断る、Esc）で、そのターンの最後の応答が出ない（#394）。会話記録が通知の行をまだ持たない間と、`turnOrigin` を書かない版の会話記録では、会話記録の `turnAt` が前の指示の時刻のままなので、前のターンの値は使わない。フックの値がないセッションでは、会話記録の値をそのまま使う（通知で始まったターンの境は `Transcripts` が引いている。#387）。
 
 ## 文の切り出し（`text.ts`）
 

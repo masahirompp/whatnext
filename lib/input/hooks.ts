@@ -128,7 +128,6 @@ export interface Supplied {
   haltAt?: number;
   permission?: string;
   question?: string;
-  declined?: string;
   error?: string;
   lastText?: string;
   ctx?: number;
@@ -146,12 +145,16 @@ export function supplement(
   const tp = tr?.prompt?.at;
   // 今のターンの始まりはフックの UserPromptSubmit(指示でない通知も含む。#361)。
   const ht = hook?.turnAt ?? hp;
-  // フックの値は今のターンの始まりより後のものだけ。会話記録にそれより新しい指示があれば
-  // (フックを受けていない指示)、そちらで引く。
-  const floor = Math.max(ht ?? -Infinity, tp === undefined ? -Infinity : tp - SLACK);
+  // 会話記録のターンの始まり(指示の行か、ターンを始めた通知の行)。
+  const tt = tr?.turnAt ?? tp;
+  // フックの値は今のターンの始まりより後のものだけ。会話記録にそれより新しいターンの始まりがあれば
+  // (フックを受けていない指示や通知)、そちらで引く。
+  const floor = Math.max(ht ?? -Infinity, tt === undefined ? -Infinity : tt - SLACK);
   const fresh = (at: number | undefined) => at !== undefined && at >= floor;
-  // 会話記録の値は、その指示がフックのターンの始まりの2秒前以降のときだけ使う。
-  const trCurrent = tr !== undefined && (ht === undefined ? true : tp !== undefined && tp >= ht - SLACK);
+  // 会話記録の値は、会話記録のターンの始まりが、フックのターンの始まりの2秒前以降のときだけ使う。
+  // 通知で始まったターンでも、会話記録が同じ通知の行で境を引いていれば今のターンの値で、
+  // 引いていなければ(通知の行をまだ読んでいない、`turnOrigin` を書かない版)前のターンの値なので使わない。
+  const trCurrent = tr !== undefined && (ht === undefined ? true : tt !== undefined && tt >= ht - SLACK);
   const out: Supplied = {};
   if (ctx !== undefined) out.ctx = ctx;
 
@@ -170,8 +173,6 @@ export function supplement(
   out.question = pick(hook?.question, hook?.question?.text, tr?.question);
   const permHook = hook?.permission && fresh(hook.permission.at) ? hook.permission : undefined;
   out.permission = permHook ? permHook.target : trCurrent ? tr?.permission : undefined;
-  const stoppedAfter = permHook && hook?.stop && hook.stop.at >= permHook.at;
-  out.declined = permHook && !stoppedAfter ? permHook.target : trCurrent ? tr?.declined : undefined;
   for (const k of Object.keys(out) as (keyof Supplied)[]) if (out[k] === undefined) delete out[k];
   return out;
 }

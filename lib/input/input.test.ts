@@ -150,7 +150,6 @@ describe('フックと補う値', () => {
       prompt: {text: 'fix it', at: 1000},
       haltAt: 2000,
       permission: 'Bash: rm -rf x',
-      declined: 'Bash: rm -rf x',
       ctx: 3000,
     });
     t = 3000;
@@ -198,7 +197,7 @@ describe('フックと補う値', () => {
     expect(s.haltAt).toBeUndefined();
   });
 
-  it('通知で始まったターンで権限を断ったら、前のターンの質問ではなく断った道具を出す(#361)', () => {
+  it('通知で始まったターンで権限の確認が出たら、前のターンの質問と最後の応答を出さない(#361)', () => {
     let t = 1000;
     const store = new HookStore(() => t);
     store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'ask me which db to use'});
@@ -231,9 +230,35 @@ describe('フックと補う値', () => {
       expect(s.prompt).toEqual({text: 'ask me which db to use', at: 1000});
       expect(s.question).toBeUndefined();
       expect(s.lastText).toBeUndefined();
-      expect(s.declined).toBe('Bash: rm -rf build');
+      // 今のターンの権限待ちの対象は、フックの値で出る
+      expect(s.permission).toBe('Bash: rm -rf build');
       expect(s.haltAt).toBe(61000);
     }
+  });
+
+  it('権限を許可したあと Stop が届かなくても、断った道具としては出さない(#394)', () => {
+    // 許可して Esc で止めたときに届く並び(UserPromptSubmit → PreToolUse → PermissionRequest → Notification。Stop は届かない)
+    let t = 1000;
+    const store = new HookStore(() => t);
+    store.receiveHook({session_id: 's', hook_event_name: 'UserPromptSubmit', prompt: 'write the date'});
+    t = 2000;
+    const tool = {tool_name: 'Bash', tool_input: {command: 'date > out.txt'}};
+    store.receiveHook({session_id: 's', hook_event_name: 'PreToolUse', ...tool});
+    store.receiveHook({session_id: 's', hook_event_name: 'PermissionRequest', ...tool});
+    store.receiveHook({session_id: 's', hook_event_name: 'Notification', message: 'Claude needs your permission'});
+    const prompt = {text: 'write the date', at: 1000};
+    expect(supplement(store.get('s'), undefined, undefined)).toEqual({
+      prompt,
+      haltAt: 2000,
+      permission: 'Bash: date > out.txt',
+    });
+    // 最後の応答は会話記録の今のターンの値で補う
+    expect(supplement(store.get('s'), {prompt, lastText: 'Writing the date.'}, undefined)).toEqual({
+      prompt,
+      haltAt: 2000,
+      permission: 'Bash: date > out.txt',
+      lastText: 'Writing the date.',
+    });
   });
 
   it('失敗は文言を、なければ符号を出す', () => {
@@ -287,7 +312,7 @@ async function transcriptDir(lines: object[]): Promise<{dir: string; file: strin
 
 const T = (s: number) => new Date(Date.UTC(2026, 9, 2, 0, 0, s)).toISOString();
 
-describe('会話記録 (シナリオ 33、34、45)', () => {
+describe('会話記録 (シナリオ 33、34)', () => {
   it('指示、権限待ちの道具、最後の応答、時刻を読む', async () => {
     const {dir, file} = await transcriptDir([
       {type: 'user', timestamp: T(1), message: {content: 'old prompt'}},
@@ -306,7 +331,7 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     expect(f?.haltAt).toBe(Date.parse(T(12)));
     expect(f?.lastText).toBeUndefined();
 
-    // 断ったターン(45)
+    // 断ったターン。断った道具は値にしない(#394)
     await writeFile(
       file,
       `${
@@ -339,9 +364,38 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
       }\n`,
     );
     const g = await tr.read('sid-1');
-    expect(g?.declined).toBe('Bash: npm run build');
-    expect(g?.permission).toBeUndefined();
-    expect(g?.prompt?.text).toBe('run the build');
+    // 結果の付いた道具は権限待ちの対象から消え、ほかに値は増えない
+    expect(g).toEqual({
+      prompt: {text: 'run the build', at: Date.parse(T(10))},
+      turnAt: Date.parse(T(10)),
+      haltAt: Date.parse(T(14)),
+    });
+  });
+
+  it('サイドチェーンの行(サブエージェント)は、最後の応答にも権限待ちの対象にも入れない', async () => {
+    const prompt = {text: 'review the change', at: Date.parse(T(1))};
+    const {dir} = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'review the change'}},
+      {type: 'assistant', timestamp: T(2), message: {content: [{type: 'text', text: 'Starting the review.'}]}},
+      {
+        type: 'assistant',
+        timestamp: T(3),
+        isSidechain: true,
+        message: {content: [{type: 'text', text: 'Subagent is still reporting.'}]},
+      },
+      {
+        type: 'assistant',
+        timestamp: T(4),
+        isSidechain: true,
+        message: {content: [{type: 'tool_use', id: 'side1', name: 'Bash', input: {command: 'rm -rf build'}}]},
+      },
+    ]);
+    expect(await new Transcripts(dir).read('sid-1')).toEqual({
+      prompt,
+      turnAt: prompt.at,
+      lastText: 'Starting the review.',
+      haltAt: Date.parse(T(2)),
+    });
   });
 
   // 観測した行の形(claude-code-behavior.md「会話記録」の「中断したターン」と、バックグラウンドのタスクの通知)
@@ -391,7 +445,7 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     message: {role: 'user', content: notificationBody},
   });
 
-  it('通知で始まったターンは、指示を前のまま残し、前のターンの断った道具と最後の応答を出さない(#387)', async () => {
+  it('通知で始まったターンは、指示を前のまま残し、前のターンの最後の応答を出さない(#387)', async () => {
     const {dir, file} = await transcriptDir([
       {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
       {type: 'assistant', timestamp: T(2), message: {content: [{type: 'text', text: 'Started the tests.'}]}},
@@ -402,7 +456,7 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     const tr = new Transcripts(dir);
     const f = await tr.read('sid-1');
     const prompt = {text: 'run the tests in background', at: Date.parse(T(1))};
-    expect(f).toEqual({prompt});
+    expect(f).toEqual({prompt, turnAt: Date.parse(T(60))});
     // フックのないセッション(外で起動したもの)は、会話記録の値がそのまま出る
     expect(supplement(undefined, f, undefined)).toEqual({prompt});
 
@@ -432,6 +486,142 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     });
   });
 
+  it('フックを受けているセッションでも、通知で始まったターンを断って中断したら、そのターンの応答の冒頭を出す(#394)', async () => {
+    // フック: 指示 → Stop → 通知 → PermissionRequest(断る。Stop は届かない)。受けた時刻は会話記録の行の少し後
+    let t = Date.parse(T(1)) + 300;
+    const store = new HookStore(() => t);
+    const hook = (s: number, body: object) => {
+      t = Date.parse(T(s)) + 300;
+      store.receiveHook({session_id: 'sid-1', ...body});
+    };
+    hook(1, {hook_event_name: 'UserPromptSubmit', prompt: 'run the tests in background'});
+    hook(3, {hook_event_name: 'Stop', last_assistant_message: 'Started the tests.'});
+    hook(60, {hook_event_name: 'UserPromptSubmit', prompt: notificationBody});
+    const prompt = {text: 'run the tests in background', at: Date.parse(T(1)) + 300};
+
+    const before = [
+      {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
+      {type: 'assistant', timestamp: T(2), message: {content: [{type: 'text', text: 'Started the tests.'}]}},
+      {type: 'system', subtype: 'turn_duration', timestamp: T(3)},
+    ];
+    // 会話記録が通知の行をまだ持たない間(と、`turnOrigin` を書かない版)は、前のターンの応答を出さない
+    const stale = await transcriptDir(before);
+    expect(supplement(store.get('sid-1'), await new Transcripts(stale.dir).read('sid-1'), undefined)).toEqual({prompt});
+    const recordOnly = await transcriptDir([...before, notificationRecordOnly(60)]);
+    expect(supplement(store.get('sid-1'), await new Transcripts(recordOnly.dir).read('sid-1'), undefined)).toEqual({
+      prompt,
+    });
+
+    hook(61, {
+      hook_event_name: 'PermissionRequest',
+      tool_name: 'Bash',
+      tool_input: {command: 'rm -rf build', description: 'Remove build'},
+    });
+    const said = {
+      type: 'assistant',
+      timestamp: T(61),
+      message: {content: [{type: 'text', text: 'The tests finished. Removing the build directory.'}]},
+    };
+    const {dir} = await transcriptDir([
+      ...before,
+      notificationTurn(60),
+      said,
+      bashUse('tu1', 'rm -rf build', 61),
+      ...rejectedRows('tu1', 70),
+    ]);
+    const f = await new Transcripts(dir).read('sid-1');
+    expect(f?.turnAt).toBe(Date.parse(T(60)));
+    expect(supplement(store.get('sid-1'), f, undefined)).toEqual({
+      prompt,
+      haltAt: Date.parse(T(61)) + 300,
+      permission: 'Bash: rm -rf build',
+      lastText: 'The tests finished. Removing the build directory.',
+    });
+    // フックのないセッションと同じ一言になる
+    expect(supplement(undefined, f, undefined).lastText).toBe('The tests finished. Removing the build directory.');
+
+    // 応答の文章が無ければ、何も出ない(前のターンの応答に戻らない)
+    const noText = await transcriptDir([
+      ...before,
+      notificationTurn(60),
+      bashUse('tu1', 'rm -rf build', 61),
+      ...rejectedRows('tu1', 70),
+    ]);
+    expect(
+      supplement(store.get('sid-1'), await new Transcripts(noText.dir).read('sid-1'), undefined).lastText,
+    ).toBeUndefined();
+  });
+
+  it('フックが通知を受けていなくても、会話記録が通知の行で新しいターンを示せば、前のターンのフックの値を出さない(#394)', async () => {
+    // フック: 指示 →(質問、権限の確認)→ Stop か StopFailure まで。通知の UserPromptSubmit は受けていない
+    const hooks = (end: object) => {
+      let t = 0;
+      const store = new HookStore(() => t);
+      const hook = (s: number, body: object) => {
+        t = Date.parse(T(s)) + 300;
+        store.receiveHook({session_id: 'sid-1', ...body});
+      };
+      hook(1, {hook_event_name: 'UserPromptSubmit', prompt: 'run the tests in background'});
+      hook(2, {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'AskUserQuestion',
+        tool_input: {questions: [{question: 'Which suite?'}]},
+      });
+      hook(3, {hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: {command: 'npm test'}});
+      hook(5, end);
+      return store.get('sid-1');
+    };
+    const stopped = hooks({hook_event_name: 'Stop', last_assistant_message: 'Started the tests.'});
+    const failed = hooks({
+      hook_event_name: 'StopFailure',
+      error: 'rate_limit',
+      last_assistant_message: 'API Error: rate limited',
+    });
+    const prompt = {text: 'run the tests in background', at: Date.parse(T(1)) + 300};
+    const before = [
+      {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
+      {type: 'assistant', timestamp: T(4), message: {content: [{type: 'text', text: 'Started the tests.'}]}},
+      {type: 'system', subtype: 'turn_duration', timestamp: T(5)},
+    ];
+    const read = async (rows: object[]) => new Transcripts((await transcriptDir(rows)).dir).read('sid-1');
+
+    // 通知の行だけ: 前のターンの応答、失敗、質問、権限待ちの対象、止まった時刻のどれも出さない
+    const started = await read([...before, notificationTurn(60)]);
+    expect(started?.turnAt).toBe(Date.parse(T(60)));
+    expect(supplement(stopped, started, undefined)).toEqual({prompt});
+    expect(supplement(failed, started, undefined)).toEqual({prompt});
+
+    // 通知のターンの応答があれば、それを出す
+    const replied = await read([
+      ...before,
+      notificationTurn(60),
+      {type: 'assistant', timestamp: T(61), message: {content: [{type: 'text', text: 'All tests passed.'}]}},
+    ]);
+    const current = {prompt, lastText: 'All tests passed.', haltAt: Date.parse(T(61))};
+    expect(supplement(stopped, replied, undefined)).toEqual(current);
+    expect(supplement(failed, replied, undefined)).toEqual(current);
+
+    // 記録にだけ残った通知の行は境にしない。返し終えた応答は、フックの値のまま出る
+    const recordOnly = await read([...before, notificationRecordOnly(60)]);
+    expect(supplement(stopped, recordOnly, undefined)).toMatchObject({
+      prompt,
+      lastText: 'Started the tests.',
+      haltAt: Date.parse(T(5)) + 300,
+    });
+
+    // 通知の行のあとに受けたフックの値(通知の UserPromptSubmit だけ受け損ねた)は、今のターンの値として出る
+    let t = prompt.at;
+    const late = new HookStore(() => t);
+    late.receiveHook({session_id: 'sid-1', hook_event_name: 'UserPromptSubmit', prompt: 'run the tests in background'});
+    t = Date.parse(T(62)) + 300;
+    late.receiveHook({session_id: 'sid-1', hook_event_name: 'Stop', last_assistant_message: 'All tests passed.'});
+    expect(supplement(late.get('sid-1'), replied, undefined)).toEqual({
+      prompt,
+      lastText: 'All tests passed.',
+      haltAt: Date.parse(T(62)) + 300,
+    });
+  });
+
   it('ターンを始めなかった通知の行(記録だけ)は境にせず、最後の応答を残す(#387)', async () => {
     const {dir} = await transcriptDir([
       {type: 'user', timestamp: T(1), message: {content: 'run the tests in background'}},
@@ -441,39 +631,13 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     ]);
     expect(await new Transcripts(dir).read('sid-1')).toEqual({
       prompt: {text: 'run the tests in background', at: Date.parse(T(1))},
+      turnAt: Date.parse(T(1)),
       lastText: 'Started the tests.',
       haltAt: Date.parse(T(3)),
     });
   });
 
-  it('道具の結果の本文に断りの文言が含まれるだけでは、断ったとみなさない(#387)', async () => {
-    // 文言を含むファイルを grep した結果(is_error は false、本文は文言で始まらない)
-    const {dir} = await transcriptDir([
-      {type: 'user', timestamp: T(1), message: {content: 'check the docs'}},
-      bashUse('tu1', 'grep -n "interrupted" docs/claude-code-behavior.md', 2),
-      {
-        type: 'user',
-        timestamp: T(3),
-        toolUseResult: {stdout: '', stderr: '', interrupted: false, isImage: false, noOutputExpected: false},
-        message: {
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: 'tu1',
-              content: `233:- **中断したターン**:(1) \`user\` の行で、\`tool_result\`(\`${REJECTED}\`)。`,
-              is_error: false,
-            },
-          ],
-        },
-      },
-      {type: 'assistant', timestamp: T(4), message: {content: [{type: 'text', text: 'The docs describe it.'}]}},
-    ]);
-    const f = await new Transcripts(dir).read('sid-1');
-    expect(f?.declined).toBeUndefined();
-    expect(f?.lastText).toBe('The docs describe it.');
-  });
-
-  it('文を添えて断ったあとターンが続いたら、断った道具を残さない(#387)', async () => {
+  it('文を添えて断ったあとターンが続いたら、続きの質問を出す(#387)', async () => {
     // 文を添えた拒否の形(claude-code-behavior.md「会話記録」の「中断したターン」)。中断の印は付かず、本体の assistant の行が続く
     const body =
       "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\nuse the staging bucket instead";
@@ -507,26 +671,37 @@ describe('会話記録 (シナリオ 33、34、45)', () => {
     const f = await new Transcripts(dir).read('sid-1');
     expect(f).toEqual({
       prompt: {text: 'clean up the build', at: Date.parse(T(1))},
+      turnAt: Date.parse(T(1)),
       question: 'Which bucket should I clean?',
       haltAt: Date.parse(T(6)),
     });
   });
 
-  it('断って中断したターンでは、サイドチェーンの assistant の行が続いても、断った道具を残す(#387)', async () => {
-    const {dir} = await transcriptDir([
+  it('断って中断したターンは、最後の応答の冒頭だけを出す。応答の文章が無ければ何も出さない(#394)', async () => {
+    const said = {type: 'assistant', timestamp: T(2), message: {content: [{type: 'text', text: 'Removing build.'}]}};
+    const prompt = {text: 'clean up the build', at: Date.parse(T(1))};
+    const withText = await transcriptDir([
       {type: 'user', timestamp: T(1), message: {content: 'clean up the build'}},
-      bashUse('tu1', 'rm -rf build', 2),
+      said,
+      bashUse('tu1', 'rm -rf build', 3),
       ...rejectedRows('tu1', 4),
-      {
-        type: 'assistant',
-        timestamp: T(5),
-        isSidechain: true,
-        message: {content: [{type: 'text', text: 'Subagent is still reporting.'}]},
-      },
     ]);
-    const f = await new Transcripts(dir).read('sid-1');
-    expect(f?.declined).toBe('Bash: rm -rf build');
-    expect(f?.lastText).toBeUndefined();
+    expect(await new Transcripts(withText.dir).read('sid-1')).toEqual({
+      prompt,
+      turnAt: prompt.at,
+      lastText: 'Removing build.',
+      haltAt: Date.parse(T(4)),
+    });
+    const noText = await transcriptDir([
+      {type: 'user', timestamp: T(1), message: {content: 'clean up the build'}},
+      bashUse('tu1', 'rm -rf build', 3),
+      ...rejectedRows('tu1', 4),
+    ]);
+    expect(await new Transcripts(noText.dir).read('sid-1')).toEqual({
+      prompt,
+      turnAt: prompt.at,
+      haltAt: Date.parse(T(4)),
+    });
   });
 
   it('失敗の行と質問', async () => {
