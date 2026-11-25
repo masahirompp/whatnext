@@ -25,17 +25,26 @@ To see a session's workbench shell next to it, split your terminal (e.g. `cmd+d`
 npx @masahirompp/whatnext workbench
 ```
 
+To hand a task to a new background session without opening the list (from a script or a launcher such as Raycast; no terminal needed), give a directory or a repository name and the prompt:
+
+```sh
+npx @masahirompp/whatnext new ~/src/foo "Fix the failing tests"
+npx @masahirompp/whatnext new owner/foo "Fix the failing tests"   # the end of a path in `ghq list -p`
+```
+
+It prints the session's id and exits; pick the session up in the list later. The session is set up like one started with `n` (hooks, context size and the digest mod), whether or not the list is running. Turns that end while the list is not running show no context size or digest; both appear from the next turn after you open the list. It needs `claude` on `PATH`, refuses a directory Claude Code does not trust yet, and does not run inside a Claude Code session.
+
 ### Digests
 
-The sessions you start with `n` get a small Claude Code mod (shipped in this package, loaded with `--plugin-dir`). At each turn end it makes one Haiku call to write a digest of the session — its goal, its progress so far, and what comes next — and, without a model, picks up the conversation links (issues, PRs, commits and other URLs said in the conversation). The list shows each row's goal as `◎ <Goal>` above its one-liner and, when the terminal is at least 120 columns wide, the digest and conversation links of the selected row on the right, under `Goal`, `Progress`, `Next` and `Links`; click a link there to open it (cmd+click in Ghostty). Inside the session, the same digest and links show in a `Digest` pane (`/wn-digest` opens it). `o` in the list opens one of the row's links.
+The sessions whatnext starts (with `n` in the list, or with `whatnext new`) get a small Claude Code mod (shipped in this package, loaded with `--plugin-dir`). At each turn end it makes one Haiku call to write a digest of the session — its goal, its progress so far, and what comes next — and, without a model, picks up the conversation links (issues, PRs, commits and other URLs said in the conversation). The list shows each row's goal as `◎ <Goal>` above its one-liner and, when the terminal is at least 120 columns wide, the digest and conversation links of the selected row on the right, under `Goal`, `Progress`, `Next` and `Links`; click a link there to open it (cmd+click in Ghostty). Inside the session, the same digest and links show in a `Digest` pane (`/wn-digest` opens it). `o` in the list opens one of the row's links.
 
-**Digests are on by default and use your plan's usage: each session you start with `n` makes one Haiku call at every turn end.** To turn them off, start whatnext with `--no-digest`:
+**Digests are on by default and use your plan's usage: each session started with `n` or `whatnext new` makes one Haiku call at every turn end.** To turn them off, start whatnext with `--no-digest`:
 
 ```sh
 npx @masahirompp/whatnext --no-digest
 ```
 
-With `--no-digest`, sessions get no mod, make no Haiku call, and the list shows no goal lines and no right-hand pane. (Up to 0.24 digests were opt-in with `--digest`. That option is gone: drop it from your aliases.)
+With `--no-digest`, sessions started with `n` get no mod, make no Haiku call, and the list shows no goal lines and no right-hand pane. `whatnext new` gives its session the mod even while a `--no-digest` list is running: the mod makes no Haiku call as long as no list takes digests, and its digests start from the next turn once you run whatnext without `--no-digest`. (Up to 0.24 digests were opt-in with `--digest`. That option is gone: drop it from your aliases.)
 
 The Haiku call is made only while a whatnext with digests on is taking them: after you quit whatnext or start it again with `--no-digest`, the sessions that already have the mod make no Haiku call and send nothing, and they start again from the next turn once whatnext runs without `--no-digest` again. A list that is already running keeps its setting; quit it and start it again to change it. If a list with digests is running, `whatnext --no-digest` does not connect to it and tells you to quit it first. If the port is used by another program, whatnext says so in the right-hand pane. Digests reach whatnext only from sessions it started, are kept in memory only, and need Claude Code's mod support (an early-access API that may change between releases).
 

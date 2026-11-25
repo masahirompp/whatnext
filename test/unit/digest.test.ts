@@ -1,8 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import {stripAnsi, width} from '../../lib/text/text.js';
 import {parseArgs, USAGE} from '../../src/cli/args.js';
+import {findTmux, withDigestEnv} from '../../src/cli/attachments.js';
 import {paneCommand, readEnv} from '../../src/cli/env.js';
-import {digestOffText, findTmux, withDigestEnv} from '../../src/cli/list.js';
+import {digestOffText} from '../../src/cli/list.js';
 import {DigestHookStore, parseDigestBody, sanitize} from '../../src/input/digest.js';
 import {hyperlink, render, SIDE_MIN_COLS, sideLines, wrap} from '../../src/screen/screen.js';
 import type {Screen, ScreenRow} from '../../src/screen/types.js';

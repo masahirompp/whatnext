@@ -51,7 +51,8 @@ whatnext が頼る `claude` の振る舞いを、実機での実測と公式ド�
 ### 起動（`--bg`）
 
 - プロンプトなしで起動すると、終了コード 0 で `backgrounded · <id> · <name> (idle — send a prompt to start)` を返す。`--json` では `state: "blocked"`、`status: "idle"`、`pid` あり、`waitingFor` なしになる（2.1.281）。
-- バックグラウンドのサービスが止まっている状態で、プロンプト付きの `claude --bg` を実行すると、`Starting background service…` に続いて `backgrounded · <id> · <name>` が出た。そのセッションは1分以上 `blocked` + `idle` + `pid` ありのままで、最初のターンが始まらなかった。直後に続けて起動した3つは正常だった。1回だけの観測で、原因は確かめていない（サービスの起動と重なった最初の1つだけで起きた可能性）（2.1.282）。whatnext の `n` はプロンプトなしで起動するので直接の影響はないが、プロンプト付きで起動する外部 watcher には影響しうる。
+- バックグラウンドのサービスが止まっている状態で、プロンプト付きの `claude --bg` を実行すると、`Starting background service…` に続いて `backgrounded · <id> · <name>` が出た。そのセッションは1分以上 `blocked` + `idle` + `pid` ありのままで、最初のターンが始まらなかった。直後に続けて起動した3つは正常だった。1回だけの観測で、原因は確かめていない（サービスの起動と重なった最初の1つだけで起きた可能性）（2.1.282）。whatnext の `n` はプロンプトなしで起動するので直接の影響はないが、プロンプト付きで起動する `whatnext new` と外部 watcher には影響しうる。
+- 端末なし（標準入力は `/dev/null`、制御端末のない新しいセッション、標準出力と標準エラーはパイプ）で `claude --bg --settings <JSON> --plugin-dir <mod> -- <指示>` を動かすと、0.7 秒で終了コード 0 と `backgrounded · <id>` を返し、最初のターンが始まって `done` + `idle` になった（2.1.331、haiku、2026-11-25、観測1回。作業場所は信頼済みのディレクトリの下）。`whatnext new` はこれに頼る。
 - 起動の出力は、端末でない出力先（`execFile` のパイプ）でも ANSI の色のエスケープを含む。`id` を読むときは、エスケープを除いてから照合する（2.1.283）。
 - 起動の出力（`backgrounded · <id> …`）には `id`（`sessionId` の先頭 8 文字）だけがあり、`sessionId` はない。起動したセッションを `sessionId` で扱うには、次に `--json` を読んで `id` から引く。
 - 存在しないモデル名でも、終了コード 0 で `backgrounded · <id>` を返し、起動の時点ではモデル名を検査しない。プロンプトを付けて起動すると、セッションはすぐに `state: "failed"`、`status: "idle"`、`pid` ありになる。プロンプトなしでは最初のターンが来ないので `blocked` のまま（2.1.281）。`claude stop` のあとも `failed` のまま残る。
