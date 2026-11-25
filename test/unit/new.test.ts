@@ -144,6 +144,10 @@ describe('受け口の状態ごとに付けるもの', () => {
   it('専用サーバのソケットのパスは、TMUX_TMPDIR の実パスと uid とソケット名で組む', () => {
     expect(socketPathOf('whatnext', {TMUX_TMPDIR: root}, 501)).toBe(join(root, 'tmux-501', 'whatnext'));
     expect(socketPathOf('wn-x', {}, 501)).toBe(join(realpathSync('/tmp'), 'tmux-501', 'wn-x'));
+    // TMUX_TMPDIR が存在しないディレクトリのとき、tmux は /tmp に置く(tmux 3.8 の #{socket_path} で確かめた)
+    expect(socketPathOf('wn-x', {TMUX_TMPDIR: join(root, 'no-such-dir')}, 501)).toBe(
+      join(realpathSync('/tmp'), 'tmux-501', 'wn-x'),
+    );
   });
 });
 

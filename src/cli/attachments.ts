@@ -87,6 +87,8 @@ export function findTmux(path = process.env.PATH ?? ''): string {
 /**
  * 専用サーバのソケットのパスを、サーバに問い合わせずに組む(一覧が動いていなくても決まる)。tmux は、`-L <名前>` のソケットを
  * `TMUX_TMPDIR`(なければ `/tmp`)の実パスの下の `tmux-<uid>/<名前>` に置く(tmux 3.7c の `#{socket_path}` で確かめた。#381)。
+ * `TMUX_TMPDIR` が存在しないディレクトリのときは、tmux は `/tmp` に置く(tmux 3.8 で確かめた。#358)ので、同じ順で探す。
+ * どちらの実パスも取れなければ undefined。
  */
 export function socketPathOf(
   socket: string,
@@ -94,10 +96,11 @@ export function socketPathOf(
   uid: number | undefined = process.getuid?.(),
 ): string | undefined {
   if (uid === undefined) return undefined;
-  const dir = pe.TMUX_TMPDIR || '/tmp';
-  let real = dir;
-  try {
-    real = realpathSync(dir);
-  } catch {}
-  return join(real, `tmux-${uid}`, socket);
+  for (const dir of [pe.TMUX_TMPDIR, '/tmp']) {
+    if (!dir) continue;
+    try {
+      return join(realpathSync(dir), `tmux-${uid}`, socket);
+    } catch {}
+  }
+  return undefined;
 }
