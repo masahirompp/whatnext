@@ -3,7 +3,15 @@ import {type Run, run} from '../../lib/input/exec.js';
 import {type Occupant, probe} from '../../lib/input/receiver.js';
 import {sessionFailureLines} from '../ops/app.js';
 import {BG_TIMEOUT_MS, bgArgs, existingDir, ghqPaths, readBgOutput} from '../ops/start.js';
-import {attachmentsFor, decideAttachments, digestEnv, socketPathOf, withDigestEnv} from './attachments.js';
+import {
+  attachmentsFor,
+  decideAttachments,
+  digestEnv,
+  locateTmux,
+  socketPathOf,
+  TMUX_DIRS,
+  withDigestEnv,
+} from './attachments.js';
 import type {Env} from './env.js';
 
 // `whatnext new <ディレクトリかリポジトリ名> <指示>`(PRODUCT.md「一覧の外からの起動」、ADR-0024)。
@@ -16,6 +24,8 @@ export const NEW_USAGE = 'Usage: whatnext new <directory|repository> <prompt>\n'
 export interface NewPorts {
   run: Run;
   probe: (port: number) => Promise<Occupant>;
+  /** tmux の実行ファイルの絶対パスを、PATH の形の文字列から探す。なければ undefined。 */
+  findTmux: (path: string) => string | undefined;
   pe: NodeJS.ProcessEnv;
   cwd: string;
   home: string;
@@ -26,6 +36,8 @@ export interface NewPorts {
 const realPorts = (): NewPorts => ({
   run,
   probe,
+  // 呼ぶ側の PATH に無ければ、よくある置き場所も探す(ランチャーの PATH は短い)
+  findTmux: path => locateTmux(path, TMUX_DIRS),
   pe: process.env,
   cwd: process.cwd(),
   home: homedir(),
@@ -92,9 +104,15 @@ export async function newSession(
 
   const occupant = await p.probe(env.port);
   const attached = attachmentsFor(env.port, decideAttachments(occupant, {who: 'new'}));
+  // mod は、渡した tmux で一覧に「受けているか」を問う。セッションの PATH に tmux があるとは限らないので、絶対パスで渡す
+  let tmux: string | undefined;
   if (attached.settings && attached.pluginDir) {
+    tmux = p.findTmux(p.pe.PATH ?? '');
     // 一覧が動いていなくても組める値だけを渡す。mod は、一覧がダイジェストを受けている間だけ Haiku を呼ぶ
-    attached.settings = withDigestEnv(attached.settings, digestEnv(env.port, socketPathOf(env.socket, p.pe)));
+    attached.settings = withDigestEnv(
+      attached.settings,
+      digestEnv(env.port, socketPathOf(env.socket, p.pe), tmux ?? 'tmux'),
+    );
   }
 
   const r = await p.run('claude', bgArgs(attached, a.prompt), {
@@ -115,6 +133,12 @@ export async function newSession(
   if (occupant === 'other') {
     p.err(
       `whatnext: port ${env.port} is used by another program. Started the session without hooks, so the list shows no context size or digest for it.\n`,
+    );
+  }
+  if (attached.pluginDir && !tmux) {
+    // 素の `tmux` を渡した。設定は起動時に固定なので、セッションが tmux を動かせなければ、ダイジェストはあとからも出ない
+    p.err(
+      'whatnext: tmux not found on PATH. Started the session, but its digest shows in the list only if the session can run tmux.\n',
     );
   }
   p.out(`${res.id}\n`);

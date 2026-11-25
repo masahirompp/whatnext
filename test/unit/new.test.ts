@@ -1,11 +1,11 @@
-import {mkdirSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterAll, describe, expect, it} from 'vitest';
 import type {RunOptions, RunResult} from '../../lib/input/exec.js';
 import type {Occupant} from '../../lib/input/receiver.js';
 import {parseArgs} from '../../src/cli/args.js';
-import {decideAttachments, socketPathOf} from '../../src/cli/attachments.js';
+import {decideAttachments, locateTmux, socketPathOf} from '../../src/cli/attachments.js';
 import {modDir} from '../../src/cli/env.js';
 import {claudeEnv, matchRepos, type NewPorts, newSession, resolveTarget} from '../../src/cli/new.js';
 import {bgArgs, existingDir, readBgOutput} from '../../src/ops/start.js';
@@ -34,11 +34,14 @@ function ports(
     ghq?: string[] | null;
     pe?: NodeJS.ProcessEnv;
     cwd?: string;
+    /** tmux の置き場所(見つからないなら null)。 */
+    tmux?: string | null;
   } = {},
 ) {
   const calls: Call[] = [];
   let out = '';
   let err = '';
+  const tmuxAsked: string[] = [];
   const p: NewPorts = {
     run: async (cmd, args, opts) => {
       calls.push({cmd, args, opts});
@@ -54,6 +57,10 @@ function ports(
       };
     },
     probe: async () => o.occupant ?? 'whatnext',
+    findTmux: path => {
+      tmuxAsked.push(path);
+      return o.tmux === null ? undefined : (o.tmux ?? '/opt/x/bin/tmux');
+    },
     pe: o.pe ?? {PATH: '/nonexistent', HOME: root},
     cwd: o.cwd ?? root,
     home: root,
@@ -64,7 +71,7 @@ function ports(
       err += s;
     },
   };
-  return {p, calls, claude: () => calls.find(c => c.cmd === 'claude'), out: () => out, err: () => err};
+  return {p, calls, tmuxAsked, claude: () => calls.find(c => c.cmd === 'claude'), out: () => out, err: () => err};
 }
 
 const ENV = {port: 14318, socket: 'whatnext'};
@@ -230,7 +237,42 @@ describe('whatnext new の起動', () => {
     const env = settingsOf(c).env;
     expect(env.WHATNEXT_DIGEST_PORT).toBe('14318');
     expect(env.WHATNEXT_DIGEST_SOCKET).toBe(join(root, `tmux-${process.getuid?.()}`, 'whatnext'));
-    expect(env.WHATNEXT_DIGEST_TMUX).toBeTruthy();
+    // tmux は、呼ぶ側の環境(`pe`)の PATH から探した絶対パスで渡す
+    expect(t.tmuxAsked).toEqual(['/nonexistent']);
+    expect(env.WHATNEXT_DIGEST_TMUX).toBe('/opt/x/bin/tmux');
+    expect(t.err()).toBe('');
+  });
+
+  it('tmux が見つからないときは、素の tmux を渡して起動し、ダイジェストが出ないかもしれないと標準エラーで知らせる', async () => {
+    const t = ports({occupant: 'free', tmux: null});
+    expect(await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, t.p)).toBe(0);
+    expect(settingsOf(t.claude()).env.WHATNEXT_DIGEST_TMUX).toBe('tmux');
+    expect(t.claude()?.args).toContain('--plugin-dir');
+    expect(t.out()).toBe('1a2b3c4d\n');
+    expect(t.err()).toBe(
+      'whatnext: tmux not found on PATH. Started the session, but its digest shows in the list only if the session can run tmux.\n',
+    );
+    // mod を付けないとき(ポートをほかのプログラムが使っている)は、tmux を探さず、知らせもしない
+    const other = ports({occupant: 'other', tmux: null});
+    await newSession(ENV, {target: dir('src/app'), prompt: 'x'}, other.p);
+    expect(other.tmuxAsked).toEqual([]);
+    expect(other.err()).not.toContain('tmux');
+  });
+
+  it('tmux は PATH を先に、なければよくある置き場所を探す(ランチャーの PATH に tmux が無くても見つける)', () => {
+    const a = dir('tmux-a');
+    const b = dir('tmux-b');
+    for (const d of [a, b]) {
+      writeFileSync(join(d, 'tmux'), '#!/bin/sh\n');
+      chmodSync(join(d, 'tmux'), 0o755);
+    }
+    const none = dir('tmux-none');
+    writeFileSync(join(none, 'tmux'), 'not executable');
+    chmodSync(join(none, 'tmux'), 0o644);
+    expect(locateTmux(`${none}::${a}`, [b])).toBe(join(a, 'tmux'));
+    expect(locateTmux(none, [join(root, 'nope'), b])).toBe(join(b, 'tmux'));
+    expect(locateTmux(none)).toBeUndefined();
+    expect(locateTmux('', [])).toBeUndefined();
   });
 
   it('91: 一覧が動いていないときも、同じものを付けて起動する', async () => {

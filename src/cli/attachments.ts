@@ -60,9 +60,15 @@ export function withDigestEnv(settings: string, add: Record<string, string>): st
   }
 }
 
-/** tmux の実行ファイルの絶対パス(`claude --bg` のセッションの PATH に tmux があるとは限らない)。なければ `tmux`。 */
-export function findTmux(path = process.env.PATH ?? ''): string {
-  for (const dir of path.split(':')) {
+/**
+ * tmux のよくある置き場所。`whatnext new` を呼ぶ側(Raycast などのランチャー)の PATH に tmux が無いときに、ここも探す
+ * (Homebrew の Apple silicon と Intel、OS のパッケージ、MacPorts)。
+ */
+export const TMUX_DIRS: readonly string[] = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/opt/local/bin'];
+
+/** tmux の実行ファイルの絶対パス。`path`(PATH の形)、`more`(ディレクトリの並び)の順に探す。なければ undefined。 */
+export function locateTmux(path: string, more: readonly string[] = []): string | undefined {
+  for (const dir of [...path.split(':'), ...more]) {
     if (!dir) continue;
     const p = join(dir, 'tmux');
     try {
@@ -70,7 +76,12 @@ export function findTmux(path = process.env.PATH ?? ''): string {
       return p;
     } catch {}
   }
-  return 'tmux';
+  return undefined;
+}
+
+/** tmux の実行ファイルの絶対パス(`claude --bg` のセッションの PATH に tmux があるとは限らない)。なければ `tmux`。 */
+export function findTmux(path = process.env.PATH ?? ''): string {
+  return locateTmux(path) ?? 'tmux';
 }
 
 /**
