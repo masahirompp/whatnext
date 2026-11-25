@@ -6,6 +6,7 @@ import {insideWhatnext, MIN_TMUX, readEnv, tmuxEnv, tooOldTmux} from './cli/env.
 import {guide} from './cli/guide.js';
 import {launch, tmuxVersion} from './cli/launch.js';
 import {startList} from './cli/list.js';
+import {NEW_USAGE, newSession} from './cli/new.js';
 import {workbench} from './cli/workbench.js';
 
 async function inListPane(socket: string): Promise<boolean> {
@@ -33,6 +34,13 @@ async function main(): Promise<number> {
     process.stderr.write(`whatnext: unknown option ${a.arg}\n${USAGE}`);
     return 2;
   }
+  // `whatnext new` は、端末も tmux も使わない。作業台のシェルからは呼べる(自分を入れ子に映さない)。claude の Bash からは
+  // `newSession` が断る
+  if (a.cmd === 'new-usage') {
+    process.stderr.write(`whatnext: new needs a directory or a repository name, and a prompt.\n${NEW_USAGE}`);
+    return 1;
+  }
+  if (a.cmd === 'new') return newSession(env, a);
   if (insideWhatnext(env)) {
     process.stderr.write(
       'whatnext: this shell runs inside whatnext. Run "whatnext" in another split or window of your terminal.\n',

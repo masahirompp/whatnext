@@ -18,7 +18,7 @@
 
 - `probe(port)`：受け口のポートを使っているのが、だれもいない（`free`）、whatnext（`whatnext`）、ほかのプログラム（`other`）のどれかを返す（`GET /v1/whatnext`）。
 - `openReceiver(port, store)`：`127.0.0.1:<port>` で受け口を開き、`/v1/hooks` のフックと `/v1/logs` の OTel の logs を `store` に渡す。開けなければ `null`。`Receiver` は `close()` を持つ。
-- `launchSettings(port)`：`n` で起動するセッションの `--settings` に渡す JSON（フック5種と OTel の `env`）。
+- `launchSettings(port)`：whatnext が起動するセッション（一覧の `n`、`whatnext new`）の `--settings` に渡す JSON（フック5種と OTel の `env`）。
 - `HookStore`：受けた値をセッションごとにメモリに持つ。時刻は受け取った時刻（コンストラクタに時計を渡せる）。
   - `receiveHook(body)`、`receiveLogs(body)`：受けた値を足す。
   - `UserPromptSubmit` の `prompt` は、会話記録の利用者の行と同じく `instructionText` で指示の文字列にする。指示でない（`undefined`。タスクの通知の `<task-notification>` で始まる本文など）ときは、`prompt` を前の指示のまま残す（#361）。指示でなくても新しいターンは始まるので、どちらのときも `turnAt` をその時刻にし（`prompt` が文字列でなければ、`prompt` とともに消す）、`stop`、`failure`、`permission`、`question` を消す。消さないと、前のターンの終わりの値が今のターンの値として一覧に出る。

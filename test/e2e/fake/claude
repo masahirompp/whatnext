@@ -14,7 +14,9 @@ if (!dir) {
 }
 const file = join(dir, 'agents.json');
 const args = process.argv.slice(2);
-appendFileSync(join(dir, 'calls.log'), `${JSON.stringify({args, cwd: process.cwd()})}\n`);
+// wn: 渡った環境のうち WHATNEXT_ で始まる変数の名前(`whatnext new` は外して渡す)
+const wn = Object.keys(process.env).filter(k => k.startsWith('WHATNEXT_')).sort();
+appendFileSync(join(dir, 'calls.log'), `${JSON.stringify({args, cwd: process.cwd(), wn})}\n`);
 
 const load = () => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : []);
 const save = rows => writeFileSync(file, JSON.stringify(rows, null, 2));

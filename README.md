@@ -25,6 +25,15 @@ To see a session's workbench shell next to it, split your terminal (e.g. `cmd+d`
 npx @masahirompp/whatnext workbench
 ```
 
+To hand a task to a new background session without opening the list (from a script or a launcher such as Raycast; no terminal needed), give a directory or a repository name and the prompt:
+
+```sh
+npx @masahirompp/whatnext new ~/src/foo "Fix the failing tests"
+npx @masahirompp/whatnext new owner/foo "Fix the failing tests"   # the end of a path in `ghq list -p`
+```
+
+It prints the session's id and exits; pick the session up in the list later. The session is set up like one started with `n` (hooks, context size and the digest mod), whether or not the list is running. Turns that end while the list is not running show no context size or digest; both appear from the next turn after you open the list. It needs `claude` on `PATH`, refuses a directory Claude Code does not trust yet, and does not run inside a Claude Code session.
+
 ### Digests
 
 The sessions you start with `n` get a small Claude Code mod (shipped in this package, loaded with `--plugin-dir`). At each turn end it makes one Haiku call to write a digest of the session — its goal, its progress so far, and what comes next — and, without a model, picks up the conversation links (issues, PRs, commits and other URLs said in the conversation). The list shows each row's goal as `◎ <Goal>` above its one-liner and, when the terminal is at least 120 columns wide, the digest and conversation links of the selected row on the right, under `Goal`, `Progress`, `Next` and `Links`; click a link there to open it (cmd+click in Ghostty). Inside the session, the same digest and links show in a `Digest` pane (`/wn-digest` opens it). `o` in the list opens one of the row's links.

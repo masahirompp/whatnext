@@ -1,4 +1,4 @@
-import {existsSync, readFileSync, realpathSync, statSync} from 'node:fs';
+import {existsSync, readFileSync, realpathSync} from 'node:fs';
 import {basename} from 'node:path';
 import type {UsageFrame} from '../../lib/input/claude.js';
 import {readAgents} from '../../lib/input/claude.js';
@@ -32,6 +32,7 @@ import {
 } from './keys.js';
 import {GUIDE_OPTION, type GuideState, MAIN_TTY, NEWER, WB_TTY} from './names.js';
 import type {Ports} from './ports.js';
+import {BG_TIMEOUT_MS, bgArgs, existingDir, ghqPaths, readBgOutput} from './start.js';
 
 // 一覧の状態の遷移と、外部に頼む作業(PRODUCT.md「操作」「作業台」「依存（待ち先と起動された行）」)。
 
@@ -943,9 +944,9 @@ export class App {
     for (const r of this.rows.values()) add(this.p.locations.get(r.cwd)?.root ?? r.cwd);
     const first = this.labelDirs(paths);
     this.mode = {k: 'dir', filter: '', sel: 0, items: first, waitFor};
-    void this.p.run('ghq', ['list', '-p'], {timeout: 10000}).then(r => {
-      if (r.code !== 0) return;
-      for (const l of r.stdout.split('\n')) add(l.trim() || undefined);
+    void ghqPaths(this.p.run).then(found => {
+      if (!found) return;
+      for (const p of found) add(p);
       // Other... と、そこから Esc で戻った候補は、同じ候補の配列を引き継ぐ。配列で、この n で開いた候補かを見分ける(#321)
       const m = this.mode;
       if ((m.k !== 'dir' && m.k !== 'other') || m.items !== first) return;
@@ -979,24 +980,17 @@ export class App {
   private resolveDir(text: string): string | {error: string} {
     const t = text.trim();
     if (!t) return this.p.launchDir;
-    const expanded = t === '~' ? this.p.home : t.startsWith('~/') ? `${this.p.home}${t.slice(1)}` : t;
-    if (!expanded.startsWith('/')) return {error: `Not a directory: ${t}`};
-    try {
-      if (statSync(expanded).isDirectory()) return expanded.replace(/\/+$/, '') || '/';
-    } catch {}
-    return {error: `Not a directory: ${t}`};
+    return existingDir(t, this.p.home) ?? {error: `Not a directory: ${t}`};
   }
 
   private async startSession(dir: string, waitFor?: string, retried = false): Promise<void> {
     this.mode = {k: 'starting', dir, since: this.p.now()};
     const tick = setInterval(() => this.draw(), 1000);
     try {
-      const args = ['--bg'];
-      if (this.p.settings) args.push('--settings', this.p.settings);
-      if (this.p.pluginDir) args.push('--plugin-dir', this.p.pluginDir);
-      const r = await this.p.run('claude', args, {cwd: dir, timeout: 120_000});
-      const out = stripControl(`${r.stdout}${r.stderr}`);
-      if (/Workspace not trusted/i.test(out) && !retried) {
+      const args = bgArgs({settings: this.p.settings, pluginDir: this.p.pluginDir});
+      const r = await this.p.run('claude', args, {cwd: dir, timeout: BG_TIMEOUT_MS});
+      const res = readBgOutput(r.stdout, r.stderr);
+      if (res.k === 'untrusted' && !retried) {
         clearInterval(tick);
         const trusted = await this.trust(dir);
         if (trusted) return this.startSession(dir, waitFor, true);
@@ -1004,12 +998,11 @@ export class App {
         this.notify(`Not trusted: ${this.tilde(dir)}`);
         return;
       }
-      const m = /backgrounded\s*·\s*([0-9a-f]{8})/.exec(out);
-      if (!m) {
-        this.mode = {k: 'output', lines: sessionFailureLines(out, r.error)};
+      if (res.k !== 'started') {
+        this.mode = {k: 'output', lines: sessionFailureLines(res.out, r.error)};
         return;
       }
-      const id = m[1];
+      const id = res.id;
       if (waitFor) this.pendingLinks.push({waiter: waitFor, id});
       this.mode = {k: 'list'};
       await this.attach(id, dir, undefined);

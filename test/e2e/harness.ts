@@ -1,4 +1,4 @@
-import {execFileSync} from 'node:child_process';
+import {execFileSync, spawn} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {join, resolve} from 'node:path';
@@ -497,7 +497,36 @@ export class Harness {
     return this.waitFor(s => /Refreshed\./.test(s));
   }
 
-  calls(): {args: string[]; cwd: string}[] {
+  /**
+   * 端末なしで cli を動かす(`whatnext new` を、Raycast の script などから呼ぶ形)。標準入力は `/dev/null`、標準出力と
+   * 標準エラーはパイプで、制御端末のない新しいセッションにする(`detached`)。一覧を開いていなければ、ポートをここで決める。
+   */
+  async runCli(
+    args: string[],
+    opts: {env?: Record<string, string>; cwd?: string} = {},
+  ): Promise<{code: number | null; stdout: string; stderr: string}> {
+    if (!this.port) this.port = await freePort();
+    const line = `${this.envLine(opts.env)} node ${q(CLI)} ${args.map(q).join(' ')}`;
+    return new Promise(res => {
+      const c = spawn('sh', ['-c', line], {
+        cwd: opts.cwd ?? join(this.dir, 'home'),
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      c.stdout.on('data', d => {
+        stdout += d;
+      });
+      c.stderr.on('data', d => {
+        stderr += d;
+      });
+      c.on('close', code => res({code, stdout, stderr}));
+    });
+  }
+
+  /** 偽の claude が呼ばれた記録。`wn` は、渡った環境のうち `WHATNEXT_` で始まる変数の名前。 */
+  calls(): {args: string[]; cwd: string; wn?: string[]}[] {
     const p = join(this.dir, 'calls.log');
     if (!existsSync(p)) return [];
     return readFileSync(p, 'utf8')

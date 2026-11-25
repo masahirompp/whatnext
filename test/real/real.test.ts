@@ -181,6 +181,48 @@ describe('whatnext が起動したセッション', () => {
   });
 });
 
+describe('whatnext new で起動したセッション', () => {
+  it('90: 一覧が動いている間に端末なしで起動すると、id が出て、行に指示の一言、ターンのあとに最後の応答の冒頭と CTX が出る', async () => {
+    h = new RealHarness();
+    await h.start({size: {cols: 150, rows: 45}});
+    const r = await h.runCli(['new', WORK, 'Reply with exactly the word: pong']);
+    expect(r.stderr).toBe('');
+    expect(r.code).toBe(0);
+    expect(r.stdout).toMatch(/^[0-9a-f]{8}\n$/);
+    const id = r.stdout.trim();
+    await waitAgent(a => a.some(x => x.id === id && x.state === 'done'), 90000);
+    await expectHaiku(id);
+    // OTel の送り出しの間隔(2 秒)と一覧の更新を待つ
+    await refreshUntil(() => /Review +\d+k +/.test(h.row(nm(id)) ?? ''));
+    expect(h.notes(nm(id)).join('\n')).toMatch(/pong/);
+  });
+
+  it('91: 一覧が動いていない間に起動し、ターンが終わってから一覧を開くと、一言が出て CTX は -。次のターンから CTX が出る', async () => {
+    h = new RealHarness();
+    const r = await h.runCli(['new', WORK, 'Reply with exactly the word: pong']);
+    expect(r.stderr).toBe('');
+    expect(r.code).toBe(0);
+    const id = r.stdout.trim();
+    await waitAgent(a => a.some(x => x.id === id && x.state === 'done'), 90000);
+    await expectHaiku(id);
+    await sleep(3000);
+    await h.start({size: {cols: 150, rows: 45}});
+    await refreshUntil(() => /Review/.test(h.row(nm(id)) ?? ''));
+    expect(h.row(nm(id))).toMatch(/Review +- +/);
+    expect(h.notes(nm(id)).join('\n')).toMatch(/pong/);
+    // 一覧を開いたあとの次のターンから、フックと OTel が届く
+    await h.select(nm(id));
+    await h.keys('Enter');
+    await h.waitFor(/\^Q\^L back/, 60000);
+    await sleep(3000);
+    await sendPrompt('Reply with exactly the word: again');
+    await h.keys('C-q', 'C-l');
+    await waitAgent(a => a.some(x => x.id === id && x.state === 'done'), 90000);
+    await refreshUntil(() => /Review +\d+k +/.test(h.row(nm(id)) ?? ''));
+    expect(h.notes(nm(id)).join('\n')).toMatch(/again/);
+  });
+});
+
 describe('whatnext の外で起動したセッション', () => {
   it('33・45: 権限待ちの対象と AGE が最初の一覧から出て、CTX は -。断ると Declined、終えると最後の応答の冒頭', async () => {
     const id = startBg('wn-real-ext', PERMISSION_PROMPT('ext'));

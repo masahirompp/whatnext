@@ -29,7 +29,7 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 画面の組み立て | 並んだ行、カーソル、スクロールの位置、端末の幅と高さ、下に出す知らせ | 画面に書く文字列（幅の計算、切り詰め、色）。純粋な関数 |
 | 操作 | キー入力、tmux からの知らせ、更新の結果、時刻 | 一覧の状態の遷移（カーソルの追従、メニュー、入力欄、`Ctrl+X` の2回押し、確認）と、外部に頼む作業（attach、起動、停止、削除、作業台の操作）の指示 |
 | tmux | 操作からの指示 | 専用のサーバ、attach、作業台と作業台の画面、キーの割り当て、ステータス行、Ghostty の分割とタブ（「一覧と作業台の仕組み」「作業台の画面の仕組み」） |
-| cli | 引数、環境変数 | 起動の振り分け（一覧、`whatnext workbench`、`--help`、知らないオプション）、2つ目の起動と版の違いの扱い |
+| cli | 引数、環境変数 | 起動の振り分け（一覧、`whatnext workbench`、`whatnext new`、`--help`、知らないオプション）、2つ目の起動と版の違いの扱い、起動するセッションに付けるものの判断 |
 
 入力（起動元の導き方と場所の問い合わせを除く）、tmux（attach している間のキーの表を除く）、段の判定、文字の幅と色は `lib/` に置く（[ADR-0021](adr/0021-promote-leaf-modules-to-lib.md)。契約は [lib/](lib/README.md)）。`lib/` は契約を通して使う。置き場所は次のとおり。
 
@@ -39,9 +39,9 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 入力 | `lib/input/` と `src/input/`（起動元の導き方 `spawners.ts`、場所の問い合わせ `where.ts`、1回の更新の観測 `observe.ts`、ダイジェストの受け取り `digest.ts`） |
 | 状態のファイル | `src/state/` |
 | 画面の組み立て | `src/screen/` |
-| 操作 | `src/ops/`（一覧の状態の遷移と外部に頼む作業 `app.ts`、口 `ports.ts`、attach している間のキーの表 `keys.ts`、cli と共有する名前 `names.ts`、候補の絞り込み `filter.ts`） |
+| 操作 | `src/ops/`（一覧の状態の遷移と外部に頼む作業 `app.ts`、口 `ports.ts`、attach している間のキーの表 `keys.ts`、cli と共有する名前 `names.ts`、候補の絞り込み `filter.ts`、`n` と `whatnext new` が共有する `claude --bg` の起動の部品 `start.ts`） |
 | tmux | `lib/tmux/` |
-| cli | `src/cli.ts` と `src/cli/`（ランチャー `launch.ts`、一覧の役 `list.ts`、`whatnext workbench` `workbench.ts`、案内のプログラム `guide.ts`） |
+| cli | `src/cli.ts` と `src/cli/`（ランチャー `launch.ts`、一覧の役 `list.ts`、`whatnext workbench` `workbench.ts`、`whatnext new` `new.ts`、起動するセッションに付けるものの判断 `attachments.ts`、案内のプログラム `guide.ts`） |
 
 - ダイジェストの mod（`mod/`）は、この7つのモジュールの外にある。Claude Code の中の別の実行環境で動き、whatnext のコードを import せず、whatnext も mod のコードを import しない。接点は、mod の置き場所（`src/cli/env.ts` の `modDir`）と、受け口に送る本文の形（「ダイジェストの受信」）だけである。
 - 段と並びと画面の組み立ては、昇格した部品（`lib/text`）のほかに依存しない。操作は cli に依存しない。専用サーバのオプションの名前（`@wn_main_tty` など）と案内の中身の形は、cli と操作の両方が使うので、操作の側（`src/ops/names.ts`）に置き、cli が import する。
@@ -202,6 +202,27 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 - 右の欄の描画は画面の組み立て（`src/screen/screen.ts` の `render` と `sideLines`）が行う。端末の幅が 120 桁以上のとき、一覧を `幅 - 49` 桁で組み立て、右に ` │ ` と 46 桁の欄を並べる。最下部の欄（Usage、キーの説明）は全幅のまま出す。メモの入力欄と一覧の下の欄（入力欄・メニュー・知らせ）は全幅で切り、どれかの行が左の幅を超えるときは、その欄（前の空行を含む）から下に右の欄を並べない。収まる欄の横には今までどおり右の欄を並べる（60秒ごとの `refreshing...` で右の欄が縮まないように）。折り返しは表示幅で数え、英数字の語の途中では折らず（語の頭で折る）、句読点と閉じ括弧を行の頭に置かない。
 - 右の欄の `Links` の行は、名前を欄の幅で切ってから、埋め込みのリンク（OSC 8。`ESC ]8;;<URL> ESC \ <名前> ESC ]8;; ESC \`）で囲む（`src/screen/screen.ts` の `hyperlink`）。幅を数えたり切ったりするのは囲む前の文字列で、囲んだあとの行は数えない（`string-width` は OSC 8 を 0 桁に数えるが、lib の `stripAnsi` は OSC 8 を除かない）。URL は受け口で検査したもの（`http://` か `https://` で始まり空白を含まない。制御文字は受けたときに除いてある）で、描くときも、制御文字や空白を含むもの、http(s) でないものは囲まずに名前だけを出す。`o` のメニューは残す。
 - 外側の端末に OSC 8 を送るかは、attach した claude の画面と同じく tmux が決める（「一覧と作業台の仕組み」の `terminal-features`）。一覧は端末の種類を見ずに常に囲む。tmux は送るとき、リンクに `id=tmux<n>` を足す。確かめたこと（tmux 3.8、2026-11-21）：問い合わせに答えない pty（`script`）で attach すると、`TERM` が `xterm-256color` と `xterm-ghostty` のクライアントには OSC 8 が届き、`vt220` と `screen` には届かず名前だけが出た。外側が tmux のとき（画面の通しのテスト）は、`TERM=screen` でも、tmux が問い合わせの応答から外側を tmux と知って `hyperlinks` を付け、送った。PRODUCT.md の「xterm 系と Ghostty に限る」は `terminal-features` で入れる範囲で、tmux が応答から機能を知る端末には、それ以外にも送る。
+
+## 一覧の外からの起動
+
+`whatnext new`（[PRODUCT.md](PRODUCT.md)「一覧の外からの起動」、[ADR-0024](adr/0024-start-sessions-from-outside-the-list.md)）は、起動の口（`src/cli/new.ts`）だけで完結し、一覧のプロセスにも tmux にも触れない。
+
+- 流れ：`CLAUDECODE=1` なら断る → 作業ディレクトリを決める → 受け口のポートを `probe` で確かめる → 付けるものを決める → `claude --bg [--settings …] [--plugin-dir …] -- <指示>` を作業ディレクトリで動かす → 出力から `id` を読んで標準出力に出す。`claude --bg` は端末なし（標準入力は `/dev/null`、制御端末なし、出力はパイプ）でも起動して `backgrounded · <id>` を返し、最初のターンが始まる（実機、2.1.331、2026-11-25。0.7 秒で戻った）。
+- 何を付けるかは、`src/cli/attachments.ts` の `decideAttachments` が、ポートの状態（lib の `probe` の `free`、`whatnext`、`other`）と呼び手（一覧か `whatnext new` か）から決める。一覧の `n` の判断もここにある。mod を付けるかの判断を変えるときは、この関数だけを直す。
+
+  | 呼び手 | `free` | `whatnext` | `other` |
+  |---|---|---|---|
+  | 一覧 | 受け口を開けられたら、フックと OTel。ダイジェストが有効なら mod も | なし（起動の口が先に断るので、通常は来ない） | なし |
+  | `whatnext new` | フック、OTel、mod | フック、OTel、mod | なし |
+
+- `whatnext new` は受け口を開けない。`free` のときに付けたフックと OTel は、あとで一覧が同じポートで受け口を開けてから届く。それまでのフックは `curl` が黙って失敗し、OTel は失われる（再送されない）。一覧を止めた状態で起動し、最初のターンが終わってから一覧を開くと、行は一言付きで出て CTX は `-` で、次のターンで CTX が出た（実機、2.1.331、2026-11-24）。
+- mod に渡す環境（`WHATNEXT_DIGEST_PORT`、`WHATNEXT_DIGEST_TMUX`、`WHATNEXT_DIGEST_SOCKET`）は、一覧と同じ関数（`digestEnv`）で組む。違いはソケットのパスの出どころである。一覧は自分のサーバの `#{socket_path}` を読み、`whatnext new` は tmux に問い合わせずに組む（`socketPathOf`。`TMUX_TMPDIR`、なければ `/tmp` の実パスの下の `tmux-<uid>/<ソケット名>`。tmux 3.7c の `#{socket_path}` と一致した）。一覧が動いていなくても決まり、あとで開いた一覧のサーバは、そのパスにいる。呼ぶ側と一覧の `TMUX_TMPDIR` が違うと、mod は一覧を見つけられず、Haiku を呼ばない。
+- mod は、一覧のセッションの `@wn_digest_port` が送り先のポートと同じときだけ Haiku を呼ぶ（「ダイジェストの mod」の受け手の確かめ）。一覧が動いていない、`--no-digest` で動いている、のどちらでもこのオプションがないので、`whatnext new` が一覧の状態を見ずに mod を付けても、利用枠は使わない。
+- 作業ディレクトリは、既存のディレクトリ（`~` を展開し、相対パスは呼んだ場所から解く）を先に見て、なければ `ghq list -p` のパスを、パスの区切りの単位で末尾から比べる（`matchRepos`）。`/`、`~`、`./`、`../` で始まる引数は、リポジトリ名として探さない。
+- 信頼されていないディレクトリは、`n` と同じく、`claude --bg` の出力の `Workspace not trusted` で知る。`n` は信頼の確認を端末に出すが、`whatnext new` は端末がないので、`Not trusted` を出して終わる。
+- `claude` に渡す環境から `WHATNEXT_*` を外す（`claudeEnv`）。claude のデーモンは、それを起こしたプロセスの環境を持ち続け、すべての `--bg` のセッションに渡す（[claude-code-behavior.md](claude-code-behavior.md)「`--bg` のセッションに OTel の設定を渡す経路」）。一覧の `n` の起動は、今までどおり外さない。
+- 一覧の `n` と共有する部品は `src/ops/start.ts` に置く（`bgArgs`、`readBgOutput`、`existingDir`、`ghqPaths`）。起動のあとと、信頼されていないときの扱いは、呼ぶ側が決める。
+- 外に触れる口（`run`、`probe`、環境、今の場所、出力）は `NewPorts` で受け、単体のテストが差し替える。
 
 ## 会話記録の読み取り
 
@@ -407,6 +428,13 @@ whatnext を**どう実現するか**（仕組み）を書く。**何を実現�
 | 86 | （廃止） |
 | 87 | 画面の通し（古い版を名乗る偽の `tmux`）、単体（`test/unit/cli.test.ts`） |
 | 89 | 画面の通し（`test/e2e/list.test.ts`）、単体（`test/unit/screen.test.ts`。折り返しの形、高さの小さい端末でメニューや入力欄を開いたときに空ける行数） |
+| 90 | 実機の通し（一言と CTX）、画面の通し（`test/e2e/new.test.ts`。端末なしで cli を動かし、`id` と終了コード、偽の claude に渡った引数と環境、一覧の区切りに行が出ること）、単体（`test/unit/new.test.ts`） |
+| 91 | 実機の通し（一覧を開いた時点の一言と CTX の `-`、次のターンの CTX）、画面の通し（一覧なしで同じ引数になり、あとで開いた一覧に行が出ること。mod に渡したソケットのパスが、あとで開いた一覧のサーバのものと一致すること）、単体。次のターンの終わりからダイジェストが出ることは、自動では確かめていない（mod の受け手の確かめは 82、83 と mod のテストで確かめている） |
+| 92 | 画面の通し（偽の `ghq`）、単体（名前の一致のしかた） |
+| 93 | 画面の通し（`--no-digest` の一覧でも `--plugin-dir` を付け、一覧に `@wn_digest_port` がないこと）、単体（付けるものの判断）。ダイジェストが出ることは、mod のテストと 83 による |
+| 94 | 画面の通し（標準エラーの全文と終了コード）、単体 |
+| 95 | 画面の通し、単体 |
+| 96 | 画面の通し（ポートを使う HTTP のサーバを立てる）、単体 |
 
 画面の通しは、外側の tmux のセッションを端末の代わりにし、偽の `claude`、`ps`、`gh`、`ghq`、`open`(`test/e2e/fake/`)を `PATH` の前に置く。偽の claude は状態を一時ディレクトリの `agents.json` に持ち、呼ばれたコマンドを `calls.log` に書き、`fake.json` と行の `_fake` で失敗や遅れを起こす。偽の `ps` は、起動元を引く2つの読み方(`ps -A -o pid=,ppid=` と `ps -E`)だけを固定の表で返し、ほかは本物に渡す。外側の tmux を挟むと Esc が約 500ms 遅れて届くので、harness は Esc のあとに待つ(#278)。実機の通しは `/tmp/whatnext-real`(git でない。初回に対話モードの claude で信頼の確認を済ませる)で haiku のセッションを起動し、テストのあとにそのディレクトリのセッションだけを `claude stop` と `claude rm` で消す。Claude Code の中のシェルから流すときは、`CLAUDE_CODE_CHILD_SESSION` などを外してから claude を動かす(引き継ぐと対話セッションが `--json` に出ない。#284)。子の `claude -p` には道具を使わない長い出力を頼む(利用者のフックが前景の `sleep` を止めると、子がすぐ終わる。#285)。Ghostty の通しは、AppleScript で新しいウィンドウを開き、`ctrl+q` の組み合わせだけを Ghostty の `send key` で送る(修飾キーのない文字は `send key` では届かず、`input text` は貼り付けとして届くため、一覧への文字キーは tmux の `send-keys` で一覧のペインに送る)。AppleScript の中では `tab` が Ghostty のタブの class と紛れるので、区切りの文字は `character id 9` と書く。
 
