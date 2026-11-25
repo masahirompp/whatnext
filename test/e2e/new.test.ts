@@ -145,7 +145,11 @@ describe('whatnext new', () => {
     const foo = h.repo('foo');
     // ポートを決めるために、失敗する呼び出しを1回流す
     await h.runCli(['new']);
-    other = createServer((_, res) => res.end('hello'));
+    // 404 の本文に要求のパス(`/v1/whatnext`)を書き戻すサーバ。本文に whatnext を含んでも、一覧とはみなさない
+    other = createServer((req, res) => {
+      res.writeHead(404, {'content-type': 'text/html; charset=utf-8'});
+      res.end(`<pre>Cannot ${req.method} ${req.url}</pre>\n`);
+    });
     await new Promise<void>(r => other?.listen(h.port, '127.0.0.1', r));
     const r = await h.runCli(['new', foo, 'x']);
     expect(r).toEqual({

@@ -1,11 +1,13 @@
 import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
+import {createServer, type RequestListener} from 'node:http';
+import type {AddressInfo} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {parseAgents, parseUsage} from './claude.js';
 import {HookStore, supplement} from './hooks.js';
 import {parseParents} from './procs.js';
-import {launchSettings} from './receiver.js';
+import {launchSettings, openReceiver, probe} from './receiver.js';
 import {instructionText, leadLine, promptLine, toolTarget} from './text.js';
 import {Transcripts} from './transcript.js';
 
@@ -286,6 +288,62 @@ async function transcriptDir(lines: object[]): Promise<{dir: string; file: strin
 }
 
 const T = (s: number) => new Date(Date.UTC(2026, 9, 2, 0, 0, s)).toISOString();
+
+describe('受け口のポートを使っているのは誰か(probe)', () => {
+  /** 空いているポートで `handler` のサーバを立て、`probe` の答えを返す。 */
+  async function probeAgainst(handler: RequestListener, timeoutMs?: number) {
+    const server = createServer(handler);
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
+    try {
+      return await probe((server.address() as AddressInfo).port, timeoutMs);
+    } finally {
+      server.closeAllConnections();
+      await new Promise(r => server.close(r));
+    }
+  }
+  const freePort = async () => {
+    const s = createServer();
+    await new Promise<void>(r => s.listen(0, '127.0.0.1', r));
+    const port = (s.address() as AddressInfo).port;
+    await new Promise(r => s.close(r));
+    return port;
+  };
+
+  it('whatnext の受け口(openReceiver)は whatnext、誰も使っていなければ free', async () => {
+    const port = await freePort();
+    expect(await probe(port)).toBe('free');
+    const receiver = await openReceiver(port, new HookStore());
+    try {
+      expect(await probe(port)).toBe('whatnext');
+    } finally {
+      receiver?.close();
+    }
+  });
+
+  it('本文に whatnext を含むだけの応答は other(404 に要求のパスを書き戻すサーバを、一覧と読み違えない)', async () => {
+    const echo404: RequestListener = (req, res) => {
+      res.writeHead(404, {'content-type': 'text/html; charset=utf-8'});
+      res.end(`<pre>Cannot ${req.method} ${req.url}</pre>\n`);
+    };
+    expect(await probeAgainst(echo404)).toBe('other');
+    // 状態コードが 200 でも、本文が whatnext の形でなければ違う
+    expect(await probeAgainst((req, res) => res.end(`you asked for ${req.url}`))).toBe('other');
+    expect(await probeAgainst((_, res) => res.end('"whatnext"'))).toBe('other');
+    expect(await probeAgainst((_, res) => res.end('{"app":"whatnext2"}'))).toBe('other');
+    expect(await probeAgainst((_, res) => res.end('null'))).toBe('other');
+    // 本文が whatnext の形でも、状態コードが 200 でなければ違う
+    expect(
+      await probeAgainst((_, res) => {
+        res.writeHead(404);
+        res.end('{"app":"whatnext"}');
+      }),
+    ).toBe('other');
+  });
+
+  it('時間切れは other', async () => {
+    expect(await probeAgainst(() => {}, 50)).toBe('other');
+  });
+});
 
 describe('会話記録 (シナリオ 33、34、45)', () => {
   it('指示、権限待ちの道具、最後の応答、時刻を読む', async () => {

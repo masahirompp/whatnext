@@ -5,7 +5,24 @@ import type {HookStore} from './hooks.js';
 
 export type Occupant = 'free' | 'whatnext' | 'other';
 
-/** ポートを誰が使っているかを `GET /v1/whatnext` で確かめる。 */
+/** `GET /v1/whatnext` への whatnext の応答(状態コード 200 と、この本文)。`probe` は、この形に一致するときだけ whatnext とみなす。 */
+const IDENTITY = {app: 'whatnext'} as const;
+
+/** 応答が whatnext の受け口のものか。本文に `whatnext` を含むだけの応答(404 に要求のパスを書き戻すサーバなど)は違う。 */
+function isWhatnext(status: number | undefined, body: string): boolean {
+  if (status !== 200) return false;
+  try {
+    const j: unknown = JSON.parse(body);
+    return typeof j === 'object' && j !== null && (j as {app?: unknown}).app === IDENTITY.app;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * ポートを誰が使っているかを `GET /v1/whatnext` で確かめる。`whatnext` と答えると、呼ぶ側はそのポートにフックと OTel
+ * (指示と応答の本文)を送らせるので、応答の形が一致するときだけにする(docs/lib/input.md)。
+ */
 export function probe(port: number, timeoutMs = 1000): Promise<Occupant> {
   return new Promise(resolve => {
     const req = request({host: '127.0.0.1', port, path: '/v1/whatnext', method: 'GET', timeout: timeoutMs}, res => {
@@ -14,7 +31,7 @@ export function probe(port: number, timeoutMs = 1000): Promise<Occupant> {
       res.on('data', d => {
         body += d;
       });
-      res.on('end', () => resolve(/whatnext/.test(body) ? 'whatnext' : 'other'));
+      res.on('end', () => resolve(isWhatnext(res.statusCode, body) ? 'whatnext' : 'other'));
     });
     req.on('timeout', () => {
       req.destroy();
@@ -34,7 +51,7 @@ export function openReceiver(port: number, store: HookStore): Promise<Receiver |
   const server: Server = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/v1/whatnext') {
       res.writeHead(200, {'content-type': 'application/json'});
-      res.end('{"app":"whatnext"}');
+      res.end(JSON.stringify(IDENTITY));
       return;
     }
     if (req.method !== 'POST') {

@@ -17,7 +17,9 @@
 ## フックと OTel の受け口（`receiver.ts`、`hooks.ts`）
 
 - `probe(port)`：受け口のポートを使っているのが、だれもいない（`free`）、whatnext（`whatnext`）、ほかのプログラム（`other`）のどれかを返す（`GET /v1/whatnext`）。
-- `openReceiver(port, store)`：`127.0.0.1:<port>` で受け口を開き、`/v1/hooks` のフックと `/v1/logs` の OTel の logs を `store` に渡す。開けなければ `null`。`Receiver` は `close()` を持つ。
+  - `whatnext` と答えるのは、応答が `openReceiver` の返す形に一致するときだけである：状態コードが 200 で、本文が JSON のオブジェクトで、その `app` が `"whatnext"`。本文に `whatnext` という文字列を含むだけの応答（404 の本文に要求のパスを書き戻すサーバなど）は `other` にする。`whatnext` と答えると、`whatnext new` はそのポートに向けたフックと OTel を付け、指示と応答の本文を送らせるので、ゆるく見分けない（#358）。
+  - `free` と答えるのは、接続を断られたとき（`ECONNREFUSED`）だけである。1 秒の時間切れと、ほかのエラーは `other` にする。
+- `openReceiver(port, store)`：`127.0.0.1:<port>` で受け口を開き、`/v1/hooks` のフックと `/v1/logs` の OTel の logs を `store` に渡す。開けなければ `null`。`Receiver` は `close()` を持つ。`GET /v1/whatnext` には、状態コード 200 と本文 `{"app":"whatnext"}` を返す（`probe` が見る形。最初の版から変えていない）。
 - `launchSettings(port)`：whatnext が起動するセッション（一覧の `n`、`whatnext new`）の `--settings` に渡す JSON（フック5種と OTel の `env`）。
 - `HookStore`：受けた値をセッションごとにメモリに持つ。時刻は受け取った時刻（コンストラクタに時計を渡せる）。
   - `receiveHook(body)`、`receiveLogs(body)`：受けた値を足す。
