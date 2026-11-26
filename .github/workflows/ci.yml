@@ -47,8 +47,8 @@ jobs:
       # tmux は UTF-8 のロケールでないと、全角や罫線を `_` にして描く(ロケールなしでは、list.test.ts の大半が落ちた)
       LANG: C.UTF-8
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -64,7 +64,7 @@ jobs:
           test -n "$ImageOS"
           echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
       - id: cache-tmux
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/tmux
           key: tmux-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ env.TMUX_VERSION }}-utf8proc
